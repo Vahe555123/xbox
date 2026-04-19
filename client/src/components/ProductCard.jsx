@@ -4,9 +4,21 @@ import FavoriteHeartButton from './FavoriteHeartButton';
 
 export default function ProductCard({ product }) {
   const [imgError, setImgError] = useState(false);
-  const { title, price, image, detailPath, platforms, tags, publisher, rating, genre, releaseInfo } = product;
+  const {
+    title,
+    price,
+    image,
+    detailPath,
+    releaseInfo,
+    subscriptionLabels = [],
+    hasRussianLanguage,
+    gamePassSavingsPercent,
+  } = product;
   const to = detailPath || `/game/${product.id}`;
   const priceStatus = price?.status || 'unknown';
+  const discountPercent = price?.discountPercent > 0
+    ? Math.round(price.discountPercent)
+    : null;
 
   const imageUrl = image
     ? `${image}?w=330&h=330`
@@ -29,14 +41,22 @@ export default function ProductCard({ product }) {
                 <span>No Image</span>
               </div>
             )}
-            {tags?.length > 0 && (
-              <div className="product-badges">
-                {tags.slice(0, 3).map((tag) => (
-                  <span key={tag} className={`badge badge-${tag.toLowerCase().replace(/\s+/g, '-')}`}>
-                    {tag}
+            {(discountPercent || gamePassSavingsPercent) && (
+              <div className="product-image-flags">
+                {discountPercent && (
+                  <span className="product-image-flag product-image-flag-sale">
+                    -{discountPercent}%
                   </span>
-                ))}
+                )}
+                {gamePassSavingsPercent && (
+                  <span className="product-image-flag product-image-flag-gamepass">
+                    Сэкономь {Math.round(gamePassSavingsPercent)}% с Game Pass
+                  </span>
+                )}
               </div>
+            )}
+            {hasRussianLanguage && (
+              <span className="product-language-badge">Русский язык</span>
             )}
           </Link>
           <FavoriteHeartButton product={product} />
@@ -46,29 +66,10 @@ export default function ProductCard({ product }) {
           <div className="product-info">
           <h3 className="product-title">{title}</h3>
 
-          {publisher && <p className="product-publisher">{publisher}</p>}
-
-          <div className="product-meta">
-            {platforms?.length > 0 && (
-              <div className="product-platforms">
-                {platforms.map((p) => (
-                  <span key={p} className="platform-tag">{p}</span>
-                ))}
-              </div>
-            )}
-
-            {rating?.average && (
-              <div className="product-rating">
-                <span className="star">&#9733;</span>
-                <span>{rating.average.toFixed(1)}</span>
-              </div>
-            )}
-          </div>
-
-          {genre?.length > 0 && (
-            <div className="product-genres">
-              {genre.slice(0, 3).map((g) => (
-                <span key={g} className="genre-tag">{g}</span>
+          {subscriptionLabels.length > 0 && (
+            <div className="product-subscriptions">
+              {subscriptionLabels.map((label) => (
+                <span key={label} className="subscription-chip">{label}</span>
               ))}
             </div>
           )}
@@ -80,9 +81,6 @@ export default function ProductCard({ product }) {
             <span className={`price-current ${price?.value === 0 ? 'free' : ''} price-status-${priceStatus}`}>
               {price?.formatted || releaseInfo?.label || 'Price N/A'}
             </span>
-            {price?.discountPercent > 0 && (
-              <span className="price-discount">-{Math.round(price.discountPercent)}%</span>
-            )}
           </div>
         </div>
         </Link>

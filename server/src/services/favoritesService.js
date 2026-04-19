@@ -12,6 +12,11 @@ function normalizeSnapshot(product) {
     price: product.price || null,
     publisher: product.publisher || null,
     rating: product.rating || null,
+    subscriptions: product.subscriptions || null,
+    subscriptionLabels: product.subscriptionLabels || [],
+    supportedLanguages: product.supportedLanguages || [],
+    hasRussianLanguage: Boolean(product.hasRussianLanguage),
+    gamePassSavingsPercent: product.gamePassSavingsPercent || null,
   };
 }
 

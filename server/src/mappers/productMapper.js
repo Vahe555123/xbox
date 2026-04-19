@@ -24,6 +24,18 @@ const BADGE_TYPE_MAP = {
   10: 'Xbox Touch',
 };
 
+const GAME_PASS_IDS = new Set([
+  'CFQ7TTC0KHS0', // Game Pass Ultimate
+  'CFQ7TTC0P85B', // Game Pass Premium
+  'CFQ7TTC0K5DJ', // Game Pass Essential
+  'CFQ7TTC0K6L8', // Game Pass for Console
+  'CFQ7TTC0KGQ8', // PC Game Pass
+]);
+
+const EA_PLAY_IDS = new Set(['CFQ7TTC0K5DH']);
+const UBISOFT_PLUS_IDS = new Set(['CFQ7TTC0QH5H']);
+const RUSSIAN_LANGUAGE_CODES = new Set(['ru', 'ru-ru']);
+
 function mapProduct({ summary, availability }) {
   if (!summary) return null;
 
@@ -42,6 +54,8 @@ function mapProduct({ summary, availability }) {
   const image = extractImage(summary.images);
   const platforms = (summary.availableOn || []).map((p) => PLATFORM_MAP[p] || p);
   const tags = extractTags(summary);
+  const subscriptions = extractSubscriptions(summary);
+  const gamePassSavingsPercent = extractGamePassSavingsPercent(summary);
 
   return {
     id: summary.productId,
@@ -54,6 +68,11 @@ function mapProduct({ summary, availability }) {
     storeUrl: `https://www.xbox.com/${config.xbox.locale}/games/store/${encodeSlug(summary.title)}/${summary.productId}`,
     platforms,
     tags,
+    subscriptions,
+    subscriptionLabels: buildSubscriptionLabels(subscriptions),
+    gamePassSavingsPercent,
+    supportedLanguages: [],
+    hasRussianLanguage: false,
     genre: summary.categories || [],
     publisher: summary.publisherName || null,
     developer: summary.developerName || null,
@@ -185,7 +204,7 @@ function formatDateLabel(value) {
 
 function extractImage(images) {
   if (!images) return null;
-  return images.poster || images.boxArt || images.superHeroArt || null;
+  return images.boxArt || images.poster || images.superHeroArt || null;
 }
 
 function extractTags(summary) {
@@ -203,6 +222,119 @@ function extractTags(summary) {
     if (hasDiscount) tags.push('Sale');
   }
   return tags;
+}
+
+function getPriceEntries(specificPrices) {
+  if (!specificPrices || typeof specificPrices !== 'object') return [];
+  return Object.values(specificPrices).flatMap((value) => (Array.isArray(value) ? value : []));
+}
+
+function extractSubscriptions(summary) {
+  const passIds = new Set(summary.includedWithPassesProductIds || []);
+  const badgeTypes = new Set((summary.badges || []).map((badge) => badge.type));
+
+  return {
+    gamePass: badgeTypes.has(1) || [...passIds].some((id) => GAME_PASS_IDS.has(id)),
+    eaPlay: [...passIds].some((id) => EA_PLAY_IDS.has(id)),
+    ubisoftPlus: [...passIds].some((id) => UBISOFT_PLUS_IDS.has(id)),
+  };
+}
+
+function buildSubscriptionLabels(subscriptions) {
+  const labels = [];
+  if (subscriptions?.gamePass) labels.push('Game Pass');
+  if (subscriptions?.eaPlay) labels.push('EA Play');
+  if (subscriptions?.ubisoftPlus) labels.push('Ubisoft+');
+  return labels;
+}
+
+function extractGamePassSavingsPercent(summary) {
+  const subscriptions = extractSubscriptions(summary);
+  const subscriptionDiscounts = getPriceEntries(summary.specificPrices)
+    .filter((price) => Number(price?.discountPercentage) > 0)
+    .filter((price) => isGamePassPrice(price) || (subscriptions.gamePass && isSubscriptionPrice(price)));
+
+  if (!subscriptionDiscounts.length) return null;
+
+  return Math.round(Math.max(
+    ...subscriptionDiscounts.map((price) => Number(price.discountPercentage) || 0),
+  ));
+}
+
+function isGamePassPrice(price) {
+  const eligibility = price?.eligibilityInfo || {};
+  const haystack = [
+    eligibility.eligibility,
+    eligibility.type,
+    eligibility.name,
+    eligibility.description,
+    price?.name,
+    price?.displayName,
+  ].filter(Boolean).join(' ');
+
+  if (/game\s*pass|xgpu|xgp|ultimate/i.test(haystack)) return true;
+  return eligibility.eligibility && eligibility.eligibility !== 'None' && /subscription|member/i.test(haystack);
+}
+
+function isSubscriptionPrice(price) {
+  const eligibility = price?.eligibilityInfo || {};
+  return Boolean(
+    price?.hasXPriceOffer
+    || (eligibility.eligibility && eligibility.eligibility !== 'None')
+    || /subscription|member/i.test(JSON.stringify(eligibility)),
+  );
+}
+
+function extractSupportedLanguages(product) {
+  const codes = new Set();
+
+  for (const entry of product?.DisplaySkuAvailabilities || []) {
+    const sku = entry?.Sku || {};
+
+    for (const marketProperties of sku.MarketProperties || []) {
+      for (const code of marketProperties.SupportedLanguages || []) {
+        addLanguageCode(codes, code);
+      }
+    }
+
+    for (const pkg of sku.Properties?.Packages || []) {
+      for (const code of pkg.Languages || []) {
+        addLanguageCode(codes, code);
+      }
+    }
+  }
+
+  return [...codes].sort();
+}
+
+function addLanguageCode(codes, code) {
+  if (!code) return;
+  codes.add(String(code).trim().toLowerCase());
+}
+
+function hasRussianLanguage(codes) {
+  return codes.some((code) => RUSSIAN_LANGUAGE_CODES.has(code) || code.startsWith('ru-'));
+}
+
+function enrichProductsWithCatalogDetails(products, catalogProducts) {
+  const byId = new Map(
+    (catalogProducts || [])
+      .filter((product) => product?.ProductId)
+      .map((product) => [product.ProductId, product]),
+  );
+
+  return products.map((product) => {
+    const catalogProduct = byId.get(product.id);
+    if (!catalogProduct) return product;
+
+    const supportedLanguages = extractSupportedLanguages(catalogProduct);
+
+    return {
+      ...product,
+      supportedLanguages,
+      hasRussianLanguage: hasRussianLanguage(supportedLanguages),
+    };
+  });
 }
 
 function encodeSlug(title) {
@@ -227,4 +359,4 @@ function mapProducts(products) {
   return products.map(mapProduct).filter(Boolean);
 }
 
-module.exports = { mapProduct, mapProducts };
+module.exports = { mapProduct, mapProducts, enrichProductsWithCatalogDetails };

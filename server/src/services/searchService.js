@@ -1,5 +1,6 @@
 const catalogService = require('./xboxCatalogService');
-const { mapProducts } = require('../mappers/productMapper');
+const { getProductsByIds } = require('./displayCatalogService');
+const { mapProducts, enrichProductsWithCatalogDetails } = require('../mappers/productMapper');
 const { mapFilters, encodeFilters } = require('../mappers/filtersMapper');
 const config = require('../config');
 const logger = require('../utils/logger');
@@ -49,21 +50,36 @@ async function search({ query, page, sort, filters, priceRange, encodedCT, chann
     }
   }
 
+  const mappedProducts = mapProducts(rawProducts);
   const products = priceFilterActive
-    ? applyPriceRange(mapProducts(rawProducts), priceRange)
-    : mapProducts(rawProducts);
+    ? applyPriceRange(mappedProducts, priceRange)
+    : mappedProducts;
+  const enrichedProducts = await enrichProducts(products);
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)
     : null;
 
   return {
-    products,
-    totalItems: priceFilterActive ? products.length : raw.totalItems,
+    products: enrichedProducts,
+    totalItems: priceFilterActive ? enrichedProducts.length : raw.totalItems,
     totalIsApproximate: priceFilterActive,
     encodedCT: nextEncodedCT,
     filters: mappedFilters,
     hasMorePages: !!nextEncodedCT,
   };
+}
+
+async function enrichProducts(products) {
+  const productIds = products.map((product) => product.id).filter(Boolean);
+  if (!productIds.length) return products;
+
+  try {
+    const catalogProducts = await getProductsByIds(productIds);
+    return enrichProductsWithCatalogDetails(products, catalogProducts);
+  } catch (err) {
+    logger.warn('Failed to enrich products with display catalog data', { message: err.message });
+    return products;
+  }
 }
 
 function fetchCatalogPage({ query, encodedFilters, encodedCT, returnFilters, channelId = '' }) {
