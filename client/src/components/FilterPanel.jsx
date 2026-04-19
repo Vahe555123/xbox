@@ -1,8 +1,72 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-const SKIP_FILTER_KEYS = ['orderby'];
-const EMPTY_PRICE_RANGE = { min: '', max: '' };
+const SKIP_FILTER_KEYS = ['orderby', 'Price', 'MaturityRating', 'Accessibility', 'SupportedLanguages'];
+const SINGLE_SELECT_KEYS = new Set(['Genre', 'Multiplayer', 'IncludedInSubscription']);
+const EMPTY_PRICE_RANGE = { min: '', max: '', currency: 'USD' };
 const AUTO_APPLY_DELAY_MS = 2000;
+
+const FILTER_TITLES = {
+  orderby: 'Сортировка',
+  PlayWith: 'Все платформы',
+  Genre: 'Все жанры игры',
+  Multiplayer: 'Количество игроков',
+  TechnicalFeatures: 'Технические фишки',
+  IncludedInSubscription: 'Подписки',
+  HandheldCompatibility: 'Поддержка Handheld',
+};
+
+const SORT_TITLES = {
+  DO_NOT_FILTER: 'По умолчанию',
+  'ReleaseDate desc': 'Дата выхода: сначала новые',
+  'MostPopular desc': 'Самые популярные',
+  'Price asc': 'Цена: по возрастанию',
+  'Price desc': 'Цена: по убыванию',
+  'WishlistCountTotal desc': 'Чаще добавляют в список желаний',
+  'DiscountPercentage desc': 'Скидка: сначала больше',
+  'Title Asc': 'Название: А-Я',
+  'Title Desc': 'Название: Я-А',
+};
+
+const GENRE_TITLES = {
+  'Action & adventure': 'Экшен и приключения',
+  'Card & board': 'Карточные и настольные',
+  Casino: 'Казино',
+  Classics: 'Классика',
+  Companion: 'Компаньон',
+  Educational: 'Обучающие',
+  'Family & kids': 'Семейные и детские',
+  Fighting: 'Файтинги',
+  'Multi-Player Online Battle Arena': 'MOBA',
+  Music: 'Музыка',
+  Other: 'Другое',
+  Platformer: 'Платформеры',
+  'Puzzle & trivia': 'Головоломки и викторины',
+  'Racing & flying': 'Гонки и полеты',
+  'Role playing': 'Ролевые',
+  Shooter: 'Шутеры',
+  Simulation: 'Симуляторы',
+  Sports: 'Спорт',
+  Strategy: 'Стратегии',
+  Tools: 'Инструменты',
+  Word: 'Слова',
+};
+
+const MULTIPLAYER_TITLES = {
+  CrossPlatformMultiplayer: 'Кроссплатформенный мультиплеер',
+  CrossPlatformCoop: 'Кроссплатформенный кооператив',
+  SinglePlayer: 'Один игрок',
+  OnlineMultiplayerWithGold: 'Онлайн-мультиплеер',
+  CoopSupportOnline: 'Онлайн-кооператив',
+  CoopSupportLocal: 'Локальный кооператив',
+  LocalMultiplayer: 'Локальный мультиплеер',
+};
+
+const LANGUAGE_CHOICES = [
+  { id: '', title: 'Любой язык' },
+  { id: 'full_ru', title: 'Полностью на русском' },
+  { id: 'ru_subtitles', title: 'Русские субтитры' },
+  { id: 'no_ru', title: 'Без русского' },
+];
 
 function cloneFilters(filters) {
   return Object.fromEntries(
@@ -14,6 +78,7 @@ function normalizePriceRange(priceRange) {
   return {
     min: priceRange?.min ?? '',
     max: priceRange?.max ?? '',
+    currency: priceRange?.currency || 'USD',
   };
 }
 
@@ -43,6 +108,18 @@ function serializeFilterState(filters, sort, priceRange) {
     sort: sort || '',
     priceRange: normalizePriceRange(priceRange),
   });
+}
+
+function getFilterTitle(key, fallback) {
+  return FILTER_TITLES[key] || fallback || key;
+}
+
+function getChoiceTitle(key, choice) {
+  if (!choice) return '';
+  if (key === 'orderby') return SORT_TITLES[choice.id] || choice.title;
+  if (key === 'Genre') return GENRE_TITLES[choice.id] || choice.title;
+  if (key === 'Multiplayer') return MULTIPLAYER_TITLES[choice.id] || choice.title;
+  return choice.title;
 }
 
 export default function FilterPanel({
@@ -136,6 +213,30 @@ export default function FilterPanel({
     });
   };
 
+  const updateDraftSingleFilter = (key, valueId) => {
+    setDraftFilters((prev) => {
+      const next = cloneFilters(prev);
+      if (!valueId) {
+        delete next[key];
+      } else {
+        next[key] = [valueId];
+      }
+      return next;
+    });
+  };
+
+  const updateDraftBooleanFilter = (key, checked) => {
+    setDraftFilters((prev) => {
+      const next = cloneFilters(prev);
+      if (checked) {
+        next[key] = ['true'];
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
+  };
+
   const updateDraftPrice = (key, value) => {
     setDraftPriceRange((prev) => ({
       ...prev,
@@ -204,35 +305,67 @@ export default function FilterPanel({
 
       {expanded && (
         <div className="filter-expanded">
+          <div className="filter-quick-row">
+            <label className={`filter-toggle-check ${draftFilters.DealsOnly?.length ? 'active' : ''}`}>
+              <input
+                type="checkbox"
+                checked={Boolean(draftFilters.DealsOnly?.length)}
+                onChange={(event) => updateDraftBooleanFilter('DealsOnly', event.target.checked)}
+              />
+              <span>Только со скидкой</span>
+            </label>
+            <label className={`filter-toggle-check ${draftFilters.FreeOnly?.length ? 'active' : ''}`}>
+              <input
+                type="checkbox"
+                checked={Boolean(draftFilters.FreeOnly?.length)}
+                onChange={(event) => updateDraftBooleanFilter('FreeOnly', event.target.checked)}
+              />
+              <span>Бесплатные игры</span>
+            </label>
+          </div>
+
           <div className="filter-grid">
             {sortFilter?.choices?.length > 0 && (
               <label className="filter-field">
-                <span className="filter-field-label">{sortFilter.title || 'Сортировка'}</span>
+                <span className="filter-field-label">{getFilterTitle('orderby', sortFilter.title)}</span>
                 <select
                   value={draftSort}
                   onChange={(event) => setDraftSort(event.target.value)}
-                  aria-label={sortFilter.title || 'Сортировка'}
+                  aria-label={getFilterTitle('orderby', sortFilter.title)}
                 >
                   <option value="">По умолчанию</option>
                   {sortFilter.choices
                     .filter((choice) => choice.id !== sortFilter.allChoiceId)
                     .map((choice) => (
-                    <option key={choice.id} value={choice.id === sortFilter.allChoiceId ? '' : choice.id}>
-                      {choice.title}
-                    </option>
-                  ))}
+                      <option key={choice.id} value={choice.id === sortFilter.allChoiceId ? '' : choice.id}>
+                        {getChoiceTitle('orderby', choice)}
+                      </option>
+                    ))}
                 </select>
               </label>
             )}
 
             {filterKeys.map((key) => {
               const filter = filters[key];
+              if (SINGLE_SELECT_KEYS.has(key)) {
+                return (
+                  <FilterSelect
+                    key={key}
+                    title={getFilterTitle(key, filter.title)}
+                    choices={filter.choices}
+                    activeValue={draftFilters[key]?.[0] || ''}
+                    getTitle={(choice) => getChoiceTitle(key, choice)}
+                    onChange={(valueId) => updateDraftSingleFilter(key, valueId)}
+                  />
+                );
+              }
               return (
                 <FilterDropdown
                   key={key}
-                  title={filter.title || key}
+                  title={getFilterTitle(key, filter.title)}
                   choices={filter.choices}
                   activeValues={draftFilters[key] || []}
+                  getTitle={(choice) => getChoiceTitle(key, choice)}
                   onToggle={(valueId) => updateDraftFilter(key, valueId)}
                 />
               );
@@ -261,6 +394,31 @@ export default function FilterPanel({
                 onChange={(event) => updateDraftPrice('max', event.target.value)}
               />
             </label>
+
+            <label className="filter-field">
+              <span className="filter-field-label">Валюта</span>
+              <select
+                value={draftPriceRange.currency}
+                onChange={(event) => setDraftPriceRange((prev) => ({ ...prev, currency: event.target.value }))}
+                aria-label="Валюта цены"
+              >
+                <option value="USD">Доллары</option>
+                <option value="RUB">Рубли</option>
+              </select>
+            </label>
+
+            <label className="filter-field">
+              <span className="filter-field-label">Язык игры</span>
+              <select
+                value={draftFilters.LanguageMode?.[0] || ''}
+                onChange={(event) => updateDraftSingleFilter('LanguageMode', event.target.value)}
+                aria-label="Язык игры"
+              >
+                {LANGUAGE_CHOICES.map((choice) => (
+                  <option key={choice.id || 'all'} value={choice.id}>{choice.title}</option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="filter-actions">
@@ -278,10 +436,24 @@ export default function FilterPanel({
   );
 }
 
-function FilterDropdown({ title, choices, activeValues, onToggle }) {
+function FilterSelect({ title, choices, activeValue, getTitle, onChange }) {
+  return (
+    <label className="filter-field">
+      <span className="filter-field-label">{title}</span>
+      <select value={activeValue} onChange={(event) => onChange(event.target.value)} aria-label={title}>
+        <option value="">{title}</option>
+        {choices.filter((choice) => !choice.isLabelOnly).map((choice) => (
+          <option key={choice.id} value={choice.id}>{getTitle(choice)}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function FilterDropdown({ title, choices, activeValues, getTitle, onToggle }) {
   const selectedChoices = choices.filter((choice) => activeValues.includes(choice.id));
   const selectedLabel = selectedChoices.length > 0
-    ? selectedChoices.slice(0, 2).map((choice) => choice.title).join(', ')
+    ? selectedChoices.slice(0, 2).map((choice) => getTitle(choice)).join(', ')
     : title;
 
   return (
@@ -294,7 +466,7 @@ function FilterDropdown({ title, choices, activeValues, onToggle }) {
           if (choice.isLabelOnly) {
             return (
               <span key={choice.id} className="filter-label-only">
-                {choice.title}
+                {getTitle(choice)}
               </span>
             );
           }
@@ -308,7 +480,7 @@ function FilterDropdown({ title, choices, activeValues, onToggle }) {
                 checked={isActive}
                 onChange={() => onToggle(choice.id)}
               />
-              <span className="filter-checkbox-label">{choice.title}</span>
+              <span className="filter-checkbox-label">{getTitle(choice)}</span>
             </label>
           );
         })}

@@ -11,7 +11,9 @@ const logger = require('../utils/logger');
  * - If no query, uses the browse endpoint (full catalog, 16K+ games)
  * - Supports filters and pagination via encodedCT
  */
-async function search({ query, page, sort, filters, priceRange, encodedCT, channelId = '' }) {
+const RUB_USD_RATE = Number(process.env.RUB_USD_RATE) || 100;
+
+async function search({ query, page, sort, filters, priceRange, languageMode, freeOnly = false, encodedCT, channelId = '' }) {
   const encodedFilters = buildEncodedFilters(filters, sort);
   const priceFilterActive = isPriceRangeActive(priceRange);
 
@@ -52,21 +54,38 @@ async function search({ query, page, sort, filters, priceRange, encodedCT, chann
 
   const mappedProducts = mapProducts(rawProducts);
   const products = priceFilterActive
-    ? applyPriceRange(mappedProducts, priceRange)
+    ? applyPriceRange(mappedProducts, normalizePriceRange(priceRange))
     : mappedProducts;
-  const enrichedProducts = await enrichProducts(products);
+  const enrichedProducts = applyPostFilters(await enrichProducts(products), { languageMode, freeOnly });
+  const postFilterActive = Boolean(freeOnly || (languageMode && languageMode !== 'all'));
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)
     : null;
 
   return {
     products: enrichedProducts,
-    totalItems: priceFilterActive ? enrichedProducts.length : raw.totalItems,
-    totalIsApproximate: priceFilterActive,
+    totalItems: (priceFilterActive || postFilterActive) ? enrichedProducts.length : raw.totalItems,
+    totalIsApproximate: priceFilterActive || postFilterActive,
     encodedCT: nextEncodedCT,
     filters: mappedFilters,
     hasMorePages: !!nextEncodedCT,
   };
+}
+
+function normalizePriceRange(priceRange) {
+  if (priceRange?.currency !== 'RUB') return priceRange;
+  return {
+    min: Number.isFinite(priceRange.min) ? priceRange.min / RUB_USD_RATE : null,
+    max: Number.isFinite(priceRange.max) ? priceRange.max / RUB_USD_RATE : null,
+  };
+}
+
+function applyPostFilters(products, { languageMode, freeOnly }) {
+  return products.filter((product) => {
+    if (freeOnly && product.price?.value !== 0) return false;
+    if (languageMode && languageMode !== 'all' && product.russianLanguageMode !== languageMode) return false;
+    return true;
+  });
 }
 
 async function enrichProducts(products) {
@@ -121,9 +140,11 @@ function applyPriceRange(products, priceRange) {
 
 function buildEncodedFilters(filters, sort) {
   const filterObj = {};
+  const localFilterKeys = new Set(['LanguageMode', 'DealsOnly', 'FreeOnly']);
 
   if (filters && typeof filters === 'object') {
     for (const [key, values] of Object.entries(filters)) {
+      if (localFilterKeys.has(key)) continue;
       if (values && (Array.isArray(values) ? values.length > 0 : true)) {
         filterObj[key] = values;
       }

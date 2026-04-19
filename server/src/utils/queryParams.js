@@ -11,6 +11,8 @@ function parseSearchParams(query) {
   const encodedCT = typeof query.encodedCT === 'string' ? query.encodedCT.trim() : '';
   const minPrice = parseOptionalNumber(query.minPrice);
   const maxPrice = parseOptionalNumber(query.maxPrice);
+  const priceCurrency = String(query.priceCurrency || 'USD').toUpperCase() === 'RUB' ? 'RUB' : 'USD';
+  const languageMode = typeof query.languageMode === 'string' ? query.languageMode.trim() : '';
 
   let filters = {};
   if (query.filters) {
@@ -36,15 +38,18 @@ function parseSearchParams(query) {
   }
 
   const deals = query.deals === 'true' || query.deals === '1';
+  const freeOnly = query.freeOnly === 'true' || query.freeOnly === '1';
 
   return {
     query: q,
     page,
     sort,
     filters,
-    priceRange: { min: minPrice, max: maxPrice },
+    priceRange: { min: minPrice, max: maxPrice, currency: priceCurrency },
+    languageMode,
     encodedCT,
     deals,
+    freeOnly,
   };
 }
 

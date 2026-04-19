@@ -35,6 +35,11 @@ const GAME_PASS_IDS = new Set([
 const EA_PLAY_IDS = new Set(['CFQ7TTC0K5DH']);
 const UBISOFT_PLUS_IDS = new Set(['CFQ7TTC0QH5H']);
 const RUSSIAN_LANGUAGE_CODES = new Set(['ru', 'ru-ru']);
+const RUSSIAN_LANGUAGE_MODE = {
+  FULL: 'full_ru',
+  SUBTITLES: 'ru_subtitles',
+  NONE: 'no_ru',
+};
 
 function mapProduct({ summary, availability }) {
   if (!summary) return null;
@@ -72,7 +77,9 @@ function mapProduct({ summary, availability }) {
     subscriptionLabels: buildSubscriptionLabels(subscriptions),
     gamePassSavingsPercent,
     supportedLanguages: [],
+    packageLanguages: [],
     hasRussianLanguage: false,
+    russianLanguageMode: RUSSIAN_LANGUAGE_MODE.NONE,
     genre: summary.categories || [],
     publisher: summary.publisherName || null,
     developer: summary.developerName || null,
@@ -285,26 +292,41 @@ function isSubscriptionPrice(price) {
   );
 }
 
-function extractSupportedLanguages(product) {
-  const codes = new Set();
+function extractLanguageInfo(product) {
+  const supportedCodes = new Set();
+  const packageCodes = new Set();
 
   for (const entry of product?.DisplaySkuAvailabilities || []) {
     const sku = entry?.Sku || {};
 
     for (const marketProperties of sku.MarketProperties || []) {
       for (const code of marketProperties.SupportedLanguages || []) {
-        addLanguageCode(codes, code);
+        addLanguageCode(supportedCodes, code);
       }
     }
 
     for (const pkg of sku.Properties?.Packages || []) {
       for (const code of pkg.Languages || []) {
-        addLanguageCode(codes, code);
+        addLanguageCode(packageCodes, code);
       }
     }
   }
 
-  return [...codes].sort();
+  const supportedLanguages = [...supportedCodes].sort();
+  const packageLanguages = [...packageCodes].sort();
+  const hasRussian = hasRussianLanguage(supportedLanguages) || hasRussianLanguage(packageLanguages);
+  const hasRussianPackage = hasRussianLanguage(packageLanguages);
+
+  return {
+    supportedLanguages,
+    packageLanguages,
+    hasRussianLanguage: hasRussian,
+    russianLanguageMode: hasRussianPackage
+      ? RUSSIAN_LANGUAGE_MODE.FULL
+      : hasRussian
+        ? RUSSIAN_LANGUAGE_MODE.SUBTITLES
+        : RUSSIAN_LANGUAGE_MODE.NONE,
+  };
 }
 
 function addLanguageCode(codes, code) {
@@ -327,12 +349,11 @@ function enrichProductsWithCatalogDetails(products, catalogProducts) {
     const catalogProduct = byId.get(product.id);
     if (!catalogProduct) return product;
 
-    const supportedLanguages = extractSupportedLanguages(catalogProduct);
+    const languageInfo = extractLanguageInfo(catalogProduct);
 
     return {
       ...product,
-      supportedLanguages,
-      hasRussianLanguage: hasRussianLanguage(supportedLanguages),
+      ...languageInfo,
     };
   });
 }

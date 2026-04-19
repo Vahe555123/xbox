@@ -5,7 +5,7 @@ export function useSearch({ dealsMode = false } = {}) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('');
   const [filters, setFilters] = useState({});
-  const [priceRange, setPriceRange] = useState({ min: '', max: '' });
+  const [priceRange, setPriceRange] = useState({ min: '', max: '', currency: 'USD' });
 
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
@@ -122,8 +122,8 @@ export function useSearch({ dealsMode = false } = {}) {
   const clearFilters = useCallback(() => {
     setFilters({});
     setSort('');
-    setPriceRange({ min: '', max: '' });
-  }, []);
+    setPriceRange({ min: '', max: '', currency: 'USD' });
+  }, [dealsMode]);
 
   const applyFilters = useCallback(({ filters: nextFilters, sort: nextSort, priceRange: nextPriceRange }) => {
     setFilters(nextFilters || {});
@@ -131,6 +131,7 @@ export function useSearch({ dealsMode = false } = {}) {
     setPriceRange({
       min: nextPriceRange?.min || '',
       max: nextPriceRange?.max || '',
+      currency: nextPriceRange?.currency || 'USD',
     });
     setEncodedCT(null);
   }, []);

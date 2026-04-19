@@ -20,6 +20,21 @@ const PLATFORM_LABELS = {
   PC: 'PC',
 };
 
+const PASS_LABELS = {
+  CFQ7TTC0KHS0: 'Ultimate',
+  CFQ7TTC0P85B: 'Premium',
+  CFQ7TTC0K5DJ: 'Essential',
+  CFQ7TTC0K6L8: 'Game Pass',
+  CFQ7TTC0KGQ8: 'PC Game Pass',
+  CFQ7TTC0K5DH: 'EA Play',
+  CFQ7TTC0QH5H: 'Ubisoft+',
+};
+
+const GAME_PASS_IDS = new Set(['CFQ7TTC0KHS0', 'CFQ7TTC0P85B', 'CFQ7TTC0K5DJ', 'CFQ7TTC0K6L8', 'CFQ7TTC0KGQ8']);
+const EA_PLAY_IDS = new Set(['CFQ7TTC0K5DH']);
+const UBISOFT_PLUS_IDS = new Set(['CFQ7TTC0QH5H']);
+const RUSSIAN_LANGUAGE_CODES = new Set(['ru', 'ru-ru']);
+
 function absUri(uri) {
   if (!uri) return null;
   if (String(uri).startsWith('//')) return `https:${uri}`;
@@ -142,10 +157,85 @@ function pickPrimaryPrice(skus) {
     isFree: Number(best.listPrice) === 0,
     original: hasDiscount ? best.msrp : null,
     originalFormatted: hasDiscount ? best.formattedMsrp : null,
+    discountPercent: hasDiscount ? Math.round(((Number(best.msrp) - Number(best.listPrice)) / Number(best.msrp)) * 100) : null,
     msrp: best.msrp,
     formattedMsrp: best.formattedMsrp,
     status: 'available',
   };
+}
+
+function addLanguageCode(codes, code) {
+  if (!code) return;
+  codes.add(String(code).trim().toLowerCase());
+}
+
+function hasRussianLanguage(codes) {
+  return codes.some((code) => RUSSIAN_LANGUAGE_CODES.has(code) || code.startsWith('ru-'));
+}
+
+function extractLanguageInfo(displaySkuAvailabilities) {
+  const supportedCodes = new Set();
+  const packageCodes = new Set();
+
+  for (const entry of displaySkuAvailabilities || []) {
+    const sku = entry?.Sku || {};
+    for (const marketProperties of sku.MarketProperties || []) {
+      for (const code of marketProperties.SupportedLanguages || []) {
+        addLanguageCode(supportedCodes, code);
+      }
+    }
+    for (const pkg of sku.Properties?.Packages || []) {
+      for (const code of pkg.Languages || []) {
+        addLanguageCode(packageCodes, code);
+      }
+    }
+  }
+
+  const supportedLanguages = [...supportedCodes].sort();
+  const packageLanguages = [...packageCodes].sort();
+  const hasRussian = hasRussianLanguage(supportedLanguages) || hasRussianLanguage(packageLanguages);
+  const hasRussianPackage = hasRussianLanguage(packageLanguages);
+
+  return {
+    supportedLanguages,
+    packageLanguages,
+    hasRussianLanguage: hasRussian,
+    russianLanguageMode: hasRussianPackage ? 'full_ru' : hasRussian ? 'ru_subtitles' : 'no_ru',
+  };
+}
+
+function extractPassIds(raw, eligibility) {
+  const ids = new Set();
+  for (const affirmation of eligibility?.affirmations || []) {
+    if (affirmation.productId) ids.add(affirmation.productId);
+  }
+  for (const entry of raw.DisplaySkuAvailabilities || []) {
+    for (const availability of entry.Availabilities || []) {
+      for (const remediation of availability.Remediations || []) {
+        if (remediation.BigId) ids.add(remediation.BigId);
+      }
+      const text = JSON.stringify(availability.LicensingData || '');
+      for (const id of Object.keys(PASS_LABELS)) {
+        if (text.includes(id)) ids.add(id);
+      }
+    }
+  }
+  return [...ids];
+}
+
+function buildSubscriptions(passIds) {
+  return {
+    gamePass: passIds.some((id) => GAME_PASS_IDS.has(id)),
+    eaPlay: passIds.some((id) => EA_PLAY_IDS.has(id)),
+    ubisoftPlus: passIds.some((id) => UBISOFT_PLUS_IDS.has(id)),
+  };
+}
+
+function buildSubscriptionLabels(passIds) {
+  return passIds
+    .map((id) => PASS_LABELS[id])
+    .filter(Boolean)
+    .filter((label, index, labels) => labels.indexOf(label) === index);
 }
 
 function isTrialSku(sku) {
@@ -406,6 +496,9 @@ function mapProductDetail(raw) {
   const contentRatings = mapContentRatings(mp.ContentRatings);
   const releaseDate = normalizeReleaseDate(mp.OriginalReleaseDate);
   const releaseInfo = buildReleaseInfo({ releaseDate, price, contentRatings });
+  const eligibility = mapEligibility(lp);
+  const passIds = extractPassIds(raw, eligibility);
+  const languageInfo = extractLanguageInfo(raw.DisplaySkuAvailabilities);
 
   return {
     id: productId,
@@ -444,7 +537,7 @@ function mapProductDetail(raw) {
     videos: mapVideos(lp.Videos),
     cmsVideos: mapCmsVideos(lp.CMSVideos),
 
-    eligibility: mapEligibility(lp),
+    eligibility,
 
     contentRatings,
     originalReleaseDate: releaseDate,
@@ -457,6 +550,10 @@ function mapProductDetail(raw) {
     price,
     playWith,
     supportedLanguage: lp.Language || null,
+    ...languageInfo,
+    subscriptions: buildSubscriptions(passIds),
+    subscriptionLabels: buildSubscriptionLabels(passIds),
+    passProductIds: passIds,
 
     xbox: {
       xpa: props.XboxXPA ?? null,

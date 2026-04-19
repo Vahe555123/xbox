@@ -25,6 +25,8 @@ async function searchXbox(req, res, next) {
       sort: params.sort,
       filters: params.filters,
       priceRange: params.priceRange,
+      languageMode: params.languageMode,
+      freeOnly: params.freeOnly,
       encodedCT: params.encodedCT,
       channelId,
     });

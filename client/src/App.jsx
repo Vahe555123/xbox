@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import SearchPage from './pages/SearchPage';
 import GameDetailPage from './pages/GameDetailPage';
 import FavoritesPage from './pages/FavoritesPage';
 import ProfilePage from './pages/ProfilePage';
 import AdminPage from './pages/AdminPage';
 import AuthModal from './components/AuthModal';
+import FilterPanel from './components/FilterPanel';
 import { useFavorites } from './context/FavoritesContext';
+import { useSearch } from './hooks/useSearch';
 import { consumeOAuthSession, checkAdmin } from './services/api';
 
 function HeaderFavoritesLink({ active = false }) {
@@ -41,8 +43,32 @@ export default function App() {
   const [authNotice, setAuthNotice] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const isDealsActive = location.pathname === '/' && new URLSearchParams(location.search).get('deals') === 'true';
   const isHomeActive = location.pathname === '/' && !isDealsActive;
+  const searchState = useSearch({ dealsMode: isDealsActive });
+  const sortFilter = searchState.filterOptions?.orderby || null;
+
+  const goToCatalog = () => {
+    if (location.pathname !== '/') {
+      navigate('/');
+    }
+  };
+
+  const handleGlobalQueryChange = (value) => {
+    searchState.setQuery(value);
+    goToCatalog();
+  };
+
+  const handleGlobalApplyFilters = (payload) => {
+    searchState.applyFilters(payload);
+    goToCatalog();
+  };
+
+  const handleGlobalClearFilters = () => {
+    searchState.clearFilters();
+    goToCatalog();
+  };
 
   const handleAuth = (user) => {
     setCurrentUser(user);
@@ -102,6 +128,12 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <div className="header-inner">
+          <h1 className="logo">
+            <Link to="/" className="logo-link">
+              <span className="logo-icon">&#127918;</span>
+              <span className="logo-text">Xbox Game Search</span>
+            </Link>
+          </h1>
           <nav className="top-nav" aria-label="Верхнее меню">
             <Link
               to="/"
@@ -110,28 +142,46 @@ export default function App() {
               <span className="top-nav-home-full">Каталог игр</span>
               <span className="top-nav-home-short">Главная</span>
             </Link>
-            <Link
-              to={isDealsActive ? '/' : '/?deals=true'}
-              className={`top-nav-link top-nav-sale ${isDealsActive ? 'active' : ''}`}
-              title="Игры со скидкой"
-            >
-              Скидки
-            </Link>
-            <a className="top-nav-link" href="https://xboxportal.ru/product/4687274">
-              Game Pass
-            </a>
-            <a className="top-nav-link" href="https://xboxportal.ru/category/152018">
-              Игровая валюта
-            </a>
-            <a className="top-nav-link" href="https://xboxportal.ru/category/149289">
-              Подписки
-            </a>
-            <a className="top-nav-link" href="https://xboxportal.ru/category/149293">
-              Аккаунт
-            </a>
-            <a className="top-nav-link" href="https://xboxportal.ru/category/154890">
-              Коды пополнения баланса
-            </a>
+            <details className={`top-nav-dropdown ${isDealsActive ? 'active' : ''}`}>
+              <summary className="top-nav-link top-nav-dropdown-trigger">
+                <span>Магазин</span>
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M4.22 5.72a.75.75 0 0 1 1.06 0L8 8.44l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 6.78a.75.75 0 0 1 0-1.06Z"
+                  />
+                </svg>
+              </summary>
+              <div className="top-nav-dropdown-panel">
+                <Link
+                  to={isDealsActive ? '/' : '/?deals=true'}
+                  className={`top-nav-dropdown-item ${isDealsActive ? 'active' : ''}`}
+                >
+                  <strong>Скидки</strong>
+                  <span>Игры со скидками</span>
+                </Link>
+                <a className="top-nav-dropdown-item" href="https://xboxportal.ru/product/4687274">
+                  <strong>Game Pass</strong>
+                  <span>Быстрый доступ к подписке</span>
+                </a>
+                <a className="top-nav-dropdown-item" href="https://xboxportal.ru/category/152018">
+                  <strong>Игровая валюта</strong>
+                  <span>Валюта и донат для игр</span>
+                </a>
+                <a className="top-nav-dropdown-item" href="https://xboxportal.ru/category/149289">
+                  <strong>Подписки</strong>
+                  <span>Сервисы и продления</span>
+                </a>
+                <a className="top-nav-dropdown-item" href="https://xboxportal.ru/category/149293">
+                  <strong>Аккаунт</strong>
+                  <span>Услуги для аккаунта Xbox</span>
+                </a>
+                <a className="top-nav-dropdown-item" href="https://xboxportal.ru/category/154890">
+                  <strong>Коды пополнения баланса</strong>
+                  <span>Карты и пополнение</span>
+                </a>
+              </div>
+            </details>
             <a className="top-nav-link" href="https://xboxportal.ru/rules">
               Помощь
             </a>
@@ -168,8 +218,21 @@ export default function App() {
       </header>
 
       <main className="app-main">
+        <FilterPanel
+          filters={searchState.filterOptions}
+          activeFilters={searchState.filters}
+          onApply={handleGlobalApplyFilters}
+          onClear={handleGlobalClearFilters}
+          query={searchState.query}
+          onQueryChange={handleGlobalQueryChange}
+          sort={searchState.sort}
+          sortFilter={sortFilter}
+          total={searchState.total}
+          priceRange={searchState.priceRange}
+        />
+
         <Routes>
-          <Route path="/" element={<SearchPage />} />
+          <Route path="/" element={<SearchPage searchState={searchState} dealsMode={isDealsActive} />} />
           <Route path="/favorites" element={<FavoritesPage />} />
           <Route
             path="/profile"

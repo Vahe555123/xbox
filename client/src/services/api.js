@@ -26,11 +26,24 @@ export async function searchProducts({ q, sort, filters, priceRange, encodedCT, 
   if (encodedCT) params.encodedCT = encodedCT;
   if (priceRange?.min) params.minPrice = priceRange.min;
   if (priceRange?.max) params.maxPrice = priceRange.max;
+  if (priceRange?.currency) params.priceCurrency = priceRange.currency;
   if (deals) params.deals = 'true';
 
   if (filters && typeof filters === 'object') {
     for (const [key, values] of Object.entries(filters)) {
       if (Array.isArray(values) && values.length > 0) {
+        if (key === 'LanguageMode') {
+          params.languageMode = values[0];
+          continue;
+        }
+        if (key === 'DealsOnly') {
+          params.deals = 'true';
+          continue;
+        }
+        if (key === 'FreeOnly') {
+          params.freeOnly = 'true';
+          continue;
+        }
         params[key] = values.join(',');
       }
     }

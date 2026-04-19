@@ -1,37 +1,25 @@
 import React, { useEffect, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useSearch } from '../hooks/useSearch';
-import FilterPanel from '../components/FilterPanel';
+import { useNavigate } from 'react-router-dom';
 import ProductGrid from '../components/ProductGrid';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ErrorMessage from '../components/ErrorMessage';
 
-export default function SearchPage() {
-  const [searchParams] = useSearchParams();
+export default function SearchPage({ searchState, dealsMode = false }) {
   const navigate = useNavigate();
-  const dealsMode = searchParams.get('deals') === 'true';
 
   const {
     query,
-    setQuery,
-    sort,
-    filters: activeFilters,
-    priceRange,
-    applyFilters,
-    clearFilters,
     products,
     total,
-    filterOptions,
     hasMorePages,
     loadMore,
     loading,
     loadingMore,
     error,
     initialLoaded,
-  } = useSearch({ dealsMode });
+  } = searchState;
 
-  const sortFilter = filterOptions?.orderby || null;
   const infiniteScrollRef = useRef(null);
 
   useEffect(() => {
@@ -57,19 +45,6 @@ export default function SearchPage() {
 
   return (
     <div className="search-page">
-      <FilterPanel
-        filters={filterOptions}
-        activeFilters={activeFilters}
-        onApply={applyFilters}
-        onClear={clearFilters}
-        query={query}
-        onQueryChange={setQuery}
-        sort={sort}
-        sortFilter={sortFilter}
-        total={total}
-        priceRange={priceRange}
-      />
-
       {error && <ErrorMessage message={error} />}
 
       {loading && !loadingMore && <Spinner />}
@@ -89,9 +64,9 @@ export default function SearchPage() {
                     {' '}— {total.toLocaleString()} игр со скидкой
                   </>
                 ) : query ? (
-                  <>Showing {products.length} of {total.toLocaleString()} results for <strong>"{query}"</strong></>
+                  <>Показано {products.length} из {total.toLocaleString()} по запросу <strong>"{query}"</strong></>
                 ) : (
-                  <>Browse all games ({total.toLocaleString()} games)</>
+                  <>Каталог игр ({total.toLocaleString()} товаров)</>
                 )}
               </p>
               {dealsMode && (
