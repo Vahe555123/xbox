@@ -78,13 +78,52 @@ function isGameCurrencyProduct(product) {
   return false;
 }
 
-function buildKeyActivationPayUrl(product) {
+function buildKeyActivationPayUrl(product, { purchaseEmail, gameName } = {}) {
   const id = config.digiseller.keyActivationProductId;
   const sellerId = config.digiseller.sellerId;
   if (!id || !sellerId) return null;
   if (isGameCurrencyProduct(product)) return null;
-  const base = config.digiseller.payBaseUrl;
-  return `${base}?id_d=${encodeURIComponent(id)}&ai=${encodeURIComponent(sellerId)}&_ow=0`;
+  const url = new URL(config.digiseller.payBaseUrl);
+  url.searchParams.set('id_d', String(id));
+  url.searchParams.set('ai', String(sellerId));
+  url.searchParams.set('_ow', '0');
+  url.searchParams.set('Lang', 'ru-RU');
+  const cleanEmail = purchaseEmail ? normalizePaymentText(purchaseEmail) : '';
+  if (cleanEmail) url.searchParams.set('email', cleanEmail);
+  const cleanGameName = gameName
+    ? normalizePaymentText(gameName)
+    : product?.title
+      ? normalizePaymentText(product.title)
+      : '';
+  if (cleanGameName) url.searchParams.set('game_name', cleanGameName);
+  return url.toString();
+}
+
+async function createKeyActivationPayment(product, { purchaseEmail, gameName } = {}) {
+  if (!product) throw createPaymentError('Product is required');
+  if (isGameCurrencyProduct(product)) {
+    throw createPaymentError('Ключ активации недоступен для игровой валюты', 400);
+  }
+  const cleanEmail = normalizePaymentText(purchaseEmail);
+  if (!cleanEmail) throw createPaymentError('Email для покупки обязателен');
+  const cleanGameName = normalizePaymentText(gameName || product.title || product.name);
+  const paymentUrl = buildKeyActivationPayUrl(product, {
+    purchaseEmail: cleanEmail,
+    gameName: cleanGameName,
+  });
+  if (!paymentUrl) throw createPaymentError('Не удалось построить ссылку активации', 500);
+
+  return {
+    paymentUrl,
+    directUrl: paymentUrl,
+    provider: 'oplata',
+    paymentMode: 'key_activation',
+    paymentType: 'activation_key',
+    digisellerId: config.digiseller.keyActivationProductId,
+    gameName: cleanGameName,
+    purchaseEmail: cleanEmail,
+    currency: 'RUB',
+  };
 }
 
 function buildFullPaymentUrl(redirectUrl) {
@@ -688,6 +727,7 @@ async function deleteMapping(productId) {
 module.exports = {
   buildPayUrl,
   buildKeyActivationPayUrl,
+  createKeyActivationPayment,
   isGameCurrencyProduct,
   getMapping,
   getMappingsByProductIds,

@@ -3058,24 +3058,6 @@ img {
   transform: none;
 }
 
-.ps-buy-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  align-items: stretch;
-}
-
-.ps-buy-button-secondary {
-  background: transparent;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  text-decoration: none;
-}
-
-.ps-buy-button-secondary:hover {
-  background: rgba(255, 255, 255, 0.12);
-}
-
 .ps-checkout-form {
   display: grid;
   gap: 0.85rem;
@@ -5399,11 +5381,6 @@ code {
 
   .ps-buy-button {
     width: 100%;
-  }
-
-  .ps-buy-actions {
-    width: 100%;
-    flex-direction: column;
   }
 
   .product-card:hover {

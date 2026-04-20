@@ -8,7 +8,9 @@ const {
   enrichProductWithRub,
   enrichProductsWithRub,
   createPurchasePaymentUrl,
+  createKeyActivationPayment,
   buildKeyActivationPayUrl,
+  isGameCurrencyProduct,
 } = require('../services/digisellerService');
 
 function assignKeyActivationUrl(product) {
@@ -132,24 +134,33 @@ async function createProductPurchase(req, res, next) {
     const finalPaymentMode = paymentMode || savedSettings?.paymentMode || 'oplata';
 
     if (req.user && saveToProfile) {
-      await updatePurchaseSettings(req.user.id, {
+      const saveFields = {
         purchaseEmail: finalPurchaseEmail,
-        xboxAccountEmail: finalAccountEmail,
-        xboxAccountPassword: accountPassword || undefined,
         paymentMode: finalPaymentMode,
-      }).catch((e) => logger.warn('Purchase settings save failed during checkout', {
-        userId: req.user.id,
-        message: e.message,
-      }));
+      };
+      if (finalPaymentMode !== 'key_activation') {
+        saveFields.xboxAccountEmail = finalAccountEmail;
+        saveFields.xboxAccountPassword = accountPassword || undefined;
+      }
+      await updatePurchaseSettings(req.user.id, saveFields).catch((e) =>
+        logger.warn('Purchase settings save failed during checkout', {
+          userId: req.user.id,
+          message: e.message,
+        }));
     }
 
-    const payment = await createPurchasePaymentUrl(product, {
-      gameName,
-      accountEmail: finalAccountEmail,
-      accountPassword: finalAccountPassword,
-      purchaseEmail: finalPurchaseEmail,
-      paymentMode: finalPaymentMode,
-    });
+    const payment = finalPaymentMode === 'key_activation'
+      ? await createKeyActivationPayment(product, {
+          gameName,
+          purchaseEmail: finalPurchaseEmail,
+        })
+      : await createPurchasePaymentUrl(product, {
+          gameName,
+          accountEmail: finalAccountEmail,
+          accountPassword: finalAccountPassword,
+          purchaseEmail: finalPurchaseEmail,
+          paymentMode: finalPaymentMode,
+        });
 
     res.json({
       success: true,
