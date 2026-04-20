@@ -4,6 +4,7 @@ const pool = require('../db/pool');
 const config = require('../config');
 const dealScheduler = require('../services/dealScheduler');
 const digisellerService = require('../services/digisellerService');
+const topupCardService = require('../services/topupCardService');
 const logger = require('../utils/logger');
 
 const router = Router();
@@ -237,6 +238,61 @@ router.post('/digiseller/rates/refresh', requireAdmin, async (_req, res, next) =
   try {
     const result = await digisellerService.refreshPriceRateTable();
     res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==================== Xbox topup cards ====================
+
+router.get('/topup-cards', requireAdmin, async (_req, res, next) => {
+  try {
+    const state = await topupCardService.getTopupState();
+    res.json(state);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/topup-cards/refresh', requireAdmin, async (_req, res, next) => {
+  try {
+    const result = await topupCardService.refreshCards();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logger.error('Topup cards refresh failed', { message: err.message });
+    res.status(502).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/topup-cards/:usdValue', requireAdmin, async (req, res, next) => {
+  try {
+    const usd = parseInt(req.params.usdValue, 10);
+    if (!Number.isFinite(usd)) {
+      return res.status(400).json({ error: 'Invalid usdValue' });
+    }
+    const { optionId, priceRub, inStock, enabled, label } = req.body || {};
+    const card = await topupCardService.updateCard(usd, {
+      optionId,
+      priceRub,
+      inStock,
+      enabled,
+      label,
+    });
+    if (!card) return res.status(404).json({ error: 'Card not found' });
+    res.json({ success: true, card });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/topup-cards/preview', requireAdmin, async (req, res, next) => {
+  try {
+    const priceUsd = Number(req.query.priceUsd);
+    if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
+      return res.status(400).json({ error: 'priceUsd must be a positive number' });
+    }
+    const combo = await topupCardService.computeCombo(priceUsd);
+    res.json(combo);
   } catch (err) {
     next(err);
   }

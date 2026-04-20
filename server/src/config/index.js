@@ -87,6 +87,8 @@ const config = {
     typeCurrency: process.env.DIGISELLER_TYPE_CURRENCY || 'API_17432_USD',
     defaultProductId: parseInt(process.env.DIGISELLER_DEFAULT_PRODUCT_ID, 10) || 5837241,
     keyActivationProductId: parseInt(process.env.DIGISELLER_KEY_ACTIVATION_PRODUCT_ID, 10) || 5262264,
+    topupCardProductId: parseInt(process.env.DIGISELLER_TOPUP_CARD_PRODUCT_ID, 10) || 4629284,
+    topupCardOptionCategoryId: process.env.DIGISELLER_TOPUP_CARD_OPTION_CATEGORY_ID || '',
     maxUnitCount: parseFloat(process.env.DIGISELLER_MAX_UNIT_COUNT) || 300,
   },
 };

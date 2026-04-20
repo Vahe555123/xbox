@@ -119,6 +119,33 @@ async function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_digiseller_price_rate_samples_lookup
       ON digiseller_price_rate_samples (digiseller_id, run_id, requested_usd);
+
+    CREATE TABLE IF NOT EXISTS xbox_topup_cards (
+      usd_value INTEGER PRIMARY KEY,
+      option_id TEXT,
+      price_rub INTEGER,
+      in_stock BOOLEAN NOT NULL DEFAULT TRUE,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      label TEXT,
+      last_refreshed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS xbox_topup_refresh_runs (
+      id BIGSERIAL PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'running',
+      parsed_count INTEGER NOT NULL DEFAULT 0,
+      updated_count INTEGER NOT NULL DEFAULT 0,
+      option_category_id TEXT,
+      error TEXT,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      finished_at TIMESTAMPTZ
+    );
+
+    INSERT INTO xbox_topup_cards (usd_value, enabled) VALUES
+      (5, TRUE), (10, TRUE), (25, TRUE), (50, TRUE)
+    ON CONFLICT (usd_value) DO NOTHING;
   `);
 
   logger.info('PostgreSQL schema ready');

@@ -11,6 +11,9 @@ import {
   triggerDealCheck,
   fetchDigisellerRates,
   refreshDigisellerRates,
+  fetchTopupCards,
+  refreshTopupCards,
+  updateTopupCard,
 } from '../services/api';
 
 function formatDate(d) {
@@ -59,6 +62,11 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [digRateLoading, setDigRateLoading] = useState(false);
   const [digRateMessage, setDigRateMessage] = useState('');
 
+  // Topup cards
+  const [topupState, setTopupState] = useState({ cards: [], lastRun: null, productId: null, optionCategoryId: null });
+  const [topupLoading, setTopupLoading] = useState(false);
+  const [topupMessage, setTopupMessage] = useState('');
+
   // Auth check
   useEffect(() => {
     if (!currentUser) {
@@ -105,13 +113,21 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadTopupCards = useCallback(async () => {
+    try {
+      const state = await fetchTopupCards();
+      setTopupState(state || { cards: [], lastRun: null, productId: null, optionCategoryId: null });
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     if (!authorized) return;
     if (tab === 'dashboard') loadDashboard();
     else if (tab === 'users') loadUsers(1, usersSearch);
     else if (tab === 'notifications') loadNotifications(1);
     else if (tab === 'digiseller') loadDigiseller();
-  }, [tab, authorized, loadDashboard, loadUsers, loadNotifications, loadDigiseller]);
+    else if (tab === 'topup') loadTopupCards();
+  }, [tab, authorized, loadDashboard, loadUsers, loadNotifications, loadDigiseller, loadTopupCards]);
 
   const handleUserSearch = (e) => {
     e.preventDefault();
@@ -134,6 +150,32 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setDealCheckResult('Интервал обновлён');
       setTimeout(() => setDealCheckResult(''), 3000);
     } catch { /* ignore */ }
+  };
+
+  const handleRefreshTopup = async () => {
+    setTopupLoading(true);
+    setTopupMessage('');
+    try {
+      const result = await refreshTopupCards();
+      setTopupMessage(`Обновлено: ${result.updatedCount}/${result.parsedCount}`);
+      await loadTopupCards();
+    } catch (err) {
+      setTopupMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setTopupLoading(false);
+    }
+  };
+
+  const handleTopupFieldChange = async (usdValue, field, value) => {
+    try {
+      const updated = await updateTopupCard(usdValue, { [field]: value });
+      setTopupState((prev) => ({
+        ...prev,
+        cards: (prev.cards || []).map((c) => (c.usdValue === usdValue ? updated : c)),
+      }));
+    } catch (err) {
+      setTopupMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
   };
 
   const handleRefreshDigRates = async () => {
@@ -217,6 +259,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
           ['notifications', 'Уведомления'],
           ['scheduler', 'Планировщик'],
           ['digiseller', 'Digiseller'],
+          ['topup', 'Карты пополнения'],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -649,6 +692,124 @@ export default function AdminPage({ currentUser, onLoginClick }) {
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* ==================== Xbox topup cards ==================== */}
+      {tab === 'topup' && (
+        <div className="admin-panel">
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <div>
+                <h3>Карты пополнения Xbox (USA)</h3>
+                <p className="admin-card-desc">
+                  Парсер достаёт номиналы $5/$10/$25/$50, их option_id и цену в рублях
+                  со страницы покупки Digiseller. Комбинация карт подбирается так, чтобы
+                  покрыть цену игры минимальным количеством карт (правила заданы вручную).
+                </p>
+              </div>
+              <button
+                className="admin-btn admin-btn-accent"
+                type="button"
+                onClick={handleRefreshTopup}
+                disabled={topupLoading}
+              >
+                {topupLoading ? 'Обновляем...' : 'Обновить цены'}
+              </button>
+            </div>
+
+            <dl className="admin-dl">
+              <dt>Digiseller товар</dt>
+              <dd className="admin-mono">{topupState.productId || '—'}</dd>
+              <dt>Option category</dt>
+              <dd className="admin-mono">{topupState.optionCategoryId || '—'}</dd>
+              <dt>Последний запуск</dt>
+              <dd>{formatDate(topupState.lastRun?.finished_at || topupState.lastRun?.started_at)}</dd>
+              <dt>Статус</dt>
+              <dd>
+                <span className={`admin-status ${topupState.lastRun?.status === 'success' ? 'admin-status-ok' : topupState.lastRun?.status === 'failed' ? 'admin-status-err' : ''}`}>
+                  {topupState.lastRun?.status || 'нет данных'}
+                </span>
+              </dd>
+              {topupState.lastRun?.error && (
+                <>
+                  <dt>Ошибка</dt>
+                  <dd style={{ color: 'var(--color-danger, #b33)' }}>{topupState.lastRun.error}</dd>
+                </>
+              )}
+            </dl>
+
+            {topupMessage && <p className="admin-scheduler-result">{topupMessage}</p>}
+
+            <div className="admin-table-wrap">
+              <table className="admin-table admin-table-compact">
+                <thead>
+                  <tr>
+                    <th>Номинал</th>
+                    <th>Option ID</th>
+                    <th>Цена RUB</th>
+                    <th>В наличии</th>
+                    <th>Включена</th>
+                    <th>Обновлена</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(topupState.cards || []).map((card) => (
+                    <tr key={card.usdValue}>
+                      <td><b>${card.usdValue}</b></td>
+                      <td>
+                        <input
+                          type="text"
+                          className="admin-input-inline"
+                          defaultValue={card.optionId || ''}
+                          onBlur={(e) => {
+                            const v = e.target.value.trim();
+                            if (v !== (card.optionId || '')) handleTopupFieldChange(card.usdValue, 'optionId', v || null);
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          className="admin-input-inline"
+                          defaultValue={card.priceRub ?? ''}
+                          onBlur={(e) => {
+                            const v = e.target.value === '' ? null : Number(e.target.value);
+                            if (v !== card.priceRub) handleTopupFieldChange(card.usdValue, 'priceRub', v);
+                          }}
+                        />
+                        <span style={{ marginLeft: 6, color: 'var(--text-muted)' }}>
+                          {card.priceRubFormatted || ''}
+                        </span>
+                      </td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={card.inStock}
+                          onChange={(e) => handleTopupFieldChange(card.usdValue, 'inStock', e.target.checked)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={card.enabled}
+                          onChange={(e) => handleTopupFieldChange(card.usdValue, 'enabled', e.target.checked)}
+                        />
+                      </td>
+                      <td>{formatDate(card.lastRefreshedAt)}</td>
+                    </tr>
+                  ))}
+                  {(!topupState.cards || topupState.cards.length === 0) && (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                        Нажмите «Обновить цены», чтобы спарсить номиналы со страницы Digiseller.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
     </div>

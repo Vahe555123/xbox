@@ -194,3 +194,23 @@ export async function refreshDigisellerRates() {
   const { data } = await api.post('/admin/digiseller/rates/refresh');
   return data;
 }
+
+export async function fetchTopupCards() {
+  const { data } = await api.get('/admin/topup-cards');
+  return data;
+}
+
+export async function refreshTopupCards() {
+  const { data } = await api.post('/admin/topup-cards/refresh');
+  return data;
+}
+
+export async function updateTopupCard(usdValue, payload) {
+  const { data } = await api.put(`/admin/topup-cards/${encodeURIComponent(usdValue)}`, payload);
+  return data.card;
+}
+
+export async function previewTopupCombo(priceUsd) {
+  const { data } = await api.get('/admin/topup-cards/preview', { params: { priceUsd } });
+  return data;
+}
