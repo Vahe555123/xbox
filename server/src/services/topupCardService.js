@@ -417,6 +417,82 @@ function summarizeCombo(cardList, cardMap) {
   };
 }
 
+function buildCartPayUrl(cartUid, { purchaseEmail } = {}) {
+  const sellerId = config.digiseller.sellerId;
+  if (!cartUid || !sellerId) return null;
+  const url = new URL(config.digiseller.payApiBaseUrl);
+  url.searchParams.set('id_d', '0');
+  url.searchParams.set('id_po', '0');
+  url.searchParams.set('cart_uid', cartUid);
+  url.searchParams.set('ai', String(sellerId));
+  url.searchParams.set('ain', '');
+  url.searchParams.set('curr', config.digiseller.cartCurrency || TOPUP_TYPE_CURRENCY);
+  url.searchParams.set('lang', 'ru-RU');
+  url.searchParams.set('_ow', '0');
+  url.searchParams.set('_ids_shop', String(sellerId));
+  url.searchParams.set('failpage', getFailPageForTopup());
+  if (purchaseEmail) url.searchParams.set('email', purchaseEmail);
+  return url.toString();
+}
+
+async function addItemToCart(cartUid, { card, quantity = 1, optionCategoryId, purchaseEmail }) {
+  const productId = config.digiseller.topupCardProductId;
+  const sellerId = config.digiseller.sellerId;
+  if (!cartUid || !productId || !card?.optionId || !optionCategoryId) {
+    return { ok: false, reason: 'missing_params' };
+  }
+
+  const typeCurr = config.digiseller.cartCurrency || TOPUP_TYPE_CURRENCY;
+  const base = (config.digiseller.cartBaseUrl || 'https://shop.digiseller.com').replace(/\/$/, '');
+  const url = `${base}/xml/shop_cart_add.asp`;
+
+  const body = new URLSearchParams({
+    cart_uid: cartUid,
+    id_d: String(productId),
+    cnt_d: String(Math.max(1, Number(quantity) || 1)),
+    typecurr: typeCurr,
+    ai: String(sellerId || ''),
+    lang: 'ru-RU',
+    [`Option_radio_${optionCategoryId}`]: String(card.optionId),
+  });
+  if (purchaseEmail) body.set('email', purchaseEmail);
+
+  try {
+    const response = await axios.post(url, body.toString(), {
+      headers: POST_PAYMENT_HEADERS,
+      timeout: 12000,
+      responseType: 'text',
+      transformResponse: [(d) => d],
+      validateStatus: (status) => status >= 200 && status < 500,
+    });
+    const payload = String(response.data || '');
+    const retvalMatch = payload.match(/<retval>\s*(-?\d+)\s*<\/retval>/i);
+    const retval = retvalMatch ? parseInt(retvalMatch[1], 10) : null;
+    if (retval !== null && retval !== 0) {
+      const descMatch = payload.match(/<retdesc>([^<]+)<\/retdesc>/i);
+      logger.warn('Digiseller cart add returned non-zero', {
+        cartUid,
+        usd: card.usdValue,
+        retval,
+        retdesc: descMatch?.[1] || null,
+      });
+      return { ok: false, retval, retdesc: descMatch?.[1] || null };
+    }
+    return { ok: true, retval };
+  } catch (err) {
+    logger.error('Digiseller cart add failed', {
+      cartUid,
+      usd: card.usdValue,
+      message: err.message,
+    });
+    return { ok: false, reason: err.message };
+  }
+}
+
+function newCartUid() {
+  return randomUUID().replace(/-/g, '').toUpperCase();
+}
+
 function buildCardPayUrl(card, { quantity = 1, purchaseEmail, optionCategoryId } = {}) {
   const productId = config.digiseller.topupCardProductId;
   const sellerId = config.digiseller.sellerId;
@@ -527,13 +603,9 @@ async function buildComboPurchase(priceUsd, { purchaseEmail } = {}) {
   if (!combo?.available) return combo;
   const state = await getTopupState();
   const cardMap = new Map(state.cards.map((c) => [c.usdValue, c]));
-  const links = await Promise.all(combo.items.map(async (item) => {
+
+  const links = combo.items.map((item) => {
     const card = cardMap.get(item.usdValue);
-    const apiUrl = await createCardPayApiUrl(card, {
-      quantity: item.count,
-      purchaseEmail,
-      optionCategoryId: state.optionCategoryId,
-    });
     const fallbackUrl = buildCardPayUrl(card, {
       quantity: item.count,
       purchaseEmail,
@@ -546,14 +618,72 @@ async function buildComboPurchase(priceUsd, { purchaseEmail } = {}) {
       priceRub: item.priceRub,
       subtotalRub: item.subtotalRub,
       subtotalRubFormatted: item.subtotalRubFormatted,
-      paymentUrl: apiUrl || fallbackUrl,
       directUrl: fallbackUrl,
-      usedPayApi: Boolean(apiUrl),
     };
-  }));
+  });
+
+  let cartUid = null;
+  let cartPaymentUrl = null;
+  let cartError = null;
+
+  if (state.optionCategoryId) {
+    cartUid = newCartUid();
+    const addResults = await Promise.all(combo.items.map((item) => {
+      const card = cardMap.get(item.usdValue);
+      return addItemToCart(cartUid, {
+        card,
+        quantity: item.count,
+        optionCategoryId: state.optionCategoryId,
+        purchaseEmail,
+      });
+    }));
+    const failures = addResults.filter((r) => !r.ok);
+    if (failures.length === 0) {
+      cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail });
+    } else {
+      cartError = failures[0].retdesc || failures[0].reason || 'cart_add_failed';
+      logger.warn('Cart build failed, falling back to per-card links', {
+        cartUid,
+        failures: failures.length,
+        total: combo.items.length,
+      });
+      cartUid = null;
+    }
+  } else {
+    cartError = 'option_category_id_missing';
+  }
+
+  let primaryPaymentUrl = cartPaymentUrl;
+  if (!primaryPaymentUrl) {
+    const perCardApi = await Promise.all(combo.items.map(async (item) => {
+      const card = cardMap.get(item.usdValue);
+      const apiUrl = await createCardPayApiUrl(card, {
+        quantity: item.count,
+        purchaseEmail,
+        optionCategoryId: state.optionCategoryId,
+      });
+      return { usdValue: item.usdValue, apiUrl };
+    }));
+    const byUsd = new Map(perCardApi.map((r) => [r.usdValue, r.apiUrl]));
+    links.forEach((link) => {
+      const apiUrl = byUsd.get(link.usdValue);
+      link.paymentUrl = apiUrl || link.directUrl;
+      link.usedPayApi = Boolean(apiUrl);
+    });
+    primaryPaymentUrl = links[0]?.paymentUrl || null;
+  } else {
+    links.forEach((link) => {
+      link.paymentUrl = cartPaymentUrl;
+      link.usedPayApi = true;
+    });
+  }
+
   return {
     ...combo,
     optionCategoryId: state.optionCategoryId,
+    cartUid,
+    cartError,
+    paymentUrl: primaryPaymentUrl,
     links,
   };
 }

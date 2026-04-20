@@ -636,9 +636,12 @@ export default function GameDetailPage() {
 
               {purchaseResult?.paymentUrl && purchaseResult?.paymentType === 'topup_cards' ? (
                 <div className="purchase-result">
-                  <strong>Ссылки готовы</strong>
+                  <strong>{purchaseResult.cartBatch ? 'Корзина готова' : 'Ссылки готовы'}</strong>
                   <p>
-                    Оплатите каждую карту отдельно. Итого:{' '}
+                    {purchaseResult.cartBatch
+                      ? 'Все карты добавлены в одну корзину — оплатите единой ссылкой.'
+                      : 'Оплатите каждую карту отдельно.'}
+                    {' '}Итого:{' '}
                     {purchaseResult.totalRubFormatted || `${purchaseResult.totalRub || ''} ₽`}
                     {' '}за {purchaseResult.cardsCount} карт(ы).
                   </p>
@@ -649,17 +652,34 @@ export default function GameDetailPage() {
                         <span className="topup-combo-subtotal">
                           {link.subtotalRubFormatted || (link.priceRub ? `${link.priceRub * link.count} ₽` : '')}
                         </span>
-                        <a
-                          className="purchase-primary"
-                          href={link.paymentUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Оплатить
-                        </a>
+                        {!purchaseResult.cartBatch && link.paymentUrl && (
+                          <a
+                            className="purchase-primary"
+                            href={link.paymentUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Оплатить
+                          </a>
+                        )}
                       </div>
                     ))}
                   </div>
+                  {purchaseResult.cartBatch && (
+                    <div className="purchase-result-actions">
+                      <button
+                        className="purchase-primary"
+                        type="button"
+                        onClick={() => window.location.assign(purchaseResult.paymentUrl)}
+                      >
+                        Оплатить корзину
+                      </button>
+                      <button className="purchase-secondary" type="button" onClick={handleCopyPaymentLink}>
+                        Копировать ссылку
+                      </button>
+                      {copyMessage && <span className="purchase-copy-message">{copyMessage}</span>}
+                    </div>
+                  )}
                 </div>
               ) : purchaseResult?.paymentUrl ? (
                 <div className="purchase-result">

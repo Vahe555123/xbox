@@ -259,10 +259,10 @@ async function createProductPurchase(req, res, next) {
       if (!combo?.available) {
         throw new AppError('Комбинация карт недоступна: нет в наличии нужных номиналов', 502);
       }
-      const firstLink = combo.links.find((l) => l.paymentUrl)?.paymentUrl || null;
-      if (!firstLink) throw new AppError('Не удалось построить ссылки на оплату карт', 502);
+      const primaryUrl = combo.paymentUrl || combo.links.find((l) => l.paymentUrl)?.paymentUrl || null;
+      if (!primaryUrl) throw new AppError('Не удалось построить ссылку на оплату карт', 502);
       payment = {
-        paymentUrl: firstLink,
+        paymentUrl: primaryUrl,
         provider: 'oplata',
         paymentMode: 'topup_cards',
         paymentType: 'topup_cards',
@@ -273,6 +273,8 @@ async function createProductPurchase(req, res, next) {
         totalRubFormatted: combo.totalRubFormatted,
         cardsCount: combo.cardsCount,
         substituted: combo.substituted,
+        cartUid: combo.cartUid || null,
+        cartBatch: Boolean(combo.cartUid),
         links: combo.links,
         purchaseEmail: finalPurchaseEmail,
       };

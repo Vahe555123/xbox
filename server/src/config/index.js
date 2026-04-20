@@ -95,6 +95,10 @@ const config = {
     topupCardProductId: parseInt(process.env.DIGISELLER_TOPUP_CARD_PRODUCT_ID, 10) || 4629284,
     topupCardOptionCategoryId: process.env.DIGISELLER_TOPUP_CARD_OPTION_CATEGORY_ID || '',
     maxUnitCount: parseFloat(process.env.DIGISELLER_MAX_UNIT_COUNT) || 300,
+    apiKey: process.env.DIGISELLER_API_KEY || '',
+    cartBaseUrl: process.env.DIGISELLER_CART_BASE_URL || 'https://shop.digiseller.com',
+    cartCurrency: process.env.DIGISELLER_CART_CURRENCY || 'API_17432_RUB',
+    payApiBaseUrl: process.env.DIGISELLER_PAY_API_BASE_URL || 'https://www.oplata.info/asp2/pay_api.asp',
   },
 };
 
