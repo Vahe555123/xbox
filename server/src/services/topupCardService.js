@@ -393,6 +393,53 @@ function summarizeCombo(cardList, cardMap) {
   };
 }
 
+function buildCardPayUrl(card, { quantity = 1, purchaseEmail, optionCategoryId } = {}) {
+  const productId = config.digiseller.topupCardProductId;
+  const sellerId = config.digiseller.sellerId;
+  if (!productId || !sellerId || !card?.optionId) return null;
+  const catId = optionCategoryId || config.digiseller.topupCardOptionCategoryId || null;
+  const url = new URL(config.digiseller.payBaseUrl);
+  url.searchParams.set('id_d', String(productId));
+  url.searchParams.set('ai', String(sellerId));
+  url.searchParams.set('_ow', '0');
+  url.searchParams.set('Lang', 'ru-RU');
+  if (catId) url.searchParams.set(`Option_radio_${catId}`, String(card.optionId));
+  if (quantity > 1) {
+    url.searchParams.set('n', String(quantity));
+    url.searchParams.set('product_cnt', String(quantity));
+  }
+  if (purchaseEmail) url.searchParams.set('email', purchaseEmail);
+  return url.toString();
+}
+
+async function buildComboPurchase(priceUsd, { purchaseEmail } = {}) {
+  const combo = await computeCombo(priceUsd);
+  if (!combo?.available) return combo;
+  const state = await getTopupState();
+  const cardMap = new Map(state.cards.map((c) => [c.usdValue, c]));
+  const links = combo.items.map((item) => {
+    const card = cardMap.get(item.usdValue);
+    return {
+      usdValue: item.usdValue,
+      count: item.count,
+      optionId: card?.optionId || null,
+      priceRub: item.priceRub,
+      subtotalRub: item.subtotalRub,
+      subtotalRubFormatted: item.subtotalRubFormatted,
+      paymentUrl: buildCardPayUrl(card, {
+        quantity: item.count,
+        purchaseEmail,
+        optionCategoryId: state.optionCategoryId,
+      }),
+    };
+  });
+  return {
+    ...combo,
+    optionCategoryId: state.optionCategoryId,
+    links,
+  };
+}
+
 async function computeCombo(priceUsd) {
   const price = Math.max(0, Number(priceUsd) || 0);
   if (price <= 0) return { available: false, reason: 'price_invalid' };
@@ -430,6 +477,8 @@ module.exports = {
   updateCard,
   refreshCards,
   computeCombo,
+  buildComboPurchase,
+  buildCardPayUrl,
   bracketFor,
   parseTopupHtml,
   ALLOWED_DENOMINATIONS,

@@ -12,10 +12,34 @@ const {
   buildKeyActivationPayUrl,
   isGameCurrencyProduct,
 } = require('../services/digisellerService');
+const topupCardService = require('../services/topupCardService');
 
 function assignKeyActivationUrl(product) {
   if (!product) return product;
   product.keyActivationPayUrl = buildKeyActivationPayUrl(product);
+  return product;
+}
+
+function getProductUsdPrice(product) {
+  const candidates = [product?.price?.value, product?.price?.listPrice, product?.price?.msrp];
+  for (const c of candidates) {
+    const n = Number(c);
+    if (Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100;
+  }
+  return null;
+}
+
+async function assignTopupCombo(product) {
+  if (!product) return product;
+  if (isGameCurrencyProduct(product)) return product;
+  const usd = getProductUsdPrice(product);
+  if (!usd) return product;
+  try {
+    const combo = await topupCardService.computeCombo(usd);
+    if (combo?.available) product.topupCombo = combo;
+  } catch (e) {
+    logger.warn('Topup combo computation failed', { productId: product.id, message: e.message });
+  }
   return product;
 }
 const {
@@ -90,6 +114,7 @@ async function getProductDetail(req, res, next) {
     product.digisellerPayUrl = product.digisellerPayUrl || null;
     product.priceRub = product.priceRub || null;
     assignKeyActivationUrl(product);
+    await assignTopupCombo(product);
 
     res.json({
       success: true,
@@ -138,7 +163,7 @@ async function createProductPurchase(req, res, next) {
         purchaseEmail: finalPurchaseEmail,
         paymentMode: finalPaymentMode,
       };
-      if (finalPaymentMode !== 'key_activation') {
+      if (finalPaymentMode !== 'key_activation' && finalPaymentMode !== 'topup_cards') {
         saveFields.xboxAccountEmail = finalAccountEmail;
         saveFields.xboxAccountPassword = accountPassword || undefined;
       }
@@ -149,18 +174,50 @@ async function createProductPurchase(req, res, next) {
         }));
     }
 
-    const payment = finalPaymentMode === 'key_activation'
-      ? await createKeyActivationPayment(product, {
-          gameName,
-          purchaseEmail: finalPurchaseEmail,
-        })
-      : await createPurchasePaymentUrl(product, {
-          gameName,
-          accountEmail: finalAccountEmail,
-          accountPassword: finalAccountPassword,
-          purchaseEmail: finalPurchaseEmail,
-          paymentMode: finalPaymentMode,
-        });
+    let payment;
+    if (finalPaymentMode === 'key_activation') {
+      payment = await createKeyActivationPayment(product, {
+        gameName,
+        purchaseEmail: finalPurchaseEmail,
+      });
+    } else if (finalPaymentMode === 'topup_cards') {
+      if (isGameCurrencyProduct(product)) {
+        throw new AppError('Карты пополнения недоступны для игровой валюты', 400);
+      }
+      const usd = getProductUsdPrice(product);
+      if (!usd) throw new AppError('Не удалось определить цену в USD для карт', 400);
+      const combo = await topupCardService.buildComboPurchase(usd, {
+        purchaseEmail: finalPurchaseEmail,
+      });
+      if (!combo?.available) {
+        throw new AppError('Комбинация карт недоступна: нет в наличии нужных номиналов', 502);
+      }
+      const firstLink = combo.links.find((l) => l.paymentUrl)?.paymentUrl || null;
+      if (!firstLink) throw new AppError('Не удалось построить ссылки на оплату карт', 502);
+      payment = {
+        paymentUrl: firstLink,
+        provider: 'oplata',
+        paymentMode: 'topup_cards',
+        paymentType: 'topup_cards',
+        currency: 'RUB',
+        priceUsd: combo.price,
+        totalUsd: combo.totalUsd,
+        totalRub: combo.totalRub,
+        totalRubFormatted: combo.totalRubFormatted,
+        cardsCount: combo.cardsCount,
+        substituted: combo.substituted,
+        links: combo.links,
+        purchaseEmail: finalPurchaseEmail,
+      };
+    } else {
+      payment = await createPurchasePaymentUrl(product, {
+        gameName,
+        accountEmail: finalAccountEmail,
+        accountPassword: finalAccountPassword,
+        purchaseEmail: finalPurchaseEmail,
+        paymentMode: finalPaymentMode,
+      });
+    }
 
     res.json({
       success: true,

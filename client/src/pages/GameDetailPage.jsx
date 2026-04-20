@@ -43,7 +43,7 @@ const CAPABILITY_ICONS = {
 const PAYMENT_MODES = [
   { id: 'oplata', title: 'Oplata.info', description: 'Оплата на ваш Xbox-аккаунт', enabled: true },
   { id: 'key_activation', title: 'Ключ активации', description: 'Получить ключ и открыть чат с продавцом', enabled: true },
-  { id: 'mode3', title: 'Режим 3', description: 'Скоро добавим', enabled: false },
+  { id: 'topup_cards', title: 'Карты пополнения', description: 'Пополнить Xbox-баланс комбинацией карт', enabled: true },
 ];
 
 const EMPTY_PURCHASE_FORM = {
@@ -255,9 +255,11 @@ export default function GameDetailPage() {
   const hasSavedAccountEmail = Boolean(purchaseSettings.xboxAccountEmail);
   const hasSavedAccountPassword = Boolean(purchaseSettings.hasXboxAccountPassword);
   const isKeyActivationMode = purchaseForm.paymentMode === 'key_activation';
+  const isTopupMode = purchaseForm.paymentMode === 'topup_cards';
+  const skipAccountFields = isKeyActivationMode || isTopupMode;
   const needsPurchaseEmail = !hasSavedPurchaseEmail;
-  const needsAccountEmail = !isKeyActivationMode && !hasSavedAccountEmail;
-  const needsAccountPassword = !isKeyActivationMode && !hasSavedAccountPassword;
+  const needsAccountEmail = !skipAccountFields && !hasSavedAccountEmail;
+  const needsAccountPassword = !skipAccountFields && !hasSavedAccountPassword;
   const hasMissingPurchaseFields = needsPurchaseEmail || needsAccountEmail || needsAccountPassword;
 
   const handleBuyClick = async () => {
@@ -457,8 +459,15 @@ export default function GameDetailPage() {
                 <h3>Способ оплаты</h3>
                 <div className="purchase-mode-grid">
                   {PAYMENT_MODES.map((mode) => {
-                    const modeEnabled = mode.enabled
-                      && (mode.id !== 'key_activation' || Boolean(data.keyActivationPayUrl));
+                    let modeEnabled = mode.enabled;
+                    if (mode.id === 'key_activation') modeEnabled = modeEnabled && Boolean(data.keyActivationPayUrl);
+                    if (mode.id === 'topup_cards') modeEnabled = modeEnabled && Boolean(data.topupCombo?.available);
+                    let subtitle = mode.description;
+                    if (mode.id === 'key_activation' && !data.keyActivationPayUrl) subtitle = 'Недоступно для этого товара';
+                    if (mode.id === 'topup_cards' && !data.topupCombo?.available) subtitle = 'Недоступно для этого товара';
+                    if (mode.id === 'topup_cards' && data.topupCombo?.totalRubFormatted) {
+                      subtitle = `Итого ~${data.topupCombo.totalRubFormatted} за ${data.topupCombo.cardsCount} карт(ы)`;
+                    }
                     return (
                       <label key={mode.id} className={`purchase-mode-card ${purchaseForm.paymentMode === mode.id ? 'active' : ''} ${modeEnabled ? '' : 'disabled'}`}>
                         <input
@@ -471,13 +480,45 @@ export default function GameDetailPage() {
                         />
                         <span>
                           <strong>{mode.title}</strong>
-                          <small>{mode.id === 'key_activation' && !data.keyActivationPayUrl ? 'Недоступно для этого товара' : mode.description}</small>
+                          <small>{subtitle}</small>
                         </span>
                       </label>
                     );
                   })}
                 </div>
               </section>
+
+              {isTopupMode && data.topupCombo?.available && (
+                <section className="purchase-modal-section">
+                  <h3>Комбинация карт</h3>
+                  <p className="purchase-muted">
+                    Покрытие цены {data.topupCombo.price} $ минимальным числом карт.
+                    Вы оплатите каждую карту отдельно, активационные коды придут на вашу почту.
+                  </p>
+                  <div className="topup-combo-list">
+                    {data.topupCombo.items.map((item) => (
+                      <div key={item.usdValue} className="topup-combo-row">
+                        <strong>${item.usdValue}</strong>
+                        <span>×{item.count}</span>
+                        <span className="topup-combo-subtotal">
+                          {item.subtotalRubFormatted || (item.priceRub ? `≈${item.priceRub * item.count} ₽` : 'цена будет на Digiseller')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="topup-combo-total">
+                    <span>Итого {data.topupCombo.cardsCount} карт(ы)</span>
+                    <strong>
+                      {data.topupCombo.totalRubFormatted || 'цена рассчитается на Digiseller'}
+                    </strong>
+                  </div>
+                  {data.topupCombo.substituted && (
+                    <p className="purchase-muted">
+                      Некоторых номиналов нет в наличии — подобрана альтернативная комбинация.
+                    </p>
+                  )}
+                </section>
+              )}
 
               <section className="purchase-modal-section">
                 <h3>Данные</h3>
@@ -498,13 +539,13 @@ export default function GameDetailPage() {
                         <strong>{purchaseSettings.purchaseEmail}</strong>
                       </div>
                     )}
-                    {hasSavedAccountEmail && !isKeyActivationMode && (
+                    {hasSavedAccountEmail && !skipAccountFields && (
                       <div className="purchase-data-row">
                         <span>Аккаунт Xbox</span>
                         <strong>{purchaseSettings.xboxAccountEmail}</strong>
                       </div>
                     )}
-                    {hasSavedAccountPassword && !isKeyActivationMode && (
+                    {hasSavedAccountPassword && !skipAccountFields && (
                       <div className="purchase-data-row">
                         <span>Пароль Xbox</span>
                         <strong>Сохранён в профиле</strong>
@@ -569,7 +610,34 @@ export default function GameDetailPage() {
 
               {purchaseError && <p className="ps-purchase-error">{purchaseError}</p>}
 
-              {purchaseResult?.paymentUrl ? (
+              {purchaseResult?.paymentUrl && purchaseResult?.paymentType === 'topup_cards' ? (
+                <div className="purchase-result">
+                  <strong>Ссылки готовы</strong>
+                  <p>
+                    Оплатите каждую карту отдельно. Итого:{' '}
+                    {purchaseResult.totalRubFormatted || `${purchaseResult.totalRub || ''} ₽`}
+                    {' '}за {purchaseResult.cardsCount} карт(ы).
+                  </p>
+                  <div className="topup-combo-list">
+                    {(purchaseResult.links || []).map((link) => (
+                      <div key={link.usdValue} className="topup-combo-row">
+                        <strong>${link.usdValue} × {link.count}</strong>
+                        <span className="topup-combo-subtotal">
+                          {link.subtotalRubFormatted || (link.priceRub ? `${link.priceRub * link.count} ₽` : '')}
+                        </span>
+                        <a
+                          className="purchase-primary"
+                          href={link.paymentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Оплатить
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : purchaseResult?.paymentUrl ? (
                 <div className="purchase-result">
                   <strong>Ссылка готова</strong>
                   <p>Можно открыть страницу оплаты или скопировать ссылку.</p>
