@@ -9,6 +9,7 @@ const CARDS_CACHE_KEY = 'topup:cards';
 const CARDS_CACHE_TTL_SECONDS = 60;
 const ALLOWED_DENOMINATIONS = [5, 10, 25, 50];
 const OPLATA_BASE_URL = 'https://www.oplata.info';
+const PRICE_OPTIONS_URL = `${OPLATA_BASE_URL}/asp2/price_options.asp`;
 const TOPUP_TYPE_CURRENCY = 'API_17432_RUB';
 
 const BROWSER_HEADERS = {
@@ -248,6 +249,56 @@ function parseTopupHtml(html) {
   return { categoryId, options: [...deduped.values()].sort((a, b) => a.usdValue - b.usdValue) };
 }
 
+function parseMoney(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = String(value).replace(',', '.').replace(/\s+/g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parsePriceOptionsResponse(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const match = String(raw).match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try { return JSON.parse(match[0]); } catch { return null; }
+  }
+}
+
+async function fetchTopupOptionPriceRub(option) {
+  if (!option?.categoryId || !option?.optionId) return null;
+  const optionXml = `<response><option O="${option.categoryId}" V="${option.optionId}"/></response>`;
+  try {
+    const { data } = await axios.get(PRICE_OPTIONS_URL, {
+      params: {
+        p: config.digiseller.topupCardProductId,
+        n: 1,
+        c: 'RUB',
+        x: optionXml,
+        rnd: Math.random(),
+      },
+      headers: { Accept: 'application/json, text/plain, */*' },
+      timeout: 8000,
+      responseType: 'text',
+      transformResponse: [(d) => d],
+    });
+    const parsed = parsePriceOptionsResponse(data);
+    if (!parsed || (parsed.err !== '0' && parsed.err !== 0 && parsed.err)) return null;
+    const value = parseMoney(parsed.amount) || parseMoney(parsed.price);
+    return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+  } catch (err) {
+    logger.warn('Topup option price fetch failed', {
+      usd: option.usdValue,
+      optionId: option.optionId,
+      message: err.message,
+    });
+    return null;
+  }
+}
+
 async function fetchTopupPageHtml() {
   const productId = config.digiseller.topupCardProductId;
   if (!productId) throw new Error('Topup card product id is not configured');
@@ -283,8 +334,16 @@ async function refreshCards() {
       throw new Error('Parser could not find any topup options on the page');
     }
 
+    const pricedOptions = await Promise.all(options.map(async (opt) => {
+      const priceRub = await fetchTopupOptionPriceRub(opt);
+      return {
+        ...opt,
+        priceRub: priceRub ?? opt.priceRub,
+      };
+    }));
+
     let updatedCount = 0;
-    for (const opt of options) {
+    for (const opt of pricedOptions) {
       const res = await pool.query(
         `INSERT INTO xbox_topup_cards (usd_value, option_id, price_rub, in_stock, label, last_refreshed_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
@@ -302,7 +361,7 @@ async function refreshCards() {
     }
 
     // Any denomination that wasn't seen in this parse: mark as out of stock
-    const seenValues = options.map((o) => o.usdValue);
+    const seenValues = pricedOptions.map((o) => o.usdValue);
     await pool.query(
       `UPDATE xbox_topup_cards SET in_stock = FALSE, updated_at = NOW()
        WHERE usd_value = ANY($1::int[]) AND usd_value <> ALL($2::int[])`,
@@ -512,55 +571,14 @@ async function getPurchaseOptionsId({
 function buildCartPayUrl(cartUid, { purchaseEmail } = {}) {
   const sellerId = config.digiseller.sellerId;
   if (!cartUid || !sellerId) return null;
-  const url = new URL(config.digiseller.payBaseUrl);
+  const url = new URL(`${OPLATA_BASE_URL}/asp2/pay_cart.asp`);
   url.searchParams.set('cart_uid', cartUid);
   url.searchParams.set('ai', String(sellerId));
-  url.searchParams.set('typecurr', config.digiseller.cartCurrency || TOPUP_TYPE_CURRENCY);
+  url.searchParams.set('curr', 'RUR');
   url.searchParams.set('lang', 'ru-RU');
-  url.searchParams.set('_ow', '0');
   url.searchParams.set('failpage', getFailPageForTopup());
   if (purchaseEmail) url.searchParams.set('email', purchaseEmail);
   return url.toString();
-}
-
-async function createCartPayApiUrl(cartUid, { purchaseEmail } = {}) {
-  const sellerId = config.digiseller.sellerId;
-  if (!cartUid || !sellerId) return null;
-
-  const body = new URLSearchParams({
-    id_d: '',
-    cart_uid: cartUid,
-    typecurr: config.digiseller.cartCurrency || TOPUP_TYPE_CURRENCY,
-    email: purchaseEmail || '',
-    lang: 'ru-RU',
-    failpage: getFailPageForTopup(),
-    agent: String(sellerId),
-    havetoshowoptions: '0',
-  });
-
-  try {
-    const response = await axios.post(config.digiseller.payPostUrl, body.toString(), {
-      headers: POST_PAYMENT_HEADERS,
-      timeout: 12000,
-      maxRedirects: 0,
-      validateStatus: (status) => status >= 200 && status < 400,
-    });
-    const url = absoluteOplataUrl(response.headers.location);
-    if (url && /pay_(api|cart)\.asp/i.test(url)) {
-      return url;
-    }
-    logger.warn('Digiseller cart payment returned non-final redirect', {
-      cartUid,
-      location: response.headers.location || null,
-    });
-    return null;
-  } catch (err) {
-    logger.error('Digiseller cart payment POST failed', {
-      cartUid,
-      message: err.message,
-    });
-    return null;
-  }
 }
 
 async function addItemToCart(cartUid, {
@@ -778,8 +796,7 @@ async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp } = {}) {
     }
     const failures = addResults.filter((r) => !r.ok);
     if (failures.length === 0 && cartUid) {
-      cartPaymentUrl = await createCartPayApiUrl(cartUid, { purchaseEmail })
-        || buildCartPayUrl(cartUid, { purchaseEmail });
+      cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail });
     } else {
       cartError = failures[0]?.retdesc || failures[0]?.reason || 'cart_add_failed';
       logger.warn('Cart build failed, falling back to per-card links', {
