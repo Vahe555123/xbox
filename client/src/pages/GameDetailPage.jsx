@@ -5,6 +5,11 @@ import Spinner from '../components/Spinner';
 import ErrorMessage from '../components/ErrorMessage';
 import RelatedProductCard from '../components/RelatedProductCard';
 import FavoriteHeartButton from '../components/FavoriteHeartButton';
+import {
+  getPaymentPrice,
+  getPaymentPriceEntries,
+  getPaymentPriceLine,
+} from '../utils/paymentPrices';
 
 const RELATED_LABELS = {
   Bundle: 'В набор входит',
@@ -221,6 +226,7 @@ export default function GameDetailPage() {
   const storePriceLabel = getStorePriceLabel(price, data.releaseInfo, isUnavailablePrice);
   const fallbackPriceLabel = hasRubPrice ? null : 'Цена недоступна';
   const discountPercent = price?.discountPercent ? Math.round(price.discountPercent) : null;
+  const paymentPriceEntries = getPaymentPriceEntries(data, { includeUnavailable: true });
   const reviewSummary = getRatingSummary(data.usage);
   const esrbRating = getPrimaryRating(data.contentRatings);
   const esrbLabel = ESRB_LABELS[esrbRating?.ratingId] || cleanText(esrbRating?.ratingId);
@@ -238,6 +244,8 @@ export default function GameDetailPage() {
     genre: data.categories || [],
     price: data.price || null,
     priceRub: data.priceRub || null,
+    paymentPrices: data.paymentPrices || null,
+    topupCombo: data.topupCombo || null,
     publisher: data.publisherName || null,
     subscriptionLabels: data.subscriptionLabels || [],
     hasRussianLanguage: data.hasRussianLanguage,
@@ -261,6 +269,14 @@ export default function GameDetailPage() {
   const needsAccountEmail = !skipAccountFields && !hasSavedAccountEmail;
   const needsAccountPassword = !skipAccountFields && !hasSavedAccountPassword;
   const hasMissingPurchaseFields = needsPurchaseEmail || needsAccountEmail || needsAccountPassword;
+  const selectedPaymentPrice = getPaymentPrice(data, purchaseForm.paymentMode);
+  const selectedPaymentFallback = purchaseForm.paymentMode === 'oplata'
+    ? data.priceRub?.formatted || storePriceLabel || 'Цена будет рассчитана перед оплатой'
+    : 'Цена будет рассчитана перед оплатой';
+  const selectedPaymentPriceLine = getPaymentPriceLine(
+    selectedPaymentPrice,
+    selectedPaymentFallback,
+  );
 
   const handleBuyClick = async () => {
     if (!data.digisellerId && data.officialStoreUrl) {
@@ -391,7 +407,17 @@ export default function GameDetailPage() {
                 {price?.originalFormatted && <span className="ps-price-original">{price.originalFormatted}</span>}
                 {storePriceLabel && <strong>{storePriceLabel}</strong>}
               </div>
-              {data.priceRub?.formatted && (
+              {paymentPriceEntries.length > 0 && (
+                <div className="payment-price-list payment-price-list--detail">
+                  {paymentPriceEntries.map((paymentPrice) => (
+                    <div className="payment-price-row" key={paymentPrice.id}>
+                      <span>{paymentPrice.title}</span>
+                      <strong>{getPaymentPriceLine(paymentPrice)}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!paymentPriceEntries.length && data.priceRub?.formatted && (
                 <span className={`ps-price-rub ${storePriceLabel ? '' : 'ps-price-rub-primary'}`}>{data.priceRub.formatted}</span>
               )}
               {!storePriceLabel && fallbackPriceLabel && (
@@ -451,7 +477,7 @@ export default function GameDetailPage() {
             <div className="purchase-modal-head">
               <p className="profile-kicker">Покупка</p>
               <h2>{data.title}</h2>
-              <p>{data.priceRub?.formatted || storePriceLabel || 'Цена будет рассчитана перед оплатой'}</p>
+              <p>{selectedPaymentPriceLine}</p>
             </div>
 
             <form className="purchase-modal-form" onSubmit={handlePurchaseSubmit}>
@@ -462,12 +488,10 @@ export default function GameDetailPage() {
                     let modeEnabled = mode.enabled;
                     if (mode.id === 'key_activation') modeEnabled = modeEnabled && Boolean(data.keyActivationPayUrl);
                     if (mode.id === 'topup_cards') modeEnabled = modeEnabled && Boolean(data.topupCombo?.available);
-                    let subtitle = mode.description;
+                    const modePrice = getPaymentPrice(data, mode.id);
+                    let subtitle = getPaymentPriceLine(modePrice, 'Цена будет рассчитана') || mode.description;
                     if (mode.id === 'key_activation' && !data.keyActivationPayUrl) subtitle = 'Недоступно для этого товара';
                     if (mode.id === 'topup_cards' && !data.topupCombo?.available) subtitle = 'Недоступно для этого товара';
-                    if (mode.id === 'topup_cards' && data.topupCombo?.totalRubFormatted) {
-                      subtitle = `Итого ~${data.topupCombo.totalRubFormatted} за ${data.topupCombo.cardsCount} карт(ы)`;
-                    }
                     return (
                       <label key={mode.id} className={`purchase-mode-card ${purchaseForm.paymentMode === mode.id ? 'active' : ''} ${modeEnabled ? '' : 'disabled'}`}>
                         <input

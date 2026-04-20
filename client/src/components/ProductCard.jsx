@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import FavoriteHeartButton from './FavoriteHeartButton';
+import { getPaymentPriceEntries, getPaymentPriceLine } from '../utils/paymentPrices';
 
 export default function ProductCard({ product }) {
   const [imgError, setImgError] = useState(false);
@@ -25,6 +26,12 @@ export default function ProductCard({ product }) {
   const storePriceLabel = getStorePriceLabel(price, releaseInfo, isUnavailablePrice);
   const shouldShowStorePrice = Boolean(storePriceLabel);
   const fallbackPriceLabel = hasRubPrice ? null : 'Цена недоступна';
+  const paymentPriceEntries = getPaymentPriceEntries(product, { includeUnavailable: true });
+  const hasStorePriceRow = Boolean(
+    (price?.original && price.original > price.value)
+    || shouldShowStorePrice
+    || (!paymentPriceEntries.length && fallbackPriceLabel)
+  );
 
   const imageUrl = image
     ? `${image}?w=330&h=330`
@@ -81,19 +88,31 @@ export default function ProductCard({ product }) {
           )}
 
           <div className="product-price">
-            {price?.original && price.original > price.value && (
-              <span className="price-original">{price.originalFormatted}</span>
+            {hasStorePriceRow && (
+              <div className="product-price-store">
+                {price?.original && price.original > price.value && (
+                  <span className="price-original">{price.originalFormatted}</span>
+                )}
+                {shouldShowStorePrice && (
+                  <span className={`price-current ${price?.value === 0 ? 'free' : ''} price-status-${priceStatus}`}>
+                    {storePriceLabel}
+                  </span>
+                )}
+                {!shouldShowStorePrice && !paymentPriceEntries.length && fallbackPriceLabel && (
+                  <span className={`price-current price-status-${priceStatus}`}>{fallbackPriceLabel}</span>
+                )}
+              </div>
             )}
-            {shouldShowStorePrice && (
-              <span className={`price-current ${price?.value === 0 ? 'free' : ''} price-status-${priceStatus}`}>
-                {storePriceLabel}
-              </span>
-            )}
-            {priceRub?.formatted && (
-              <span className={`price-rub ${shouldShowStorePrice ? '' : 'price-rub-primary'}`}>{priceRub.formatted}</span>
-            )}
-            {!shouldShowStorePrice && fallbackPriceLabel && (
-              <span className={`price-current price-status-${priceStatus}`}>{fallbackPriceLabel}</span>
+
+            {paymentPriceEntries.length > 0 && (
+              <div className="payment-price-list payment-price-list--card">
+                {paymentPriceEntries.map((paymentPrice) => (
+                  <div className="payment-price-row" key={paymentPrice.id}>
+                    <span>{paymentPrice.shortTitle}</span>
+                    <strong>{getPaymentPriceLine(paymentPrice)}</strong>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>

@@ -10,6 +10,7 @@ const {
   createPurchasePaymentUrl,
   createKeyActivationPayment,
   buildKeyActivationPayUrl,
+  getKeyActivationRubPriceForProduct,
   isGameCurrencyProduct,
 } = require('../services/digisellerService');
 const topupCardService = require('../services/topupCardService');
@@ -41,6 +42,73 @@ async function assignTopupCombo(product) {
     logger.warn('Topup combo computation failed', { productId: product.id, message: e.message });
   }
   return product;
+}
+
+function getRubValue(price) {
+  const value = price?.value ?? price?.amount ?? price?.totalRub;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : null;
+}
+
+function buildRubPaymentPrice(id, title, price, extra = {}) {
+  const value = getRubValue(price);
+  const formatted = price?.formatted || price?.totalRubFormatted || null;
+  return {
+    id,
+    title,
+    enabled: extra.enabled ?? Boolean(formatted || value),
+    available: Boolean(formatted || value),
+    value,
+    formatted,
+    currency: 'RUB',
+    ...extra,
+  };
+}
+
+async function assignPaymentPrices(product) {
+  if (!product) return product;
+
+  let keyActivationRub = null;
+  if (product.keyActivationPayUrl) {
+    keyActivationRub = await getKeyActivationRubPriceForProduct(product).catch((e) => {
+      logger.warn('Key activation RUB enrichment failed', {
+        productId: product.id,
+        message: e.message,
+      });
+      return null;
+    });
+  }
+
+  product.paymentPrices = {
+    oplata: buildRubPaymentPrice('oplata', 'Oplata.info', product.priceRub, {
+      enabled: Boolean(product.digisellerId || product.digisellerPayUrl),
+    }),
+    key_activation: buildRubPaymentPrice('key_activation', 'Ключ активации', keyActivationRub, {
+      enabled: Boolean(product.keyActivationPayUrl),
+    }),
+    topup_cards: buildRubPaymentPrice('topup_cards', 'Карты пополнения', product.topupCombo, {
+      enabled: Boolean(product.topupCombo?.available),
+      cardsCount: product.topupCombo?.cardsCount ?? null,
+      totalUsd: product.topupCombo?.totalUsd ?? null,
+      priceUsd: product.topupCombo?.price ?? null,
+      substituted: Boolean(product.topupCombo?.substituted),
+    }),
+  };
+
+  return product;
+}
+
+async function assignPurchaseOptions(product) {
+  if (!product) return product;
+  assignKeyActivationUrl(product);
+  await assignTopupCombo(product);
+  await assignPaymentPrices(product);
+  return product;
+}
+
+async function assignPurchaseOptionsForProducts(products) {
+  await Promise.all((products || []).map(assignPurchaseOptions));
+  return products;
 }
 const {
   getPurchaseSettingsForCheckout,
@@ -75,7 +143,7 @@ async function searchXbox(req, res, next) {
 
     await enrichProductsWithRub(result.products).catch((e) =>
       logger.warn('RUB enrichment failed', { message: e.message }));
-    (result.products || []).forEach(assignKeyActivationUrl);
+    await assignPurchaseOptionsForProducts(result.products);
 
     res.json({
       success: true,
@@ -113,8 +181,7 @@ async function getProductDetail(req, res, next) {
     product.digisellerId = product.digisellerId || null;
     product.digisellerPayUrl = product.digisellerPayUrl || null;
     product.priceRub = product.priceRub || null;
-    assignKeyActivationUrl(product);
-    await assignTopupCombo(product);
+    await assignPurchaseOptions(product);
 
     res.json({
       success: true,
@@ -279,7 +346,7 @@ async function getRelatedProducts(req, res, next) {
 
     await enrichProductsWithRub(products).catch((e) =>
       logger.warn('RUB enrichment failed', { message: e.message }));
-    products.forEach(assignKeyActivationUrl);
+    await assignPurchaseOptionsForProducts(products);
 
     res.json({
       success: true,

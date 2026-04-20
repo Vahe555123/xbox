@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { getPaymentPriceEntries, getPaymentPriceLine } from '../utils/paymentPrices';
 
 export default function RelatedProductCard({ product }) {
   const [imgError, setImgError] = useState(false);
@@ -19,6 +20,7 @@ export default function RelatedProductCard({ product }) {
   } = product;
 
   const imageUrl = !imgError && image ? `${image}?w=330&h=440` : null;
+  const paymentPriceEntries = getPaymentPriceEntries(product, { includeUnavailable: true });
 
   const renderPrice = () => {
     if (!price) return null;
@@ -27,7 +29,17 @@ export default function RelatedProductCard({ product }) {
       return (
         <div className="rp-price-row">
           <span className="rp-price-current rp-price-free">Бесплатно</span>
-          {priceRub?.formatted && <span className="rp-price-rub">{priceRub.formatted}</span>}
+          {!paymentPriceEntries.length && priceRub?.formatted && <span className="rp-price-rub">{priceRub.formatted}</span>}
+          {paymentPriceEntries.length > 0 && (
+            <div className="payment-price-list payment-price-list--related">
+              {paymentPriceEntries.map((paymentPrice) => (
+                <div className="payment-price-row" key={paymentPrice.id}>
+                  <span>{paymentPrice.shortTitle}</span>
+                  <strong>{getPaymentPriceLine(paymentPrice)}</strong>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       );
     }
@@ -40,9 +52,19 @@ export default function RelatedProductCard({ product }) {
         {price.formattedListPrice && (
           <span className="rp-price-current">{price.formattedListPrice}</span>
         )}
-        {priceRub?.formatted && <span className="rp-price-rub">{priceRub.formatted}</span>}
+        {!paymentPriceEntries.length && priceRub?.formatted && <span className="rp-price-rub">{priceRub.formatted}</span>}
         {price.hasDiscount && price.discountPercent > 0 && (
           <span className="rp-price-discount">-{price.discountPercent}%</span>
+        )}
+        {paymentPriceEntries.length > 0 && (
+          <div className="payment-price-list payment-price-list--related">
+            {paymentPriceEntries.map((paymentPrice) => (
+              <div className="payment-price-row" key={paymentPrice.id}>
+                <span>{paymentPrice.shortTitle}</span>
+                <strong>{getPaymentPriceLine(paymentPrice)}</strong>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     );

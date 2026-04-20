@@ -496,6 +496,15 @@ async function getRubPriceForProduct(product, digisellerId, mode = RATE_MODE_OPL
   return fetchRubPrice(digisellerId, usdValue, { optionXml: rateMode.optionXml });
 }
 
+async function getKeyActivationRubPriceForProduct(product) {
+  if (!config.digiseller.keyActivationProductId || isGameCurrencyProduct(product)) return null;
+  return getRubPriceForProduct(
+    product,
+    config.digiseller.keyActivationProductId,
+    RATE_MODE_KEY_ACTIVATION,
+  );
+}
+
 async function createPurchasePaymentUrl(product, {
   digisellerId = product?.digisellerId || config.digiseller.defaultProductId,
   gameName,
@@ -875,6 +884,7 @@ module.exports = {
   getMappingsByProductIds,
   fetchRubPrice,
   getRubPriceForProduct,
+  getKeyActivationRubPriceForProduct,
   createPurchasePaymentUrl,
   enrichProductWithRub,
   enrichProductsWithRub,
