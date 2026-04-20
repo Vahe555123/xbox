@@ -4,12 +4,16 @@ const config = require('../src/config');
 const digisellerService = require('../src/services/digisellerService');
 
 async function main() {
-  const digisellerId = Number(process.argv[2]) || config.digiseller.defaultProductId;
-  if (!digisellerId) throw new Error('Digiseller product id is required');
+  const arg = process.argv[2];
+  const mode = ['oplata', 'key_activation'].includes(arg) ? arg : 'oplata';
+  const digisellerId = mode === 'oplata'
+    ? Number(arg) || config.digiseller.defaultProductId
+    : undefined;
 
   await initDb();
-  const { run, samples } = await digisellerService.refreshPriceRateTable({ digisellerId });
+  const { run, samples } = await digisellerService.refreshPriceRateTable({ mode, digisellerId });
   console.log(JSON.stringify({
+    mode,
     runId: run.id,
     digisellerId: run.digiseller_id,
     status: run.status,

@@ -185,13 +185,13 @@ export async function triggerDealCheck() {
   return data;
 }
 
-export async function fetchDigisellerRates() {
-  const { data } = await api.get('/admin/digiseller/rates');
+export async function fetchDigisellerRates(mode = 'oplata') {
+  const { data } = await api.get('/admin/digiseller/rates', { params: { mode } });
   return data;
 }
 
-export async function refreshDigisellerRates() {
-  const { data } = await api.post('/admin/digiseller/rates/refresh');
+export async function refreshDigisellerRates(mode = 'oplata') {
+  const { data } = await api.post('/admin/digiseller/rates/refresh', { mode });
   return data;
 }
 

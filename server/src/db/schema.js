@@ -114,11 +114,25 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    ALTER TABLE digiseller_price_rate_runs
+      ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'oplata',
+      ADD COLUMN IF NOT EXISTS option_xml TEXT;
+
+    ALTER TABLE digiseller_price_rate_samples
+      ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'oplata',
+      ADD COLUMN IF NOT EXISTS option_xml TEXT;
+
     CREATE INDEX IF NOT EXISTS idx_digiseller_price_rate_runs_lookup
       ON digiseller_price_rate_runs (digiseller_id, status, finished_at DESC, id DESC);
 
+    CREATE INDEX IF NOT EXISTS idx_digiseller_price_rate_runs_mode_lookup
+      ON digiseller_price_rate_runs (mode, digiseller_id, status, finished_at DESC, id DESC);
+
     CREATE INDEX IF NOT EXISTS idx_digiseller_price_rate_samples_lookup
       ON digiseller_price_rate_samples (digiseller_id, run_id, requested_usd);
+
+    CREATE INDEX IF NOT EXISTS idx_digiseller_price_rate_samples_mode_lookup
+      ON digiseller_price_rate_samples (mode, digiseller_id, run_id, requested_usd);
 
     CREATE TABLE IF NOT EXISTS xbox_topup_cards (
       usd_value INTEGER PRIMARY KEY,

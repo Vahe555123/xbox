@@ -225,18 +225,22 @@ router.post('/deal-check', requireAdmin, async (_req, res) => {
 
 // ==================== Digiseller rates ====================
 
-router.get('/digiseller/rates', requireAdmin, async (_req, res, next) => {
+router.get('/digiseller/rates', requireAdmin, async (req, res, next) => {
   try {
-    const state = await digisellerService.getPriceRateState();
+    const state = await digisellerService.getPriceRateState({
+      mode: req.query.mode || 'oplata',
+    });
     res.json(state);
   } catch (err) {
     next(err);
   }
 });
 
-router.post('/digiseller/rates/refresh', requireAdmin, async (_req, res, next) => {
+router.post('/digiseller/rates/refresh', requireAdmin, async (req, res, next) => {
   try {
-    const result = await digisellerService.refreshPriceRateTable();
+    const result = await digisellerService.refreshPriceRateTable({
+      mode: req.body?.mode || req.query.mode || 'oplata',
+    });
     res.json({ success: true, ...result });
   } catch (err) {
     next(err);

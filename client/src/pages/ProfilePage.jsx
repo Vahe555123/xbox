@@ -209,7 +209,7 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
               />
             </label>
             <div className="profile-payment-modes">
-              <label className="profile-payment-mode active">
+              <label className={`profile-payment-mode ${purchaseForm.paymentMode === 'oplata' ? 'active' : ''}`}>
                 <input
                   type="radio"
                   name="paymentMode"
@@ -222,18 +222,30 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
                   <small>Генерация ссылки на оплату</small>
                 </span>
               </label>
-              <label className="profile-payment-mode disabled">
-                <input type="radio" disabled />
+              <label className={`profile-payment-mode ${purchaseForm.paymentMode === 'key_activation' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="paymentMode"
+                  value="key_activation"
+                  checked={purchaseForm.paymentMode === 'key_activation'}
+                  onChange={handlePurchaseField}
+                />
                 <span>
-                  <strong>Режим 2</strong>
-                  <small>Скоро добавим</small>
+                  <strong>Ключ активации</strong>
+                  <small>Покупка через товар 5262264</small>
                 </span>
               </label>
-              <label className="profile-payment-mode disabled">
-                <input type="radio" disabled />
+              <label className={`profile-payment-mode ${purchaseForm.paymentMode === 'topup_cards' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="paymentMode"
+                  value="topup_cards"
+                  checked={purchaseForm.paymentMode === 'topup_cards'}
+                  onChange={handlePurchaseField}
+                />
                 <span>
-                  <strong>Режим 3</strong>
-                  <small>Скоро добавим</small>
+                  <strong>Карты пополнения</strong>
+                  <small>Комбинация карт под цену игры</small>
                 </span>
               </label>
             </div>

@@ -52,7 +52,8 @@ function decryptProfileSecret(value) {
 }
 
 function normalizePurchasePaymentMode(mode) {
-  return mode === 'oplata' ? 'oplata' : 'oplata';
+  const allowed = new Set(['oplata', 'key_activation', 'topup_cards']);
+  return allowed.has(mode) ? mode : 'oplata';
 }
 
 function toPurchaseSettings(user) {

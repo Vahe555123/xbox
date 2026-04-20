@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { randomUUID } = require('crypto');
 const pool = require('../db/pool');
 const config = require('../config');
 const cache = require('../utils/cache');
@@ -7,11 +8,23 @@ const logger = require('../utils/logger');
 const CARDS_CACHE_KEY = 'topup:cards';
 const CARDS_CACHE_TTL_SECONDS = 60;
 const ALLOWED_DENOMINATIONS = [5, 10, 25, 50];
+const OPLATA_BASE_URL = 'https://www.oplata.info';
+const TOPUP_TYPE_CURRENCY = 'API_17432_RUB';
 
 const BROWSER_HEADERS = {
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'ru,en;q=0.9',
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+};
+
+const POST_PAYMENT_HEADERS = {
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'ru,en;q=0.9',
+  'Content-Type': 'application/x-www-form-urlencoded',
+  Origin: OPLATA_BASE_URL,
+  Referer: `${OPLATA_BASE_URL}/`,
+  'Upgrade-Insecure-Requests': '1',
+  'User-Agent': BROWSER_HEADERS['User-Agent'],
 };
 
 // Brackets per user spec for denominations {5,10,25,50}.
@@ -93,9 +106,12 @@ async function getLatestRefreshRun() {
 
 async function getTopupState() {
   const [cards, lastRun] = await Promise.all([listCards({ useCache: false }), getLatestRefreshRun()]);
+  const optionCategoryId = config.digiseller.topupCardOptionCategoryId
+    || lastRun?.option_category_id
+    || null;
   return {
     productId: config.digiseller.topupCardProductId,
-    optionCategoryId: config.digiseller.topupCardOptionCategoryId || null,
+    optionCategoryId,
     cards,
     lastRun,
   };
@@ -420,13 +436,109 @@ function buildCardPayUrl(card, { quantity = 1, purchaseEmail, optionCategoryId }
   return url.toString();
 }
 
+function absoluteOplataUrl(location) {
+  if (!location) return null;
+  if (/^https?:\/\//i.test(location)) return location;
+  if (location.startsWith('/')) return `${OPLATA_BASE_URL}${location}`;
+  return `${OPLATA_BASE_URL}/asp2/${location}`;
+}
+
+function getFailPageForTopup() {
+  const productId = config.digiseller.topupCardProductId;
+  if (config.digiseller.failPageUrl) return config.digiseller.failPageUrl;
+  if (productId && config.clientOrigin) {
+    return `${config.clientOrigin.replace(/\/$/, '')}/game/${encodeURIComponent(productId)}`;
+  }
+  return config.clientOrigin || '';
+}
+
+// Submit the chosen option to pay.asp and capture the final pay_api.asp redirect.
+async function createCardPayApiUrl(card, { quantity = 1, purchaseEmail, optionCategoryId } = {}) {
+  const productId = config.digiseller.topupCardProductId;
+  const sellerId = config.digiseller.sellerId;
+  const catId = optionCategoryId || config.digiseller.topupCardOptionCategoryId || null;
+  if (!productId || !sellerId || !card?.optionId || !catId) return null;
+
+  const digiuid = randomUUID().toUpperCase();
+  const unitAmount = Number(card.priceRub) > 0 ? Math.round(Number(card.priceRub) * quantity) : '';
+  const body = new URLSearchParams({
+    Lang: 'ru-RU',
+    ID_D: String(productId),
+    product_id: String(productId),
+    Agent: String(sellerId),
+    AgentN: '',
+    FailPage: getFailPageForTopup(),
+    failpage: getFailPageForTopup(),
+    NoClearBuyerQueryString: 'NoClear',
+    digiuid,
+    Curr_add: '',
+    TypeCurr: TOPUP_TYPE_CURRENCY,
+    _subcurr: '',
+    _ow: '0',
+    firstrun: '0',
+    unit_cnt: String(quantity),
+    unit_amount: unitAmount === '' ? '' : String(unitAmount),
+    product_cnt: String(quantity),
+    [`Option_radio_${catId}`]: String(card.optionId),
+  });
+  if (purchaseEmail) body.set('Email', purchaseEmail);
+
+  try {
+    const response = await axios.post(config.digiseller.payPostUrl, body.toString(), {
+      headers: POST_PAYMENT_HEADERS,
+      timeout: 12000,
+      maxRedirects: 0,
+      validateStatus: (status) => status >= 200 && status < 400,
+    });
+    const location = response.headers.location;
+    const url = absoluteOplataUrl(location);
+    if (!url) return null;
+    // Accept only the final pay_api.asp; options/wm pages mean we didn't reach the final page.
+    if (!/pay_api\.asp/i.test(url)) {
+      logger.warn('Topup payment returned non-final redirect', {
+        usd: card.usdValue,
+        optionId: card.optionId,
+        location,
+      });
+      return null;
+    }
+    if (purchaseEmail) {
+      try {
+        const parsed = new URL(url);
+        parsed.searchParams.set('email', purchaseEmail);
+        return parsed.toString();
+      } catch {
+        return url;
+      }
+    }
+    return url;
+  } catch (err) {
+    logger.error('Topup payment POST failed', {
+      usd: card.usdValue,
+      optionId: card.optionId,
+      message: err.message,
+    });
+    return null;
+  }
+}
+
 async function buildComboPurchase(priceUsd, { purchaseEmail } = {}) {
   const combo = await computeCombo(priceUsd);
   if (!combo?.available) return combo;
   const state = await getTopupState();
   const cardMap = new Map(state.cards.map((c) => [c.usdValue, c]));
-  const links = combo.items.map((item) => {
+  const links = await Promise.all(combo.items.map(async (item) => {
     const card = cardMap.get(item.usdValue);
+    const apiUrl = await createCardPayApiUrl(card, {
+      quantity: item.count,
+      purchaseEmail,
+      optionCategoryId: state.optionCategoryId,
+    });
+    const fallbackUrl = buildCardPayUrl(card, {
+      quantity: item.count,
+      purchaseEmail,
+      optionCategoryId: state.optionCategoryId,
+    });
     return {
       usdValue: item.usdValue,
       count: item.count,
@@ -434,13 +546,11 @@ async function buildComboPurchase(priceUsd, { purchaseEmail } = {}) {
       priceRub: item.priceRub,
       subtotalRub: item.subtotalRub,
       subtotalRubFormatted: item.subtotalRubFormatted,
-      paymentUrl: buildCardPayUrl(card, {
-        quantity: item.count,
-        purchaseEmail,
-        optionCategoryId: state.optionCategoryId,
-      }),
+      paymentUrl: apiUrl || fallbackUrl,
+      directUrl: fallbackUrl,
+      usedPayApi: Boolean(apiUrl),
     };
-  });
+  }));
   return {
     ...combo,
     optionCategoryId: state.optionCategoryId,

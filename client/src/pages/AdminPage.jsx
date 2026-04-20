@@ -29,6 +29,23 @@ function providerLabel(p) {
   return map[p] || p;
 }
 
+const EMPTY_DIG_RATE_STATE = { lastRun: null, samples: [] };
+
+const DIG_RATE_MODES = [
+  {
+    id: 'oplata',
+    title: 'Курсы Digiseller для Xbox USD',
+    description: 'Сэмплы считаются через price_options: система подбирает количество USD под рублевые интервалы, сохраняет effective rate и использует его для цен в каталоге.',
+    fallbackProductId: '5837241',
+  },
+  {
+    id: 'key_activation',
+    title: 'Курсы Digiseller для ключей активации',
+    description: 'Второй режим использует товар 5262264 и option 3529971=13870055, а при покупке генерирует финальную ссылку pay_api.',
+    fallbackProductId: '5262264',
+  },
+];
+
 export default function AdminPage({ currentUser, onLoginClick }) {
   const navigate = useNavigate();
   const [authorized, setAuthorized] = useState(null); // null=loading, true/false
@@ -58,9 +75,12 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [dealCheckResult, setDealCheckResult] = useState('');
 
   // Digiseller
-  const [digRateState, setDigRateState] = useState({ lastRun: null, samples: [] });
-  const [digRateLoading, setDigRateLoading] = useState(false);
-  const [digRateMessage, setDigRateMessage] = useState('');
+  const [digRateStates, setDigRateStates] = useState({
+    oplata: EMPTY_DIG_RATE_STATE,
+    key_activation: EMPTY_DIG_RATE_STATE,
+  });
+  const [digRateLoading, setDigRateLoading] = useState({});
+  const [digRateMessage, setDigRateMessage] = useState({});
 
   // Topup cards
   const [topupState, setTopupState] = useState({ cards: [], lastRun: null, productId: null, optionCategoryId: null });
@@ -108,8 +128,10 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
   const loadDigiseller = useCallback(async () => {
     try {
-      const rates = await fetchDigisellerRates();
-      setDigRateState(rates || { lastRun: null, samples: [] });
+      const entries = await Promise.all(
+        DIG_RATE_MODES.map(async (mode) => [mode.id, await fetchDigisellerRates(mode.id)]),
+      );
+      setDigRateStates(Object.fromEntries(entries));
     } catch { /* ignore */ }
   }, []);
 
@@ -178,17 +200,32 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     }
   };
 
-  const handleRefreshDigRates = async () => {
-    setDigRateLoading(true);
-    setDigRateMessage('');
+  const handleRefreshDigRates = async (mode = 'oplata') => {
+    setDigRateLoading((current) => ({ ...current, [mode]: true }));
+    setDigRateMessage((current) => ({ ...current, [mode]: '' }));
     try {
-      const result = await refreshDigisellerRates();
-      setDigRateState({ lastRun: result.run || null, samples: result.samples || [] });
-      setDigRateMessage(`Курсы обновлены: ${result.samples?.length || 0} точек`);
+      const result = await refreshDigisellerRates(mode);
+      setDigRateStates((current) => ({
+        ...current,
+        [mode]: {
+          ...(current[mode] || EMPTY_DIG_RATE_STATE),
+          mode: result.mode || mode,
+          digisellerId: result.run?.digiseller_id || current[mode]?.digisellerId,
+          lastRun: result.run || null,
+          samples: result.samples || [],
+        },
+      }));
+      setDigRateMessage((current) => ({
+        ...current,
+        [mode]: `Курсы обновлены: ${result.samples?.length || 0} точек`,
+      }));
     } catch (err) {
-      setDigRateMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+      setDigRateMessage((current) => ({
+        ...current,
+        [mode]: 'Ошибка: ' + (err.response?.data?.error || err.message),
+      }));
     } finally {
-      setDigRateLoading(false);
+      setDigRateLoading((current) => ({ ...current, [mode]: false }));
     }
   };
 
@@ -621,77 +658,86 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       {/* ==================== Digiseller ==================== */}
       {tab === 'digiseller' && (
         <div className="admin-panel">
-          <div className="admin-card">
-            <div className="admin-card-head">
-              <div>
-                <h3>Курсы Digiseller для Xbox USD</h3>
-                <p className="admin-card-desc">
-                  Сэмплы считаются через price_options: система подбирает количество USD под рублевые интервалы,
-                  сохраняет effective rate и использует его для цен в каталоге.
-                </p>
-              </div>
-              <button
-                className="admin-btn admin-btn-accent"
-                type="button"
-                onClick={handleRefreshDigRates}
-                disabled={digRateLoading}
-              >
-                {digRateLoading ? 'Обновляем...' : 'Обновить курсы'}
-              </button>
-            </div>
+          {DIG_RATE_MODES.map((rateMode) => {
+            const rateState = digRateStates[rateMode.id] || EMPTY_DIG_RATE_STATE;
+            const loading = Boolean(digRateLoading[rateMode.id]);
+            const message = digRateMessage[rateMode.id];
+            return (
+              <div className="admin-card" key={rateMode.id}>
+                <div className="admin-card-head">
+                  <div>
+                    <h3>{rateMode.title}</h3>
+                    <p className="admin-card-desc">{rateMode.description}</p>
+                  </div>
+                  <button
+                    className="admin-btn admin-btn-accent"
+                    type="button"
+                    onClick={() => handleRefreshDigRates(rateMode.id)}
+                    disabled={loading}
+                  >
+                    {loading ? 'Обновляем...' : 'Обновить курсы'}
+                  </button>
+                </div>
 
-            <dl className="admin-dl">
-              <dt>Digiseller товар</dt>
-              <dd className="admin-mono">{digRateState.digisellerId || '5837241'}</dd>
-              <dt>Последний запуск</dt>
-              <dd>{formatDate(digRateState.lastRun?.finished_at || digRateState.lastRun?.started_at)}</dd>
-              <dt>Статус</dt>
-              <dd>
-                <span className={`admin-status ${digRateState.lastRun?.status === 'success' ? 'admin-status-ok' : digRateState.lastRun?.status === 'failed' ? 'admin-status-err' : ''}`}>
-                  {digRateState.lastRun?.status || 'нет данных'}
-                </span>
-              </dd>
-              <dt>Курс</dt>
-              <dd>
-                {digRateState.lastRun?.min_rate
-                  ? `${Number(digRateState.lastRun.min_rate).toFixed(2)}-${Number(digRateState.lastRun.max_rate).toFixed(2)} ₽ за $`
-                  : 'нет данных'}
-              </dd>
-            </dl>
-
-            {digRateMessage && <p className="admin-scheduler-result">{digRateMessage}</p>}
-
-            <div className="admin-table-wrap dig-rate-table">
-              <table className="admin-table admin-table-compact">
-                <thead>
-                  <tr>
-                    <th>Интервал RUB</th>
-                    <th>USD</th>
-                    <th>Итог RUB</th>
-                    <th>Курс</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(digRateState.samples || []).slice(0, 40).map((sample) => (
-                    <tr key={sample.id || `${sample.targetRub}-${sample.requestedUsd}`}>
-                      <td>{sample.label || Number(sample.target_rub || sample.targetRub).toLocaleString('ru-RU')}</td>
-                      <td>{Number(sample.requested_usd || sample.requestedUsd).toFixed(2)} $</td>
-                      <td>{Number(sample.amount_rub || sample.amountRub).toLocaleString('ru-RU')} ₽</td>
-                      <td>{Number(sample.effective_rate || sample.effectiveRate).toFixed(2)} ₽/$</td>
-                    </tr>
-                  ))}
-                  {(!digRateState.samples || digRateState.samples.length === 0) && (
-                    <tr>
-                      <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                        Курсы еще не рассчитаны. Нажмите «Обновить курсы».
-                      </td>
-                    </tr>
+                <dl className="admin-dl">
+                  <dt>Digiseller товар</dt>
+                  <dd className="admin-mono">{rateState.digisellerId || rateMode.fallbackProductId}</dd>
+                  {rateState.optionCategoryId && (
+                    <>
+                      <dt>Option</dt>
+                      <dd className="admin-mono">{rateState.optionCategoryId}={rateState.optionValueId}</dd>
+                    </>
                   )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                  <dt>Последний запуск</dt>
+                  <dd>{formatDate(rateState.lastRun?.finished_at || rateState.lastRun?.started_at)}</dd>
+                  <dt>Статус</dt>
+                  <dd>
+                    <span className={`admin-status ${rateState.lastRun?.status === 'success' ? 'admin-status-ok' : rateState.lastRun?.status === 'failed' ? 'admin-status-err' : ''}`}>
+                      {rateState.lastRun?.status || 'нет данных'}
+                    </span>
+                  </dd>
+                  <dt>Курс</dt>
+                  <dd>
+                    {rateState.lastRun?.min_rate
+                      ? `${Number(rateState.lastRun.min_rate).toFixed(2)}-${Number(rateState.lastRun.max_rate).toFixed(2)} ₽ за $`
+                      : 'нет данных'}
+                  </dd>
+                </dl>
 
+                {message && <p className="admin-scheduler-result">{message}</p>}
+
+                <div className="admin-table-wrap dig-rate-table">
+                  <table className="admin-table admin-table-compact">
+                    <thead>
+                      <tr>
+                        <th>Интервал RUB</th>
+                        <th>USD</th>
+                        <th>Итог RUB</th>
+                        <th>Курс</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(rateState.samples || []).slice(0, 40).map((sample) => (
+                        <tr key={sample.id || `${sample.targetRub}-${sample.requestedUsd}`}>
+                          <td>{sample.label || Number(sample.target_rub || sample.targetRub).toLocaleString('ru-RU')}</td>
+                          <td>{Number(sample.requested_usd || sample.requestedUsd).toFixed(2)} $</td>
+                          <td>{Number(sample.amount_rub || sample.amountRub).toLocaleString('ru-RU')} ₽</td>
+                          <td>{Number(sample.effective_rate || sample.effectiveRate).toFixed(2)} ₽/$</td>
+                        </tr>
+                      ))}
+                      {(!rateState.samples || rateState.samples.length === 0) && (
+                        <tr>
+                          <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                            Курсы еще не рассчитаны. Нажмите «Обновить курсы».
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

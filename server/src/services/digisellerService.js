@@ -13,6 +13,9 @@ const DEFAULT_MAX_UNIT_COUNT = 300;
 const XBOX_GAME_NAME_OPTION = '4931969';
 const XBOX_ACCOUNT_EMAIL_OPTION = '4931970';
 const XBOX_ACCOUNT_PASSWORD_OPTION = '4931971';
+const DEFAULT_PRICE_OPTION_XML = '<response></response>';
+const RATE_MODE_OPLATA = 'oplata';
+const RATE_MODE_KEY_ACTIVATION = 'key_activation';
 const BROWSER_PAYMENT_HEADERS = {
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
   'Accept-Language': 'ru,en;q=0.9',
@@ -24,6 +27,43 @@ const BROWSER_PAYMENT_HEADERS = {
   'Upgrade-Insecure-Requests': '1',
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 };
+
+function getKeyActivationOptionXml() {
+  return `<response><option O="${config.digiseller.keyActivationOptionCategoryId}" V="${config.digiseller.keyActivationOptionValueId}"/></response>`;
+}
+
+function getRateMode(mode = RATE_MODE_OPLATA) {
+  const safeMode = mode || RATE_MODE_OPLATA;
+  if (safeMode === RATE_MODE_OPLATA) {
+    return {
+      id: RATE_MODE_OPLATA,
+      title: 'Xbox USD',
+      digisellerId: config.digiseller.defaultProductId,
+      optionXml: DEFAULT_PRICE_OPTION_XML,
+      typeCurrency: config.digiseller.typeCurrency,
+    };
+  }
+  if (safeMode === RATE_MODE_KEY_ACTIVATION) {
+    return {
+      id: RATE_MODE_KEY_ACTIVATION,
+      title: 'Ключ активации',
+      digisellerId: config.digiseller.keyActivationProductId,
+      optionXml: getKeyActivationOptionXml(),
+      optionCategoryId: config.digiseller.keyActivationOptionCategoryId,
+      optionValueId: config.digiseller.keyActivationOptionValueId,
+      gameNameOptionId: config.digiseller.keyActivationGameNameOptionId,
+      typeCurrency: config.digiseller.keyActivationTypeCurrency,
+      failPageUrl: config.digiseller.keyActivationFailPageUrl,
+    };
+  }
+  throw createPaymentError('Неизвестный режим Digiseller', 400);
+}
+
+function getOptionCacheKey(optionXml) {
+  return Buffer.from(String(optionXml || DEFAULT_PRICE_OPTION_XML))
+    .toString('base64')
+    .replace(/[^a-zA-Z0-9]/g, '');
+}
 
 function normalizeProductKey(productId) {
   return String(productId || '').trim().toLowerCase();
@@ -107,23 +147,99 @@ async function createKeyActivationPayment(product, { purchaseEmail, gameName } =
   const cleanEmail = normalizePaymentText(purchaseEmail);
   if (!cleanEmail) throw createPaymentError('Email для покупки обязателен');
   const cleanGameName = normalizePaymentText(gameName || product.title || product.name);
-  const paymentUrl = buildKeyActivationPayUrl(product, {
-    purchaseEmail: cleanEmail,
-    gameName: cleanGameName,
-  });
-  if (!paymentUrl) throw createPaymentError('Не удалось построить ссылку активации', 500);
+  if (!cleanGameName) throw createPaymentError('Название игры обязательно');
 
-  return {
-    paymentUrl,
-    directUrl: paymentUrl,
-    provider: 'oplata',
-    paymentMode: 'key_activation',
-    paymentType: 'activation_key',
-    digisellerId: config.digiseller.keyActivationProductId,
-    gameName: cleanGameName,
-    purchaseEmail: cleanEmail,
-    currency: 'RUB',
-  };
+  const rateMode = getRateMode(RATE_MODE_KEY_ACTIVATION);
+  const digisellerId = rateMode.digisellerId;
+  if (!digisellerId) throw createPaymentError('Digiseller product id is not configured', 500);
+
+  const unitCount = getUsdPriceValue(product);
+  if (!unitCount || !shouldFetchRubPrice(product)) {
+    throw createPaymentError('Для этого товара нельзя создать ссылку оплаты', 400);
+  }
+
+  const rubQuote = await fetchRubPrice(digisellerId, unitCount, {
+    cacheResult: true,
+    optionXml: rateMode.optionXml,
+  });
+  const amountRub = Math.round(Number(rubQuote?.amount || rubQuote?.value || 0));
+  if (!amountRub || !Number.isFinite(amountRub)) {
+    throw createPaymentError('Не удалось получить цену в рублях для ключа активации', 502);
+  }
+
+  const digiuid = randomUUID().toUpperCase();
+  const failPage = rateMode.failPageUrl || `https://plati.market/itm/?idd=${digisellerId}`;
+  const body = new URLSearchParams({
+    Lang: 'ru-RU',
+    ID_D: String(digisellerId),
+    product_id: String(digisellerId),
+    Agent: config.digiseller.sellerId || '',
+    AgentN: '',
+    FailPage: failPage,
+    failpage: failPage,
+    NoClearBuyerQueryString: 'NoClear',
+    digiuid,
+    Curr_add: '',
+    TypeCurr: rateMode.typeCurrency || config.digiseller.typeCurrency,
+    _subcurr: '',
+    _ow: '0',
+    firstrun: '0',
+    unit_cnt: String(unitCount),
+    unit_amount: String(amountRub),
+    product_cnt: String(unitCount),
+    Email: cleanEmail,
+    [`Option_radio_${rateMode.optionCategoryId}`]: String(rateMode.optionValueId),
+    [`Option_text_${rateMode.gameNameOptionId}`]: cleanGameName,
+  });
+
+  try {
+    const response = await axios.post(config.digiseller.payPostUrl, body.toString(), {
+      headers: BROWSER_PAYMENT_HEADERS,
+      timeout: 12000,
+      maxRedirects: 0,
+      validateStatus: (status) => status >= 200 && status < 400,
+    });
+    const paymentUrl = appendPaymentQuery(buildFullPaymentUrl(response.headers.location), {
+      email: cleanEmail,
+    });
+    if (!paymentUrl || !/pay_api\.asp/i.test(paymentUrl)) {
+      logger.warn('Digiseller key activation returned non-final redirect', {
+        digisellerId,
+        status: response.status,
+        location: response.headers.location,
+      });
+      throw createPaymentError('Digiseller не вернул финальную ссылку оплаты', 502);
+    }
+
+    return {
+      paymentUrl,
+      directUrl: buildKeyActivationPayUrl(product, {
+        purchaseEmail: cleanEmail,
+        gameName: cleanGameName,
+      }),
+      provider: 'oplata',
+      paymentMode: RATE_MODE_KEY_ACTIVATION,
+      paymentType: 'activation_key',
+      digisellerId,
+      unitCount,
+      amountRub,
+      amountRubFormatted: formatRub(amountRub),
+      currency: 'RUB',
+      gameName: cleanGameName,
+      purchaseEmail: cleanEmail,
+      optionCategoryId: rateMode.optionCategoryId,
+      optionValueId: rateMode.optionValueId,
+    };
+  } catch (err) {
+    if (err.statusCode) throw err;
+    logger.error('Digiseller key activation payment creation failed', {
+      digisellerId,
+      unitCount,
+      amountRub,
+      message: err.message,
+    });
+    throw createPaymentError('Не удалось подготовить ссылку на оплату ключа активации', 502);
+  }
 }
 
 function buildFullPaymentUrl(redirectUrl) {
@@ -202,10 +318,13 @@ function normalizeUnitCount(value) {
   return Math.max(1, Math.round(numeric * 100) / 100);
 }
 
-async function fetchRubPrice(digisellerId, unitCount = 1, { cacheResult = true } = {}) {
+async function fetchRubPrice(digisellerId, unitCount = 1, {
+  cacheResult = true,
+  optionXml = DEFAULT_PRICE_OPTION_XML,
+} = {}) {
   const safeUnitCount = normalizeUnitCount(unitCount);
   if (!digisellerId) return null;
-  const cacheKey = `digiseller:price:rub:${digisellerId}:${safeUnitCount.toFixed(2)}`;
+  const cacheKey = `digiseller:price:rub:${digisellerId}:${safeUnitCount.toFixed(2)}:${getOptionCacheKey(optionXml)}`;
   if (cacheResult) {
     const cached = cache.get(cacheKey);
     if (cached !== null && cached !== undefined) return cached;
@@ -217,7 +336,7 @@ async function fetchRubPrice(digisellerId, unitCount = 1, { cacheResult = true }
         p: digisellerId,
         n: safeUnitCount,
         c: 'RUB',
-        x: '<response></response>',
+        x: optionXml || DEFAULT_PRICE_OPTION_XML,
         rnd: Math.random(),
       },
       timeout: 8000,
@@ -261,6 +380,7 @@ async function fetchRubPrice(digisellerId, unitCount = 1, { cacheResult = true }
     logger.warn('Digiseller price fetch failed', {
       digisellerId,
       unitCount: safeUnitCount,
+      optionXml,
       message: err.message,
     });
     return null;
@@ -313,9 +433,10 @@ function shouldFetchRubPrice(product) {
   return Boolean(getUsdPriceValue(product));
 }
 
-async function getLatestRateSamples(digisellerId) {
+async function getLatestRateSamples(digisellerId, mode = RATE_MODE_OPLATA) {
   if (!digisellerId) return [];
-  const cacheKey = `digiseller:rates:${digisellerId}`;
+  const rateMode = getRateMode(mode);
+  const cacheKey = `digiseller:rates:${rateMode.id}:${digisellerId}`;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
@@ -323,16 +444,16 @@ async function getLatestRateSamples(digisellerId) {
     `SELECT s.*
      FROM digiseller_price_rate_samples s
      JOIN digiseller_price_rate_runs r ON r.id = s.run_id
-     WHERE s.digiseller_id = $1 AND r.status = 'success'
+     WHERE s.digiseller_id = $1 AND s.mode = $2 AND r.status = 'success'
        AND r.id = (
          SELECT id
          FROM digiseller_price_rate_runs
-         WHERE digiseller_id = $1 AND status = 'success'
+         WHERE digiseller_id = $1 AND mode = $2 AND status = 'success'
          ORDER BY finished_at DESC NULLS LAST, id DESC
          LIMIT 1
        )
      ORDER BY s.requested_usd ASC`,
-    [digisellerId],
+    [digisellerId, rateMode.id],
   );
   cache.set(cacheKey, rows, RATE_CACHE_TTL_SECONDS);
   return rows;
@@ -365,13 +486,14 @@ function estimateRubFromSamples(samples, usdValue) {
   };
 }
 
-async function getRubPriceForProduct(product, digisellerId) {
+async function getRubPriceForProduct(product, digisellerId, mode = RATE_MODE_OPLATA) {
   const usdValue = getUsdPriceValue(product);
   if (!usdValue || !digisellerId || !shouldFetchRubPrice(product)) return null;
-  const samples = await getLatestRateSamples(digisellerId).catch(() => []);
+  const rateMode = getRateMode(mode);
+  const samples = await getLatestRateSamples(digisellerId, rateMode.id).catch(() => []);
   const estimated = estimateRubFromSamples(samples, usdValue);
   if (estimated) return estimated;
-  return fetchRubPrice(digisellerId, usdValue);
+  return fetchRubPrice(digisellerId, usdValue, { optionXml: rateMode.optionXml });
 }
 
 async function createPurchasePaymentUrl(product, {
@@ -545,14 +667,17 @@ function buildPriceTargets() {
   return [...new Set(targets)].sort((a, b) => a - b);
 }
 
-async function probeTargetRub(digisellerId, targetRub) {
+async function probeTargetRub(digisellerId, targetRub, rateMode = getRateMode(RATE_MODE_OPLATA)) {
   const maxUnitCount = config.digiseller.maxUnitCount || DEFAULT_MAX_UNIT_COUNT;
   let unitCount = Math.min(maxUnitCount, Math.max(1, targetRub / 100));
   let quote = null;
 
   for (let i = 0; i < 4; i += 1) {
     unitCount = Math.round(unitCount * 100) / 100;
-    quote = await fetchRubPrice(digisellerId, unitCount, { cacheResult: false });
+    quote = await fetchRubPrice(digisellerId, unitCount, {
+      cacheResult: false,
+      optionXml: rateMode.optionXml,
+    });
     if (!quote?.amount) break;
     const ratio = targetRub / quote.amount;
     const next = Math.min(maxUnitCount, Math.max(1, unitCount * ratio));
@@ -572,14 +697,19 @@ async function probeTargetRub(digisellerId, targetRub) {
   };
 }
 
-async function refreshPriceRateTable({ digisellerId = config.digiseller.defaultProductId } = {}) {
-  if (!digisellerId) throw new Error('Digiseller product id is required');
+async function refreshPriceRateTable({
+  mode = RATE_MODE_OPLATA,
+  digisellerId,
+} = {}) {
+  const rateMode = getRateMode(mode);
+  const resolvedDigisellerId = digisellerId || rateMode.digisellerId;
+  if (!resolvedDigisellerId) throw new Error('Digiseller product id is required');
   const started = new Date();
   const run = await pool.query(
-    `INSERT INTO digiseller_price_rate_runs (digiseller_id, status, started_at)
-     VALUES ($1, 'running', $2)
-     RETURNING id, digiseller_id, status, started_at`,
-    [digisellerId, started],
+    `INSERT INTO digiseller_price_rate_runs (digiseller_id, mode, option_xml, status, started_at)
+     VALUES ($1, $2, $3, 'running', $4)
+     RETURNING id, digiseller_id, mode, option_xml, status, started_at`,
+    [resolvedDigisellerId, rateMode.id, rateMode.optionXml, started],
   );
   const runId = run.rows[0].id;
 
@@ -587,18 +717,20 @@ async function refreshPriceRateTable({ digisellerId = config.digiseller.defaultP
     const targets = buildPriceTargets();
     const samples = [];
     for (const targetRub of targets) {
-      const sample = await probeTargetRub(digisellerId, targetRub);
+      const sample = await probeTargetRub(resolvedDigisellerId, targetRub, rateMode);
       if (sample?.amountRub && sample?.effectiveRate) samples.push(sample);
     }
 
     for (const sample of samples) {
       await pool.query(
         `INSERT INTO digiseller_price_rate_samples
-          (run_id, digiseller_id, target_rub, label, requested_usd, amount_rub, effective_rate, unit_price_rub, raw_response)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
+          (run_id, digiseller_id, mode, option_xml, target_rub, label, requested_usd, amount_rub, effective_rate, unit_price_rub, raw_response)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)`,
         [
           runId,
-          digisellerId,
+          resolvedDigisellerId,
+          rateMode.id,
+          rateMode.optionXml,
           sample.targetRub,
           sample.label,
           sample.requestedUsd,
@@ -627,8 +759,8 @@ async function refreshPriceRateTable({ digisellerId = config.digiseller.defaultP
        RETURNING *`,
       [runId, finished, samples.length, minRate, maxRate, avgRate],
     );
-    cache.delete(`digiseller:rates:${digisellerId}`);
-    return { run: updated.rows[0], samples };
+    cache.delete(`digiseller:rates:${rateMode.id}:${resolvedDigisellerId}`);
+    return { mode: rateMode.id, run: updated.rows[0], samples };
   } catch (err) {
     await pool.query(
       `UPDATE digiseller_price_rate_runs
@@ -640,33 +772,43 @@ async function refreshPriceRateTable({ digisellerId = config.digiseller.defaultP
   }
 }
 
-async function getPriceRateState({ digisellerId = config.digiseller.defaultProductId, limit = 40 } = {}) {
+async function getPriceRateState({
+  mode = RATE_MODE_OPLATA,
+  digisellerId,
+  limit = 40,
+} = {}) {
+  const rateMode = getRateMode(mode);
+  const resolvedDigisellerId = digisellerId || rateMode.digisellerId;
   const runResult = await pool.query(
     `SELECT *
      FROM digiseller_price_rate_runs
-     WHERE digiseller_id = $1
+     WHERE digiseller_id = $1 AND mode = $2
      ORDER BY started_at DESC, id DESC
      LIMIT 1`,
-    [digisellerId],
+    [resolvedDigisellerId, rateMode.id],
   );
   const samplesResult = await pool.query(
     `SELECT s.*
      FROM digiseller_price_rate_samples s
      JOIN digiseller_price_rate_runs r ON r.id = s.run_id
-     WHERE s.digiseller_id = $1 AND r.status = 'success'
+     WHERE s.digiseller_id = $1 AND s.mode = $2 AND r.status = 'success'
        AND r.id = (
          SELECT id
          FROM digiseller_price_rate_runs
-         WHERE digiseller_id = $1 AND status = 'success'
+         WHERE digiseller_id = $1 AND mode = $2 AND status = 'success'
          ORDER BY finished_at DESC NULLS LAST, id DESC
          LIMIT 1
        )
      ORDER BY s.target_rub ASC
-     LIMIT $2`,
-    [digisellerId, limit],
+     LIMIT $3`,
+    [resolvedDigisellerId, rateMode.id, limit],
   );
   return {
-    digisellerId,
+    mode: rateMode.id,
+    title: rateMode.title,
+    digisellerId: resolvedDigisellerId,
+    optionCategoryId: rateMode.optionCategoryId || null,
+    optionValueId: rateMode.optionValueId || null,
     lastRun: runResult.rows[0] || null,
     samples: samplesResult.rows,
   };
