@@ -80,6 +80,39 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS digiseller_price_rate_runs (
+      id BIGSERIAL PRIMARY KEY,
+      digiseller_id BIGINT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      samples_count INTEGER NOT NULL DEFAULT 0,
+      min_rate NUMERIC,
+      max_rate NUMERIC,
+      avg_rate NUMERIC,
+      error TEXT,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      finished_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE IF NOT EXISTS digiseller_price_rate_samples (
+      id BIGSERIAL PRIMARY KEY,
+      run_id BIGINT NOT NULL REFERENCES digiseller_price_rate_runs(id) ON DELETE CASCADE,
+      digiseller_id BIGINT NOT NULL,
+      target_rub NUMERIC NOT NULL,
+      label TEXT,
+      requested_usd NUMERIC NOT NULL,
+      amount_rub NUMERIC NOT NULL,
+      effective_rate NUMERIC NOT NULL,
+      unit_price_rub NUMERIC,
+      raw_response JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_digiseller_price_rate_runs_lookup
+      ON digiseller_price_rate_runs (digiseller_id, status, finished_at DESC, id DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_digiseller_price_rate_samples_lookup
+      ON digiseller_price_rate_samples (digiseller_id, run_id, requested_usd);
   `);
 
   logger.info('PostgreSQL schema ready');

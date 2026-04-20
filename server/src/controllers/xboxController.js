@@ -4,7 +4,11 @@ const { mapProductDetail } = require('../mappers/productDetailMapper');
 const { mapRelatedProducts } = require('../mappers/relatedProductMapper');
 const { parseSearchParams } = require('../utils/queryParams');
 const { AppError } = require('../utils/errorFormatter');
-const { getMapping, buildPayUrl } = require('../services/digisellerService');
+const {
+  enrichProductWithRub,
+  enrichProductsWithRub,
+  createPurchasePaymentUrl,
+} = require('../services/digisellerService');
 const logger = require('../utils/logger');
 
 async function searchXbox(req, res, next) {
@@ -31,6 +35,9 @@ async function searchXbox(req, res, next) {
       encodedCT: params.encodedCT,
       channelId,
     });
+
+    await enrichProductsWithRub(result.products).catch((e) =>
+      logger.warn('RUB enrichment failed', { message: e.message }));
 
     res.json({
       success: true,
@@ -63,15 +70,11 @@ async function getProductDetail(req, res, next) {
 
     const raw = await getProductById(productId);
     const product = mapProductDetail(raw);
-
-    const mapping = await getMapping(product.id).catch(() => null);
-    if (mapping) {
-      product.digisellerId = mapping.digiseller_id;
-      product.digisellerPayUrl = buildPayUrl(mapping.digiseller_id);
-    } else {
-      product.digisellerId = null;
-      product.digisellerPayUrl = null;
-    }
+    await enrichProductWithRub(product).catch((e) =>
+      logger.warn('RUB detail enrichment failed', { productId: product.id, message: e.message }));
+    product.digisellerId = product.digisellerId || null;
+    product.digisellerPayUrl = product.digisellerPayUrl || null;
+    product.priceRub = product.priceRub || null;
 
     res.json({
       success: true,
@@ -85,6 +88,51 @@ async function getProductDetail(req, res, next) {
       const status = err.response.status;
       const message = err.response.data?.message || err.message;
       logger.error('Display catalog error', { status, message });
+      return next(new AppError(`Catalog error: ${message}`, status >= 500 ? 502 : status));
+    }
+    next(err);
+  }
+}
+
+async function createProductPurchase(req, res, next) {
+  try {
+    const { productId } = req.params;
+    const { accountEmail, accountPassword, gameName } = req.body || {};
+    logger.info('Product purchase request', { productId });
+
+    const raw = await getProductById(productId);
+    const product = mapProductDetail(raw);
+    await enrichProductWithRub(product).catch((e) =>
+      logger.warn('RUB detail enrichment failed before purchase', { productId: product.id, message: e.message }));
+
+    const payment = await createPurchasePaymentUrl(product, {
+      gameName,
+      accountEmail,
+      accountPassword,
+    });
+
+    res.json({
+      success: true,
+      paymentUrl: payment.paymentUrl,
+      payment,
+      product: {
+        id: product.id,
+        title: product.title,
+        price: product.price || null,
+        priceRub: product.priceRub || null,
+      },
+    });
+  } catch (err) {
+    if (err.statusCode) {
+      return next(new AppError(err.message, err.statusCode));
+    }
+    if (err.statusCode === 404 || err.response?.status === 404) {
+      return next(new AppError('Product not found', 404));
+    }
+    if (err.response) {
+      const status = err.response.status;
+      const message = err.response.data?.message || err.message;
+      logger.error('Purchase catalog error', { status, message });
       return next(new AppError(`Catalog error: ${message}`, status >= 500 ? 502 : status));
     }
     next(err);
@@ -121,6 +169,9 @@ async function getRelatedProducts(req, res, next) {
     const rawProducts = await getProductsByIds(productIds);
     const products = mapRelatedProducts(rawProducts, relationMap);
 
+    await enrichProductsWithRub(products).catch((e) =>
+      logger.warn('RUB enrichment failed', { message: e.message }));
+
     res.json({
       success: true,
       products,
@@ -140,4 +191,4 @@ function getHealth(_req, res) {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 }
 
-module.exports = { searchXbox, getProductDetail, getRelatedProducts, getHealth };
+module.exports = { searchXbox, getProductDetail, createProductPurchase, getRelatedProducts, getHealth };

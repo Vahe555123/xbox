@@ -5,7 +5,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "refresh:digiseller-rates": "node scripts/refresh-digiseller-rates.js"
   },
   "keywords": [
     "xbox",
