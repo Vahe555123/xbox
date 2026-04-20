@@ -58,6 +58,11 @@ export async function fetchProductDetail(productId) {
   return data;
 }
 
+export async function createProductPurchase(productId, payload) {
+  const { data } = await api.post(`/xbox/product/${encodeURIComponent(productId)}/purchase`, payload);
+  return data;
+}
+
 export async function fetchRelatedProducts(productIds, relationMap) {
   if (!productIds || productIds.length === 0) return { products: [] };
   const params = { ids: productIds.join(',') };
@@ -179,6 +184,16 @@ export async function fetchDigisellerMappings({ page = 1, limit = 50, search = '
   const params = { page, limit };
   if (search) params.search = search;
   const { data } = await api.get('/admin/digiseller', { params });
+  return data;
+}
+
+export async function fetchDigisellerRates() {
+  const { data } = await api.get('/admin/digiseller/rates');
+  return data;
+}
+
+export async function refreshDigisellerRates() {
+  const { data } = await api.post('/admin/digiseller/rates/refresh');
   return data;
 }
 

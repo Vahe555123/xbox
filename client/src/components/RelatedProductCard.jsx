@@ -11,6 +11,7 @@ export default function RelatedProductCard({ product }) {
     publisherName,
     image,
     price,
+    priceRub,
     rating,
     isGamePass,
     categories,
@@ -23,7 +24,12 @@ export default function RelatedProductCard({ product }) {
     if (!price) return null;
 
     if (price.isFree) {
-      return <span className="rp-price-current rp-price-free">Free</span>;
+      return (
+        <div className="rp-price-row">
+          <span className="rp-price-current rp-price-free">Бесплатно</span>
+          {priceRub?.formatted && <span className="rp-price-rub">{priceRub.formatted}</span>}
+        </div>
+      );
     }
 
     return (
@@ -34,6 +40,7 @@ export default function RelatedProductCard({ product }) {
         {price.formattedListPrice && (
           <span className="rp-price-current">{price.formattedListPrice}</span>
         )}
+        {priceRub?.formatted && <span className="rp-price-rub">{priceRub.formatted}</span>}
         {price.hasDiscount && price.discountPercent > 0 && (
           <span className="rp-price-discount">-{price.discountPercent}%</span>
         )}
@@ -72,7 +79,7 @@ export default function RelatedProductCard({ product }) {
           )}
           <div className="rp-card-badges">
             {isGamePass && <span className="rp-badge rp-badge-gamepass">Game Pass</span>}
-            {price?.isFree && <span className="rp-badge rp-badge-free">Free</span>}
+            {price?.isFree && <span className="rp-badge rp-badge-free">Бесплатно</span>}
             {price?.hasDiscount && price.discountPercent > 0 && (
               <span className="rp-badge rp-badge-sale">-{price.discountPercent}%</span>
             )}

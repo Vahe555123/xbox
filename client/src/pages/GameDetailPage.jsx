@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { fetchProductDetail, fetchRelatedProducts } from '../services/api';
+import { createProductPurchase, fetchProductDetail, fetchRelatedProducts } from '../services/api';
 import Spinner from '../components/Spinner';
 import ErrorMessage from '../components/ErrorMessage';
 import RelatedProductCard from '../components/RelatedProductCard';
@@ -115,6 +115,10 @@ export default function GameDetailPage() {
   const [relatedProducts, setRelatedProducts] = useState(null);
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('description');
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [purchaseForm, setPurchaseForm] = useState({ accountEmail: '', accountPassword: '' });
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [purchaseError, setPurchaseError] = useState(null);
   const scrollRefs = useRef({});
 
   useEffect(() => {
@@ -123,6 +127,10 @@ export default function GameDetailPage() {
     setLoading(true);
     setError(null);
     setRelatedProducts(null);
+    setPurchaseOpen(false);
+    setPurchaseForm({ accountEmail: '', accountPassword: '' });
+    setPurchaseLoading(false);
+    setPurchaseError(null);
 
     let cancelled = false;
     fetchProductDetail(productId)
@@ -157,6 +165,12 @@ export default function GameDetailPage() {
     if (el) el.scrollBy({ left: dir * el.clientWidth * 0.75, behavior: 'smooth' });
   };
 
+  const handlePurchaseFieldChange = (event) => {
+    const { name, value } = event.target;
+    setPurchaseForm((current) => ({ ...current, [name]: value }));
+    setPurchaseError(null);
+  };
+
   if (loading) return <Spinner />;
   if (error) return (
     <div className="detail-page">
@@ -169,6 +183,10 @@ export default function GameDetailPage() {
   const cardImage = getCardImage(data.images);
   const heroImage = getHeroImage(data.images);
   const price = data.releaseInfo?.status === 'unreleased' ? null : data.price;
+  const hasRubPrice = Boolean(data.priceRub?.formatted);
+  const isUnavailablePrice = price?.status === 'unavailable' || price?.formatted === 'Price not available';
+  const storePriceLabel = getStorePriceLabel(price, data.releaseInfo, isUnavailablePrice);
+  const fallbackPriceLabel = hasRubPrice ? null : 'Цена недоступна';
   const discountPercent = price?.discountPercent ? Math.round(price.discountPercent) : null;
   const reviewSummary = getRatingSummary(data.usage);
   const esrbRating = getPrimaryRating(data.contentRatings);
@@ -186,6 +204,7 @@ export default function GameDetailPage() {
     platforms: data.playWith || [],
     genre: data.categories || [],
     price: data.price || null,
+    priceRub: data.priceRub || null,
     publisher: data.publisherName || null,
     subscriptionLabels: data.subscriptionLabels || [],
     hasRussianLanguage: data.hasRussianLanguage,
@@ -197,6 +216,42 @@ export default function GameDetailPage() {
     { id: 'reviews', label: 'Отзывы' },
     { id: 'other', label: 'Другое' },
   ];
+
+  const handleBuyClick = () => {
+    if (!data.digisellerId && data.officialStoreUrl) {
+      window.location.assign(data.officialStoreUrl);
+      return;
+    }
+    setPurchaseOpen(true);
+    setPurchaseError(null);
+  };
+
+  const handlePurchaseSubmit = async (event) => {
+    event.preventDefault();
+    const accountEmail = purchaseForm.accountEmail.trim();
+    const accountPassword = purchaseForm.accountPassword;
+    if (!accountEmail || !accountPassword) {
+      setPurchaseError('Введите email и пароль Xbox аккаунта.');
+      return;
+    }
+
+    setPurchaseLoading(true);
+    setPurchaseError(null);
+    try {
+      const result = await createProductPurchase(data.id, {
+        gameName: data.title,
+        accountEmail,
+        accountPassword,
+      });
+      const paymentUrl = result.paymentUrl || result.payment?.paymentUrl;
+      if (!paymentUrl) throw new Error('Ссылка оплаты не получена');
+      window.location.assign(paymentUrl);
+    } catch (err) {
+      setPurchaseError(err.response?.data?.error?.message || err.message || 'Не удалось подготовить оплату.');
+    } finally {
+      setPurchaseLoading(false);
+    }
+  };
 
   return (
     <div className="detail-page detail-store-page">
@@ -231,18 +286,75 @@ export default function GameDetailPage() {
 
           <div className="ps-buy-row">
             <div className="ps-price">
-              {price?.originalFormatted && <span>{price.originalFormatted}</span>}
-              <strong>{price?.formatted || data.releaseInfo?.label || 'Цена недоступна'}</strong>
+              <div className="ps-price-main">
+                {price?.originalFormatted && <span className="ps-price-original">{price.originalFormatted}</span>}
+                {storePriceLabel && <strong>{storePriceLabel}</strong>}
+              </div>
+              {data.priceRub?.formatted && (
+                <span className={`ps-price-rub ${storePriceLabel ? '' : 'ps-price-rub-primary'}`}>{data.priceRub.formatted}</span>
+              )}
+              {!storePriceLabel && fallbackPriceLabel && (
+                <strong className="ps-price-unavailable">{fallbackPriceLabel}</strong>
+              )}
             </div>
-            <a
+            <button
               className="ps-buy-button"
-              href={data.digisellerPayUrl || data.officialStoreUrl || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
+              type="button"
+              onClick={handleBuyClick}
+              disabled={purchaseLoading || (!data.digisellerId && !data.officialStoreUrl)}
             >
-              {data.digisellerPayUrl ? 'Купить и открыть чат' : 'Купить'}
-            </a>
+              {purchaseLoading ? 'Готовим ссылку...' : 'Купить'}
+            </button>
           </div>
+
+          {purchaseOpen && (
+            <form className="ps-checkout-form" onSubmit={handlePurchaseSubmit}>
+              <div className="ps-checkout-head">
+                <div>
+                  <strong>Данные для покупки</strong>
+                  <span>Ссылка оплаты создается через Oplata.info.</span>
+                </div>
+                <button
+                  className="ps-checkout-close"
+                  type="button"
+                  onClick={() => setPurchaseOpen(false)}
+                  disabled={purchaseLoading}
+                  aria-label="Закрыть"
+                >
+                  x
+                </button>
+              </div>
+              <label>
+                Email аккаунта Xbox
+                <input
+                  name="accountEmail"
+                  type="email"
+                  value={purchaseForm.accountEmail}
+                  onChange={handlePurchaseFieldChange}
+                  placeholder="mail@example.com"
+                  autoComplete="username"
+                  required
+                />
+              </label>
+              <label>
+                Пароль аккаунта Xbox
+                <input
+                  name="accountPassword"
+                  type="password"
+                  value={purchaseForm.accountPassword}
+                  onChange={handlePurchaseFieldChange}
+                  placeholder="Пароль"
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <p className="ps-checkout-note">Данные не сохраняются в базе, они нужны только для создания ссылки оплаты.</p>
+              {purchaseError && <p className="ps-purchase-error">{purchaseError}</p>}
+              <button className="ps-checkout-submit" type="submit" disabled={purchaseLoading}>
+                {purchaseLoading ? 'Создаем ссылку...' : 'Перейти к оплате'}
+              </button>
+            </form>
+          )}
 
           <div className="ps-chip-row">
             {(data.playWith || []).map((platform) => <span key={platform} className="ps-chip">{platform}</span>)}
@@ -493,4 +605,11 @@ function SystemRequirements({ title, items, notes }) {
       )}
     </div>
   );
+}
+
+function getStorePriceLabel(price, releaseInfo, isUnavailablePrice) {
+  if (isUnavailablePrice) return null;
+  if (price?.value === 0) return 'Бесплатно';
+  if (price?.status === 'unreleased' || releaseInfo?.status === 'unreleased') return 'Еще не вышла';
+  return price?.formatted || releaseInfo?.label || null;
 }

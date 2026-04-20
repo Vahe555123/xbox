@@ -10,6 +10,8 @@ import {
   updateSchedulerInterval,
   triggerDealCheck,
   fetchDigisellerMappings,
+  fetchDigisellerRates,
+  refreshDigisellerRates,
   saveDigisellerMapping,
   deleteDigisellerMapping,
 } from '../services/api';
@@ -63,6 +65,9 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [digSellerId, setDigSellerId] = useState(null);
   const [digForm, setDigForm] = useState({ productId: '', digisellerId: '', note: '' });
   const [digMessage, setDigMessage] = useState('');
+  const [digRateState, setDigRateState] = useState({ lastRun: null, samples: [] });
+  const [digRateLoading, setDigRateLoading] = useState(false);
+  const [digRateMessage, setDigRateMessage] = useState('');
 
   // Auth check
   useEffect(() => {
@@ -110,6 +115,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setDigTotal(data.total || 0);
       setDigPage(data.page || 1);
       setDigSellerId(data.sellerId || null);
+      const rates = await fetchDigisellerRates();
+      setDigRateState(rates || { lastRun: null, samples: [] });
     } catch { /* ignore */ }
   }, []);
 
@@ -185,6 +192,20 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       loadDigiseller(digPage, digSearch);
     } catch (err) {
       setDigMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleRefreshDigRates = async () => {
+    setDigRateLoading(true);
+    setDigRateMessage('');
+    try {
+      const result = await refreshDigisellerRates();
+      setDigRateState({ lastRun: result.run || null, samples: result.samples || [] });
+      setDigRateMessage(`Курсы обновлены: ${result.samples?.length || 0} точек`);
+    } catch (err) {
+      setDigRateMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setDigRateLoading(false);
     }
   };
 
@@ -667,6 +688,77 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 {digMessage && <span className="admin-scheduler-result">{digMessage}</span>}
               </div>
             </form>
+          </div>
+
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <div>
+                <h3>Курсы Digiseller для Xbox USD</h3>
+                <p className="admin-card-desc">
+                  Сэмплы считаются через price_options: система подбирает количество USD под рублевые интервалы,
+                  сохраняет effective rate и использует его для цен в каталоге.
+                </p>
+              </div>
+              <button
+                className="admin-btn admin-btn-accent"
+                type="button"
+                onClick={handleRefreshDigRates}
+                disabled={digRateLoading}
+              >
+                {digRateLoading ? 'Обновляем...' : 'Обновить курсы'}
+              </button>
+            </div>
+
+            <dl className="admin-dl">
+              <dt>Digiseller товар</dt>
+              <dd className="admin-mono">{digRateState.digisellerId || '5837241'}</dd>
+              <dt>Последний запуск</dt>
+              <dd>{formatDate(digRateState.lastRun?.finished_at || digRateState.lastRun?.started_at)}</dd>
+              <dt>Статус</dt>
+              <dd>
+                <span className={`admin-status ${digRateState.lastRun?.status === 'success' ? 'admin-status-ok' : digRateState.lastRun?.status === 'failed' ? 'admin-status-err' : ''}`}>
+                  {digRateState.lastRun?.status || 'нет данных'}
+                </span>
+              </dd>
+              <dt>Курс</dt>
+              <dd>
+                {digRateState.lastRun?.min_rate
+                  ? `${Number(digRateState.lastRun.min_rate).toFixed(2)}-${Number(digRateState.lastRun.max_rate).toFixed(2)} ₽ за $`
+                  : 'нет данных'}
+              </dd>
+            </dl>
+
+            {digRateMessage && <p className="admin-scheduler-result">{digRateMessage}</p>}
+
+            <div className="admin-table-wrap dig-rate-table">
+              <table className="admin-table admin-table-compact">
+                <thead>
+                  <tr>
+                    <th>Интервал RUB</th>
+                    <th>USD</th>
+                    <th>Итог RUB</th>
+                    <th>Курс</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(digRateState.samples || []).slice(0, 40).map((sample) => (
+                    <tr key={sample.id || `${sample.targetRub}-${sample.requestedUsd}`}>
+                      <td>{sample.label || Number(sample.target_rub || sample.targetRub).toLocaleString('ru-RU')}</td>
+                      <td>{Number(sample.requested_usd || sample.requestedUsd).toFixed(2)} $</td>
+                      <td>{Number(sample.amount_rub || sample.amountRub).toLocaleString('ru-RU')} ₽</td>
+                      <td>{Number(sample.effective_rate || sample.effectiveRate).toFixed(2)} ₽/$</td>
+                    </tr>
+                  ))}
+                  {(!digRateState.samples || digRateState.samples.length === 0) && (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                        Курсы еще не рассчитаны. Нажмите «Обновить курсы».
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <form className="admin-search-bar" onSubmit={handleDigSearch}>

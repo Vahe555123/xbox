@@ -7,6 +7,7 @@ export default function ProductCard({ product }) {
   const {
     title,
     price,
+    priceRub,
     image,
     detailPath,
     releaseInfo,
@@ -19,6 +20,11 @@ export default function ProductCard({ product }) {
   const discountPercent = price?.discountPercent > 0
     ? Math.round(price.discountPercent)
     : null;
+  const hasRubPrice = Boolean(priceRub?.formatted);
+  const isUnavailablePrice = priceStatus === 'unavailable' || price?.formatted === 'Price not available';
+  const storePriceLabel = getStorePriceLabel(price, releaseInfo, isUnavailablePrice);
+  const shouldShowStorePrice = Boolean(storePriceLabel);
+  const fallbackPriceLabel = hasRubPrice ? null : 'Цена недоступна';
 
   const imageUrl = image
     ? `${image}?w=330&h=330`
@@ -78,13 +84,28 @@ export default function ProductCard({ product }) {
             {price?.original && price.original > price.value && (
               <span className="price-original">{price.originalFormatted}</span>
             )}
-            <span className={`price-current ${price?.value === 0 ? 'free' : ''} price-status-${priceStatus}`}>
-              {price?.formatted || releaseInfo?.label || 'Price N/A'}
-            </span>
+            {shouldShowStorePrice && (
+              <span className={`price-current ${price?.value === 0 ? 'free' : ''} price-status-${priceStatus}`}>
+                {storePriceLabel}
+              </span>
+            )}
+            {priceRub?.formatted && (
+              <span className={`price-rub ${shouldShowStorePrice ? '' : 'price-rub-primary'}`}>{priceRub.formatted}</span>
+            )}
+            {!shouldShowStorePrice && fallbackPriceLabel && (
+              <span className={`price-current price-status-${priceStatus}`}>{fallbackPriceLabel}</span>
+            )}
           </div>
         </div>
         </Link>
       </div>
     </article>
   );
+}
+
+function getStorePriceLabel(price, releaseInfo, isUnavailablePrice) {
+  if (isUnavailablePrice) return null;
+  if (price?.value === 0) return 'Бесплатно';
+  if (price?.status === 'unreleased' || releaseInfo?.status === 'unreleased') return 'Еще не вышла';
+  return price?.formatted || releaseInfo?.label || null;
 }
