@@ -174,3 +174,20 @@ export async function triggerDealCheck() {
   const { data } = await api.post('/admin/deal-check');
   return data;
 }
+
+export async function fetchDigisellerMappings({ page = 1, limit = 50, search = '' } = {}) {
+  const params = { page, limit };
+  if (search) params.search = search;
+  const { data } = await api.get('/admin/digiseller', { params });
+  return data;
+}
+
+export async function saveDigisellerMapping({ productId, digisellerId, note }) {
+  const { data } = await api.post('/admin/digiseller', { productId, digisellerId, note });
+  return data.item;
+}
+
+export async function deleteDigisellerMapping(productId) {
+  const { data } = await api.delete(`/admin/digiseller/${encodeURIComponent(productId)}`);
+  return data;
+}

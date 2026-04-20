@@ -236,11 +236,11 @@ export default function GameDetailPage() {
             </div>
             <a
               className="ps-buy-button"
-              href={data.officialStoreUrl || '#'}
+              href={data.digisellerPayUrl || data.officialStoreUrl || '#'}
               target="_blank"
               rel="noopener noreferrer"
             >
-              Купить
+              {data.digisellerPayUrl ? 'Купить и открыть чат' : 'Купить'}
             </a>
           </div>
 

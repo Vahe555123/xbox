@@ -78,6 +78,11 @@ const config = {
       .split(',').map((id) => id.trim()).filter(Boolean),
     dealCheckIntervalHours: parseFloat(process.env.DEAL_CHECK_INTERVAL_HOURS) || 24,
   },
+
+  digiseller: {
+    sellerId: process.env.DIGISELLER_SELLER_ID || '',
+    payBaseUrl: process.env.DIGISELLER_PAY_BASE_URL || 'https://www.oplata.info/asp2/pay_wm.asp',
+  },
 };
 
 module.exports = config;

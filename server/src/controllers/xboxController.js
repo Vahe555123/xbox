@@ -4,6 +4,7 @@ const { mapProductDetail } = require('../mappers/productDetailMapper');
 const { mapRelatedProducts } = require('../mappers/relatedProductMapper');
 const { parseSearchParams } = require('../utils/queryParams');
 const { AppError } = require('../utils/errorFormatter');
+const { getMapping, buildPayUrl } = require('../services/digisellerService');
 const logger = require('../utils/logger');
 
 async function searchXbox(req, res, next) {
@@ -62,6 +63,15 @@ async function getProductDetail(req, res, next) {
 
     const raw = await getProductById(productId);
     const product = mapProductDetail(raw);
+
+    const mapping = await getMapping(product.id).catch(() => null);
+    if (mapping) {
+      product.digisellerId = mapping.digiseller_id;
+      product.digisellerPayUrl = buildPayUrl(mapping.digiseller_id);
+    } else {
+      product.digisellerId = null;
+      product.digisellerPayUrl = null;
+    }
 
     res.json({
       success: true,

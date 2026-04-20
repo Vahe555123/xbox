@@ -72,6 +72,14 @@ async function initDb() {
       ON oauth_sessions (expires_at);
     CREATE INDEX IF NOT EXISTS idx_favorites_user_updated_at
       ON favorites (user_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS digiseller_products (
+      product_id TEXT PRIMARY KEY,
+      digiseller_id BIGINT NOT NULL,
+      note TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 
   logger.info('PostgreSQL schema ready');
