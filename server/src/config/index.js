@@ -86,6 +86,7 @@ const config = {
     failPageUrl: process.env.DIGISELLER_FAIL_PAGE_URL || '',
     typeCurrency: process.env.DIGISELLER_TYPE_CURRENCY || 'API_17432_USD',
     defaultProductId: parseInt(process.env.DIGISELLER_DEFAULT_PRODUCT_ID, 10) || 5837241,
+    keyActivationProductId: parseInt(process.env.DIGISELLER_KEY_ACTIVATION_PRODUCT_ID, 10) || 5262264,
     maxUnitCount: parseFloat(process.env.DIGISELLER_MAX_UNIT_COUNT) || 300,
   },
 };

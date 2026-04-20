@@ -49,6 +49,44 @@ function buildPayUrl(digisellerId, { unitCount, buyerEmail } = {}) {
   return url.toString();
 }
 
+const GAME_CURRENCY_PRODUCT_KINDS = new Set([
+  'Consumable',
+  'UnmanagedConsumable',
+]);
+
+const GAME_CURRENCY_CATEGORY_PATTERNS = [
+  /\bvirtual\s+currency\b/i,
+  /\bin[-\s]?game\s+currency\b/i,
+  /\bcurrency\b/i,
+  /\bcoins?\b/i,
+  /\bcredits?\b/i,
+];
+
+function isGameCurrencyProduct(product) {
+  if (!product) return false;
+  const kind = product.productKind || product.ProductKind;
+  if (kind && GAME_CURRENCY_PRODUCT_KINDS.has(kind)) return true;
+  const haystacks = [
+    product.category,
+    product.subcategory,
+    ...(Array.isArray(product.categories) ? product.categories : []),
+  ].filter(Boolean);
+  for (const value of haystacks) {
+    const str = String(value);
+    if (GAME_CURRENCY_CATEGORY_PATTERNS.some((re) => re.test(str))) return true;
+  }
+  return false;
+}
+
+function buildKeyActivationPayUrl(product) {
+  const id = config.digiseller.keyActivationProductId;
+  const sellerId = config.digiseller.sellerId;
+  if (!id || !sellerId) return null;
+  if (isGameCurrencyProduct(product)) return null;
+  const base = config.digiseller.payBaseUrl;
+  return `${base}?id_d=${encodeURIComponent(id)}&ai=${encodeURIComponent(sellerId)}&_ow=0`;
+}
+
 function buildFullPaymentUrl(redirectUrl) {
   if (!redirectUrl) return null;
   if (/^https?:\/\//i.test(redirectUrl)) return redirectUrl;
@@ -649,6 +687,8 @@ async function deleteMapping(productId) {
 
 module.exports = {
   buildPayUrl,
+  buildKeyActivationPayUrl,
+  isGameCurrencyProduct,
   getMapping,
   getMappingsByProductIds,
   fetchRubPrice,

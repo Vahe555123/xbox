@@ -8,7 +8,14 @@ const {
   enrichProductWithRub,
   enrichProductsWithRub,
   createPurchasePaymentUrl,
+  buildKeyActivationPayUrl,
 } = require('../services/digisellerService');
+
+function assignKeyActivationUrl(product) {
+  if (!product) return product;
+  product.keyActivationPayUrl = buildKeyActivationPayUrl(product);
+  return product;
+}
 const {
   getPurchaseSettingsForCheckout,
   updatePurchaseSettings,
@@ -42,6 +49,7 @@ async function searchXbox(req, res, next) {
 
     await enrichProductsWithRub(result.products).catch((e) =>
       logger.warn('RUB enrichment failed', { message: e.message }));
+    (result.products || []).forEach(assignKeyActivationUrl);
 
     res.json({
       success: true,
@@ -79,6 +87,7 @@ async function getProductDetail(req, res, next) {
     product.digisellerId = product.digisellerId || null;
     product.digisellerPayUrl = product.digisellerPayUrl || null;
     product.priceRub = product.priceRub || null;
+    assignKeyActivationUrl(product);
 
     res.json({
       success: true,
@@ -202,6 +211,7 @@ async function getRelatedProducts(req, res, next) {
 
     await enrichProductsWithRub(products).catch((e) =>
       logger.warn('RUB enrichment failed', { message: e.message }));
+    products.forEach(assignKeyActivationUrl);
 
     res.json({
       success: true,

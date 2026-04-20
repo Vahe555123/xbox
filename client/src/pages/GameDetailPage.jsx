@@ -395,14 +395,26 @@ export default function GameDetailPage() {
                 <strong className="ps-price-unavailable">{fallbackPriceLabel}</strong>
               )}
             </div>
-            <button
-              className="ps-buy-button"
-              type="button"
-              onClick={handleBuyClick}
-              disabled={purchaseLoading || (!data.digisellerId && !data.officialStoreUrl)}
-            >
-              {purchaseLoading ? 'Готовим ссылку...' : 'Купить'}
-            </button>
+            <div className="ps-buy-actions">
+              <button
+                className="ps-buy-button"
+                type="button"
+                onClick={handleBuyClick}
+                disabled={purchaseLoading || (!data.digisellerId && !data.officialStoreUrl)}
+              >
+                {purchaseLoading ? 'Готовим ссылку...' : 'Купить'}
+              </button>
+              {data.keyActivationPayUrl && (
+                <a
+                  className="ps-buy-button ps-buy-button-secondary"
+                  href={data.keyActivationPayUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Купить ключ активации
+                </a>
+              )}
+            </div>
           </div>
 
           <div className="ps-chip-row">
