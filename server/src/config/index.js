@@ -98,6 +98,7 @@ const config = {
     apiKey: process.env.DIGISELLER_API_KEY || '',
     cartBaseUrl: process.env.DIGISELLER_CART_BASE_URL || 'https://shop.digiseller.ru',
     cartCurrency: process.env.DIGISELLER_CART_CURRENCY || 'API_17432_RUB',
+    cartPaymentCurrency: process.env.DIGISELLER_CART_PAYMENT_CURRENCY || 'API_5020_RUB',
     payApiBaseUrl: process.env.DIGISELLER_PAY_API_BASE_URL || 'https://www.oplata.info/asp2/pay_api.asp',
   },
 };

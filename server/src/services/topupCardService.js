@@ -571,12 +571,20 @@ async function getPurchaseOptionsId({
 function buildCartPayUrl(cartUid, { purchaseEmail } = {}) {
   const sellerId = config.digiseller.sellerId;
   if (!cartUid || !sellerId) return null;
-  const url = new URL(`${OPLATA_BASE_URL}/asp2/pay_cart.asp`);
+  const url = new URL(config.digiseller.payApiBaseUrl || `${OPLATA_BASE_URL}/asp2/pay_api.asp`);
+  url.searchParams.set('id_d', '0');
+  url.searchParams.set('id_po', '0');
   url.searchParams.set('cart_uid', cartUid);
   url.searchParams.set('ai', String(sellerId));
-  url.searchParams.set('curr', 'RUR');
+  url.searchParams.set('ain', '');
+  url.searchParams.set('curr', config.digiseller.cartPaymentCurrency || 'API_5020_RUB');
   url.searchParams.set('lang', 'ru-RU');
+  url.searchParams.set('digiuid', randomUUID().toUpperCase());
   url.searchParams.set('failpage', getFailPageForTopup());
+  url.searchParams.set('_ow', '0');
+  url.searchParams.set('_ids_shop', String(sellerId));
+  url.searchParams.set('item_cnt', '');
+  url.searchParams.set('promocode', '');
   if (purchaseEmail) url.searchParams.set('email', purchaseEmail);
   return url.toString();
 }
@@ -783,16 +791,19 @@ async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp } = {}) {
     const addResults = [];
     for (const item of combo.items) {
       const card = cardMap.get(item.usdValue);
-      const result = await addItemToCart(cartUid || '', {
-        card,
-        quantity: item.count,
-        optionCategoryId: state.optionCategoryId,
-        purchaseEmail,
-        buyerIp,
-      });
-      addResults.push(result);
-      if (!result.ok) break;
-      cartUid = result.cartUid;
+      for (let i = 0; i < item.count; i += 1) {
+        const result = await addItemToCart(cartUid || '', {
+          card,
+          quantity: 1,
+          optionCategoryId: state.optionCategoryId,
+          purchaseEmail,
+          buyerIp,
+        });
+        addResults.push(result);
+        if (!result.ok) break;
+        cartUid = result.cartUid;
+      }
+      if (addResults.some((r) => !r.ok)) break;
     }
     const failures = addResults.filter((r) => !r.ok);
     if (failures.length === 0 && cartUid) {
