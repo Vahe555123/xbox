@@ -166,12 +166,17 @@ function parseTopupHtml(html) {
   if (!html) return { categoryId: null, options: [] };
 
   const radioRegex = /<input\b[^>]*type=["']radio["'][^>]*>/gi;
+  const radios = [];
+  let m;
+  while ((m = radioRegex.exec(html)) !== null) {
+    radios.push({ tag: m[0], start: m.index, end: radioRegex.lastIndex });
+  }
+
   const options = [];
   let categoryId = null;
-  let match;
 
-  while ((match = radioRegex.exec(html)) !== null) {
-    const tag = match[0];
+  for (let i = 0; i < radios.length; i += 1) {
+    const { tag, end } = radios[i];
     const nameMatch = tag.match(/name=["']?Option_radio_(\d+)["']?/i);
     if (!nameMatch) continue;
     const catId = nameMatch[1];
@@ -181,17 +186,20 @@ function parseTopupHtml(html) {
     if (!valueMatch) continue;
     const optionId = valueMatch[1];
 
-    const startIdx = match.index;
-    const endIdx = Math.min(html.length, radioRegex.lastIndex + 600);
-    const context = html.slice(Math.max(0, startIdx - 200), endIdx);
+    // Label for this radio is strictly between this tag and the next radio (bounded).
+    const nextStart = i + 1 < radios.length ? radios[i + 1].start : html.length;
+    const contextEnd = Math.min(nextStart, end + 600);
+    const plainContext = stripTags(html.slice(end, contextEnd));
 
-    const usdMatch = context.match(/\$\s*(\d{1,3})\b|\b(\d{1,3})\s*(?:USD|\$)\b/i);
+    // "5 USD", "10 USD" etc — word-boundary protects against substring matches.
+    const usdMatch = plainContext.match(/\b(\d{1,3})\s*USD\b/i)
+      || plainContext.match(/\$\s*(\d{1,3})\b/);
     if (!usdMatch) continue;
-    const usd = parseInt(usdMatch[1] || usdMatch[2], 10);
+    const usd = parseInt(usdMatch[1], 10);
     if (!ALLOWED_DENOMINATIONS.includes(usd)) continue;
 
-    const priceMatch = context.match(/\+\s*([\d\s.,]+)\s*(?:RUB|руб|₽)/i)
-      || context.match(/\(\s*([\d\s.,]+)\s*(?:RUB|руб|₽)\s*\)/i);
+    const priceMatch = plainContext.match(/\+\s*([\d\s.,]+)\s*(?:RUB|руб|₽)/i)
+      || plainContext.match(/\(\s*([\d\s.,]+)\s*(?:RUB|руб|₽)\s*\)/i);
     let priceRub = null;
     if (priceMatch) {
       const cleaned = priceMatch[1].replace(/[\s.]/g, '').replace(',', '.');
@@ -199,12 +207,10 @@ function parseTopupHtml(html) {
       if (Number.isFinite(parsed)) priceRub = Math.round(parsed);
     }
 
-    const plainContext = stripTags(context);
-    const outOfStock = /нет\s+в\s+налич|не\s*в\s*налич|out\s+of\s+stock|недоступ/i.test(plainContext)
+    const outOfStock = /нет\s+в\s+налич|out\s+of\s+stock|недоступ/i.test(plainContext)
       || /disabled/i.test(tag);
 
-    const labelMatch = plainContext.match(new RegExp(`\\$\\s*${usd}\\b[^()]*`, 'i'));
-    const label = labelMatch ? labelMatch[0].trim().slice(0, 120) : `$${usd}`;
+    const label = plainContext.slice(0, 120).trim() || `$${usd}`;
 
     options.push({
       categoryId: catId,
@@ -219,7 +225,9 @@ function parseTopupHtml(html) {
   const deduped = new Map();
   for (const opt of options) {
     const existing = deduped.get(opt.usdValue);
-    if (!existing || (opt.priceRub && !existing.priceRub)) deduped.set(opt.usdValue, opt);
+    // Prefer the entry that actually has a price; otherwise keep the first seen.
+    if (!existing) deduped.set(opt.usdValue, opt);
+    else if (opt.priceRub && !existing.priceRub) deduped.set(opt.usdValue, opt);
   }
   return { categoryId, options: [...deduped.values()].sort((a, b) => a.usdValue - b.usdValue) };
 }
