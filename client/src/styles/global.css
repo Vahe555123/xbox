@@ -1910,6 +1910,51 @@ img {
   box-shadow: 0 0 0 3px rgba(125, 220, 255, 0.1);
 }
 
+.profile-payment-modes {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.profile-payment-mode,
+.profile-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  border-radius: 8px;
+}
+
+.profile-payment-mode {
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.profile-payment-mode.active {
+  border-color: rgba(143, 240, 164, 0.4);
+  background: rgba(143, 240, 164, 0.08);
+}
+
+.profile-payment-mode.disabled {
+  opacity: 0.48;
+}
+
+.profile-payment-mode input,
+.profile-checkbox-row input {
+  width: auto;
+  height: auto;
+  margin-top: 0.2rem;
+}
+
+.profile-payment-mode strong,
+.profile-payment-mode small {
+  display: block;
+}
+
+.profile-payment-mode small {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
 .profile-password-form button,
 .profile-logout-btn {
   height: 46px;
@@ -3102,6 +3147,226 @@ img {
   opacity: 0.7;
 }
 
+.purchase-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  padding: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.76);
+  backdrop-filter: blur(10px);
+}
+
+.purchase-modal {
+  width: min(720px, 100%);
+  max-height: min(92vh, 820px);
+  overflow: auto;
+  position: relative;
+  padding: 1.35rem;
+  border-radius: 8px;
+  border: 1px solid rgba(143, 240, 164, 0.2);
+  background:
+    linear-gradient(145deg, rgba(20, 28, 31, 0.98), rgba(8, 12, 15, 0.98)),
+    #0b1013;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
+}
+
+.purchase-modal-close {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.9rem;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.purchase-modal-head {
+  padding-right: 2.4rem;
+  margin-bottom: 1rem;
+}
+
+.purchase-modal-head h2 {
+  margin: 0.2rem 0;
+  font-size: 1.55rem;
+  line-height: 1.15;
+}
+
+.purchase-modal-head p:not(.profile-kicker),
+.purchase-muted {
+  color: var(--text-muted);
+}
+
+.purchase-modal-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.purchase-modal-section {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.purchase-modal-section h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.purchase-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.purchase-mode-card {
+  min-height: 86px;
+  display: flex;
+  gap: 0.65rem;
+  padding: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.purchase-mode-card.active {
+  border-color: rgba(143, 240, 164, 0.42);
+  background: rgba(143, 240, 164, 0.08);
+}
+
+.purchase-mode-card.disabled {
+  opacity: 0.45;
+}
+
+.purchase-mode-card input {
+  margin-top: 0.18rem;
+}
+
+.purchase-mode-card strong,
+.purchase-mode-card small {
+  display: block;
+}
+
+.purchase-mode-card small {
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.purchase-saved-box {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid rgba(143, 240, 164, 0.28);
+  background: rgba(143, 240, 164, 0.08);
+}
+
+.purchase-saved-box span {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.purchase-data-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.purchase-data-row span {
+  color: var(--text-muted);
+}
+
+.purchase-modal-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.purchase-modal-form input[type="email"],
+.purchase-modal-form input[type="password"] {
+  min-height: 44px;
+  width: 100%;
+  padding: 0 0.8rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.purchase-checkbox-row {
+  display: flex !important;
+  grid-template-columns: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text-muted);
+}
+
+.purchase-checkbox-row input {
+  width: auto;
+}
+
+.purchase-primary,
+.purchase-secondary {
+  min-height: 46px;
+  border-radius: 8px;
+  padding: 0 1rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.purchase-primary {
+  border: 0;
+  background: #8ff0a4;
+  color: #061009;
+}
+
+.purchase-primary:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.purchase-secondary {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.purchase-result {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.purchase-result p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.purchase-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.purchase-copy-message {
+  color: #8ff0a4;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
 .ps-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -4016,6 +4281,28 @@ code {
 }
 
 @media (max-width: 760px) {
+  .purchase-modal-backdrop {
+    align-items: flex-start;
+    padding: 0.75rem;
+  }
+
+  .purchase-modal {
+    padding: 1rem;
+  }
+
+  .purchase-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .purchase-result-actions {
+    flex-direction: column;
+  }
+
+  .purchase-primary,
+  .purchase-secondary {
+    width: 100%;
+  }
+
   .profile-modal-backdrop {
     align-items: flex-start;
     padding: 0.75rem;

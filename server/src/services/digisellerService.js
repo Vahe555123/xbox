@@ -75,6 +75,18 @@ function createPaymentError(message, statusCode = 400) {
   return error;
 }
 
+function normalizePaymentMode(mode) {
+  if (!mode || mode === 'oplata') return 'oplata';
+  throw createPaymentError('Этот способ оплаты пока недоступен', 400);
+}
+
+function appendPaymentQuery(url, values = {}) {
+  if (!url) return url;
+  const target = new URL(url);
+  if (values.email) target.searchParams.set('email', values.email);
+  return target.toString();
+}
+
 function formatRub(value) {
   if (value == null || !Number.isFinite(Number(value))) return null;
   try {
@@ -290,6 +302,8 @@ async function createPurchasePaymentUrl(product, {
   gameName,
   accountEmail,
   accountPassword,
+  purchaseEmail,
+  paymentMode = 'oplata',
 } = {}) {
   if (!product) throw createPaymentError('Product is required');
   if (!digisellerId) throw createPaymentError('Digiseller product id is not configured', 500);
@@ -297,9 +311,14 @@ async function createPurchasePaymentUrl(product, {
   const cleanGameName = normalizePaymentText(gameName || product.title || product.name);
   const cleanAccountEmail = normalizePaymentText(accountEmail);
   const cleanAccountPassword = String(accountPassword || '').trim();
+  const cleanPurchaseEmail = normalizePaymentText(purchaseEmail);
+  const cleanPaymentMode = normalizePaymentMode(paymentMode);
   if (!cleanGameName) throw createPaymentError('Название игры обязательно');
   if (!cleanAccountEmail || !cleanAccountPassword) {
     throw createPaymentError('Email и пароль Xbox аккаунта обязательны для создания ссылки оплаты');
+  }
+  if (!cleanPurchaseEmail) {
+    throw createPaymentError('Email для покупки обязателен для создания ссылки оплаты');
   }
 
   const unitCount = getUsdPriceValue(product);
@@ -333,6 +352,7 @@ async function createPurchasePaymentUrl(product, {
     unit_cnt: String(unitCount),
     unit_amount: String(amountRub),
     product_cnt: String(unitCount),
+    Email: cleanPurchaseEmail,
     [`Option_text_${XBOX_GAME_NAME_OPTION}`]: cleanGameName,
     [`Option_text_${XBOX_ACCOUNT_EMAIL_OPTION}`]: cleanAccountEmail,
     [`Option_text_${XBOX_ACCOUNT_PASSWORD_OPTION}`]: cleanAccountPassword,
@@ -345,7 +365,9 @@ async function createPurchasePaymentUrl(product, {
       maxRedirects: 0,
       validateStatus: (status) => status >= 200 && status < 400,
     });
-    const paymentUrl = buildFullPaymentUrl(response.headers.location);
+    const paymentUrl = appendPaymentQuery(buildFullPaymentUrl(response.headers.location), {
+      email: cleanPurchaseEmail,
+    });
     if (!paymentUrl || !/pay_api\.asp/i.test(paymentUrl)) {
       logger.warn('Digiseller payment returned non-final redirect', {
         digisellerId,
@@ -357,8 +379,9 @@ async function createPurchasePaymentUrl(product, {
 
     return {
       paymentUrl,
-      directUrl: buildPayUrl(digisellerId, { unitCount, buyerEmail: cleanAccountEmail }),
+      directUrl: buildPayUrl(digisellerId, { unitCount, buyerEmail: cleanPurchaseEmail }),
       provider: 'oplata',
+      paymentMode: cleanPaymentMode,
       paymentType: 'account_purchase',
       digisellerId,
       unitCount,
@@ -366,6 +389,7 @@ async function createPurchasePaymentUrl(product, {
       amountRubFormatted: formatRub(amountRub),
       currency: 'RUB',
       gameName: cleanGameName,
+      purchaseEmail: cleanPurchaseEmail,
     };
   } catch (err) {
     if (err.statusCode) throw err;

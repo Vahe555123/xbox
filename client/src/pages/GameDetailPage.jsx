@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { createProductPurchase, fetchProductDetail, fetchRelatedProducts } from '../services/api';
+import { createProductPurchase, fetchProductDetail, fetchProfile, fetchRelatedProducts } from '../services/api';
 import Spinner from '../components/Spinner';
 import ErrorMessage from '../components/ErrorMessage';
 import RelatedProductCard from '../components/RelatedProductCard';
@@ -39,6 +39,28 @@ const CAPABILITY_ICONS = {
   CapabilityXboxEnhanced: 'ONE X',
   XPA: 'XPA',
 };
+
+const PAYMENT_MODES = [
+  { id: 'oplata', title: 'Oplata.info', description: 'Генерация ссылки на оплату', enabled: true },
+  { id: 'mode2', title: 'Режим 2', description: 'Скоро добавим', enabled: false },
+  { id: 'mode3', title: 'Режим 3', description: 'Скоро добавим', enabled: false },
+];
+
+const EMPTY_PURCHASE_FORM = {
+  purchaseEmail: '',
+  accountEmail: '',
+  accountPassword: '',
+  paymentMode: 'oplata',
+  saveToProfile: false,
+};
+
+function readStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem('auth:user') || 'null');
+  } catch {
+    return null;
+  }
+}
 
 function cleanText(value) {
   if (!value) return null;
@@ -116,9 +138,14 @@ export default function GameDetailPage() {
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('description');
   const [purchaseOpen, setPurchaseOpen] = useState(false);
-  const [purchaseForm, setPurchaseForm] = useState({ accountEmail: '', accountPassword: '' });
+  const [purchaseForm, setPurchaseForm] = useState(EMPTY_PURCHASE_FORM);
+  const [purchaseProfile, setPurchaseProfile] = useState(null);
+  const [purchaseProfileLoading, setPurchaseProfileLoading] = useState(false);
+  const [purchaseCanSave, setPurchaseCanSave] = useState(false);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [purchaseError, setPurchaseError] = useState(null);
+  const [purchaseResult, setPurchaseResult] = useState(null);
+  const [copyMessage, setCopyMessage] = useState('');
   const scrollRefs = useRef({});
 
   useEffect(() => {
@@ -128,9 +155,14 @@ export default function GameDetailPage() {
     setError(null);
     setRelatedProducts(null);
     setPurchaseOpen(false);
-    setPurchaseForm({ accountEmail: '', accountPassword: '' });
+    setPurchaseForm(EMPTY_PURCHASE_FORM);
+    setPurchaseProfile(null);
+    setPurchaseProfileLoading(false);
+    setPurchaseCanSave(false);
     setPurchaseLoading(false);
     setPurchaseError(null);
+    setPurchaseResult(null);
+    setCopyMessage('');
 
     let cancelled = false;
     fetchProductDetail(productId)
@@ -166,9 +198,10 @@ export default function GameDetailPage() {
   };
 
   const handlePurchaseFieldChange = (event) => {
-    const { name, value } = event.target;
-    setPurchaseForm((current) => ({ ...current, [name]: value }));
+    const { name, value, type, checked } = event.target;
+    setPurchaseForm((current) => ({ ...current, [name]: type === 'checkbox' ? checked : value }));
     setPurchaseError(null);
+    setCopyMessage('');
   };
 
   if (loading) return <Spinner />;
@@ -217,39 +250,104 @@ export default function GameDetailPage() {
     { id: 'other', label: 'Другое' },
   ];
 
-  const handleBuyClick = () => {
+  const purchaseSettings = purchaseProfile?.purchaseSettings || {};
+  const hasSavedPurchaseEmail = Boolean(purchaseSettings.purchaseEmail);
+  const hasSavedAccountEmail = Boolean(purchaseSettings.xboxAccountEmail);
+  const hasSavedAccountPassword = Boolean(purchaseSettings.hasXboxAccountPassword);
+  const needsPurchaseEmail = !hasSavedPurchaseEmail;
+  const needsAccountEmail = !hasSavedAccountEmail;
+  const needsAccountPassword = !hasSavedAccountPassword;
+  const hasMissingPurchaseFields = needsPurchaseEmail || needsAccountEmail || needsAccountPassword;
+
+  const handleBuyClick = async () => {
     if (!data.digisellerId && data.officialStoreUrl) {
       window.location.assign(data.officialStoreUrl);
       return;
     }
+    const storedUser = readStoredUser();
     setPurchaseOpen(true);
+    setPurchaseResult(null);
     setPurchaseError(null);
+    setCopyMessage('');
+    setPurchaseProfile(null);
+    setPurchaseCanSave(Boolean(storedUser));
+    setPurchaseForm({ ...EMPTY_PURCHASE_FORM, saveToProfile: Boolean(storedUser) });
+
+    if (!storedUser) return;
+    setPurchaseProfileLoading(true);
+    try {
+      const profile = await fetchProfile();
+      const settings = profile.purchaseSettings || {};
+      setPurchaseProfile(profile);
+      const settingsMissing = !settings.purchaseEmail || !settings.xboxAccountEmail || !settings.hasXboxAccountPassword;
+      setPurchaseForm((current) => ({
+        ...current,
+        paymentMode: settings.paymentMode || 'oplata',
+        saveToProfile: settingsMissing,
+      }));
+    } catch {
+      setPurchaseProfile(null);
+      setPurchaseCanSave(false);
+      setPurchaseForm((current) => ({ ...current, saveToProfile: false }));
+    } finally {
+      setPurchaseProfileLoading(false);
+    }
   };
 
   const handlePurchaseSubmit = async (event) => {
     event.preventDefault();
+    const purchaseEmail = purchaseForm.purchaseEmail.trim();
     const accountEmail = purchaseForm.accountEmail.trim();
     const accountPassword = purchaseForm.accountPassword;
-    if (!accountEmail || !accountPassword) {
-      setPurchaseError('Введите email и пароль Xbox аккаунта.');
+    if (needsPurchaseEmail && !purchaseEmail) {
+      setPurchaseError('Введите email для покупки.');
+      return;
+    }
+    if (needsAccountEmail && !accountEmail) {
+      setPurchaseError('Введите email аккаунта Xbox.');
+      return;
+    }
+    if (needsAccountPassword && !accountPassword) {
+      setPurchaseError('Введите пароль аккаунта Xbox.');
       return;
     }
 
     setPurchaseLoading(true);
     setPurchaseError(null);
+    setPurchaseResult(null);
+    setCopyMessage('');
     try {
       const result = await createProductPurchase(data.id, {
         gameName: data.title,
-        accountEmail,
-        accountPassword,
+        purchaseEmail: needsPurchaseEmail ? purchaseEmail : undefined,
+        accountEmail: needsAccountEmail ? accountEmail : undefined,
+        accountPassword: needsAccountPassword ? accountPassword : undefined,
+        paymentMode: purchaseForm.paymentMode,
+        saveToProfile: purchaseCanSave && purchaseForm.saveToProfile,
       });
       const paymentUrl = result.paymentUrl || result.payment?.paymentUrl;
       if (!paymentUrl) throw new Error('Ссылка оплаты не получена');
-      window.location.assign(paymentUrl);
+      setPurchaseResult({ ...result.payment, paymentUrl });
     } catch (err) {
       setPurchaseError(err.response?.data?.error?.message || err.message || 'Не удалось подготовить оплату.');
     } finally {
       setPurchaseLoading(false);
+    }
+  };
+
+  const handleCopyPaymentLink = async () => {
+    if (!purchaseResult?.paymentUrl) return;
+    try {
+      await navigator.clipboard.writeText(purchaseResult.paymentUrl);
+      setCopyMessage('Ссылка скопирована');
+    } catch {
+      const input = document.createElement('textarea');
+      input.value = purchaseResult.paymentUrl;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setCopyMessage('Ссылка скопирована');
     }
   };
 
@@ -307,55 +405,6 @@ export default function GameDetailPage() {
             </button>
           </div>
 
-          {purchaseOpen && (
-            <form className="ps-checkout-form" onSubmit={handlePurchaseSubmit}>
-              <div className="ps-checkout-head">
-                <div>
-                  <strong>Данные для покупки</strong>
-                  <span>Ссылка оплаты создается через Oplata.info.</span>
-                </div>
-                <button
-                  className="ps-checkout-close"
-                  type="button"
-                  onClick={() => setPurchaseOpen(false)}
-                  disabled={purchaseLoading}
-                  aria-label="Закрыть"
-                >
-                  x
-                </button>
-              </div>
-              <label>
-                Email аккаунта Xbox
-                <input
-                  name="accountEmail"
-                  type="email"
-                  value={purchaseForm.accountEmail}
-                  onChange={handlePurchaseFieldChange}
-                  placeholder="mail@example.com"
-                  autoComplete="username"
-                  required
-                />
-              </label>
-              <label>
-                Пароль аккаунта Xbox
-                <input
-                  name="accountPassword"
-                  type="password"
-                  value={purchaseForm.accountPassword}
-                  onChange={handlePurchaseFieldChange}
-                  placeholder="Пароль"
-                  autoComplete="current-password"
-                  required
-                />
-              </label>
-              <p className="ps-checkout-note">Данные не сохраняются в базе, они нужны только для создания ссылки оплаты.</p>
-              {purchaseError && <p className="ps-purchase-error">{purchaseError}</p>}
-              <button className="ps-checkout-submit" type="submit" disabled={purchaseLoading}>
-                {purchaseLoading ? 'Создаем ссылку...' : 'Перейти к оплате'}
-              </button>
-            </form>
-          )}
-
           <div className="ps-chip-row">
             {(data.playWith || []).map((platform) => <span key={platform} className="ps-chip">{platform}</span>)}
             <span className={`ps-chip ${data.hasRussianLanguage ? 'ps-chip-good' : ''}`}>{getLanguageLabel(data.russianLanguageMode)}</span>
@@ -382,6 +431,170 @@ export default function GameDetailPage() {
           </dl>
         </div>
       </section>
+
+      {purchaseOpen && (
+        <div className="purchase-modal-backdrop" onClick={() => !purchaseLoading && setPurchaseOpen(false)}>
+          <div className="purchase-modal" onClick={(event) => event.stopPropagation()}>
+            <button
+              className="purchase-modal-close"
+              type="button"
+              onClick={() => setPurchaseOpen(false)}
+              disabled={purchaseLoading}
+              aria-label="Закрыть"
+            >
+              x
+            </button>
+
+            <div className="purchase-modal-head">
+              <p className="profile-kicker">Покупка</p>
+              <h2>{data.title}</h2>
+              <p>{data.priceRub?.formatted || storePriceLabel || 'Цена будет рассчитана перед оплатой'}</p>
+            </div>
+
+            <form className="purchase-modal-form" onSubmit={handlePurchaseSubmit}>
+              <section className="purchase-modal-section">
+                <h3>Способ оплаты</h3>
+                <div className="purchase-mode-grid">
+                  {PAYMENT_MODES.map((mode) => (
+                    <label key={mode.id} className={`purchase-mode-card ${purchaseForm.paymentMode === mode.id ? 'active' : ''} ${mode.enabled ? '' : 'disabled'}`}>
+                      <input
+                        type="radio"
+                        name="paymentMode"
+                        value={mode.id}
+                        checked={purchaseForm.paymentMode === mode.id}
+                        onChange={handlePurchaseFieldChange}
+                        disabled={!mode.enabled || purchaseLoading}
+                      />
+                      <span>
+                        <strong>{mode.title}</strong>
+                        <small>{mode.description}</small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              <section className="purchase-modal-section">
+                <h3>Данные</h3>
+                {purchaseProfileLoading ? (
+                  <p className="purchase-muted">Проверяем сохранённые данные профиля...</p>
+                ) : (
+                  <>
+                    {!hasMissingPurchaseFields && (
+                      <div className="purchase-saved-box">
+                        <strong>Берём данные из профиля</strong>
+                        <span>Почта покупки и аккаунт Xbox уже сохранены, повторно вводить их не нужно.</span>
+                      </div>
+                    )}
+
+                    {hasSavedPurchaseEmail && (
+                      <div className="purchase-data-row">
+                        <span>Email для покупки</span>
+                        <strong>{purchaseSettings.purchaseEmail}</strong>
+                      </div>
+                    )}
+                    {hasSavedAccountEmail && (
+                      <div className="purchase-data-row">
+                        <span>Аккаунт Xbox</span>
+                        <strong>{purchaseSettings.xboxAccountEmail}</strong>
+                      </div>
+                    )}
+                    {hasSavedAccountPassword && (
+                      <div className="purchase-data-row">
+                        <span>Пароль Xbox</span>
+                        <strong>Сохранён в профиле</strong>
+                      </div>
+                    )}
+
+                    {needsPurchaseEmail && (
+                      <label>
+                        Email для покупки
+                        <input
+                          name="purchaseEmail"
+                          type="email"
+                          value={purchaseForm.purchaseEmail}
+                          onChange={handlePurchaseFieldChange}
+                          placeholder="mail@example.com"
+                          required
+                        />
+                      </label>
+                    )}
+                    {needsAccountEmail && (
+                      <label>
+                        Email аккаунта Xbox
+                        <input
+                          name="accountEmail"
+                          type="email"
+                          value={purchaseForm.accountEmail}
+                          onChange={handlePurchaseFieldChange}
+                          placeholder="xbox@example.com"
+                          autoComplete="username"
+                          required
+                        />
+                      </label>
+                    )}
+                    {needsAccountPassword && (
+                      <label>
+                        Пароль аккаунта Xbox
+                        <input
+                          name="accountPassword"
+                          type="password"
+                          value={purchaseForm.accountPassword}
+                          onChange={handlePurchaseFieldChange}
+                          placeholder="Пароль"
+                          autoComplete="current-password"
+                          required
+                        />
+                      </label>
+                    )}
+                    {purchaseCanSave && hasMissingPurchaseFields && (
+                      <label className="purchase-checkbox-row">
+                        <input
+                          name="saveToProfile"
+                          type="checkbox"
+                          checked={purchaseForm.saveToProfile}
+                          onChange={handlePurchaseFieldChange}
+                        />
+                        Сохранить эти данные в профиль
+                      </label>
+                    )}
+                  </>
+                )}
+              </section>
+
+              {purchaseError && <p className="ps-purchase-error">{purchaseError}</p>}
+
+              {purchaseResult?.paymentUrl ? (
+                <div className="purchase-result">
+                  <strong>Ссылка готова</strong>
+                  <p>Можно открыть страницу оплаты или скопировать ссылку.</p>
+                  <div className="purchase-result-actions">
+                    <button
+                      className="purchase-primary"
+                      type="button"
+                      onClick={() => window.location.assign(purchaseResult.paymentUrl)}
+                    >
+                      Открыть оплату
+                    </button>
+                    <button className="purchase-secondary" type="button" onClick={handleCopyPaymentLink}>
+                      Копировать ссылку
+                    </button>
+                  </div>
+                  {copyMessage && <span className="purchase-copy-message">{copyMessage}</span>}
+                </div>
+              ) : (
+                <button
+                  className="purchase-primary"
+                  type="submit"
+                  disabled={purchaseLoading || purchaseProfileLoading}
+                >
+                  {purchaseLoading ? 'Генерируем ссылку...' : 'Сгенерировать ссылку'}
+                </button>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
 
       <nav className="store-tabs" aria-label="Разделы товара">
         {tabs.map((tab) => (

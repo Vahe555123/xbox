@@ -9,11 +9,8 @@ import {
   fetchSchedulerState,
   updateSchedulerInterval,
   triggerDealCheck,
-  fetchDigisellerMappings,
   fetchDigisellerRates,
   refreshDigisellerRates,
-  saveDigisellerMapping,
-  deleteDigisellerMapping,
 } from '../services/api';
 
 function formatDate(d) {
@@ -58,13 +55,6 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [dealCheckResult, setDealCheckResult] = useState('');
 
   // Digiseller
-  const [digMappings, setDigMappings] = useState([]);
-  const [digTotal, setDigTotal] = useState(0);
-  const [digPage, setDigPage] = useState(1);
-  const [digSearch, setDigSearch] = useState('');
-  const [digSellerId, setDigSellerId] = useState(null);
-  const [digForm, setDigForm] = useState({ productId: '', digisellerId: '', note: '' });
-  const [digMessage, setDigMessage] = useState('');
   const [digRateState, setDigRateState] = useState({ lastRun: null, samples: [] });
   const [digRateLoading, setDigRateLoading] = useState(false);
   const [digRateMessage, setDigRateMessage] = useState('');
@@ -108,13 +98,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
-  const loadDigiseller = useCallback(async (page = 1, search = '') => {
+  const loadDigiseller = useCallback(async () => {
     try {
-      const data = await fetchDigisellerMappings({ page, limit: 50, search });
-      setDigMappings(data.items || []);
-      setDigTotal(data.total || 0);
-      setDigPage(data.page || 1);
-      setDigSellerId(data.sellerId || null);
       const rates = await fetchDigisellerRates();
       setDigRateState(rates || { lastRun: null, samples: [] });
     } catch { /* ignore */ }
@@ -125,7 +110,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     if (tab === 'dashboard') loadDashboard();
     else if (tab === 'users') loadUsers(1, usersSearch);
     else if (tab === 'notifications') loadNotifications(1);
-    else if (tab === 'digiseller') loadDigiseller(1, digSearch);
+    else if (tab === 'digiseller') loadDigiseller();
   }, [tab, authorized, loadDashboard, loadUsers, loadNotifications, loadDigiseller]);
 
   const handleUserSearch = (e) => {
@@ -149,50 +134,6 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setDealCheckResult('Интервал обновлён');
       setTimeout(() => setDealCheckResult(''), 3000);
     } catch { /* ignore */ }
-  };
-
-  const handleDigSearch = (e) => {
-    e.preventDefault();
-    loadDigiseller(1, digSearch);
-  };
-
-  const handleDigSave = async (e) => {
-    e.preventDefault();
-    setDigMessage('');
-    const productId = digForm.productId.trim();
-    const digisellerId = parseInt(digForm.digisellerId, 10);
-    if (!productId || !digisellerId || digisellerId <= 0) {
-      setDigMessage('Укажите productId и положительный digisellerId');
-      return;
-    }
-    try {
-      await saveDigisellerMapping({ productId, digisellerId, note: digForm.note.trim() || null });
-      setDigForm({ productId: '', digisellerId: '', note: '' });
-      setDigMessage('Сохранено');
-      loadDigiseller(digPage, digSearch);
-      setTimeout(() => setDigMessage(''), 2500);
-    } catch (err) {
-      setDigMessage('Ошибка: ' + (err.response?.data?.error || err.message));
-    }
-  };
-
-  const handleDigEdit = (item) => {
-    setDigForm({
-      productId: item.product_id,
-      digisellerId: String(item.digiseller_id),
-      note: item.note || '',
-    });
-    setDigMessage('');
-  };
-
-  const handleDigDelete = async (productId) => {
-    if (!window.confirm(`Удалить привязку для ${productId}?`)) return;
-    try {
-      await deleteDigisellerMapping(productId);
-      loadDigiseller(digPage, digSearch);
-    } catch (err) {
-      setDigMessage('Ошибка: ' + (err.response?.data?.error || err.message));
-    }
   };
 
   const handleRefreshDigRates = async () => {
@@ -638,59 +579,6 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       {tab === 'digiseller' && (
         <div className="admin-panel">
           <div className="admin-card">
-            <h3>Привязка товаров к Digiseller</h3>
-            <p className="admin-card-desc">
-              {digSellerId
-                ? <>ID продавца: <span className="admin-mono">{digSellerId}</span>. Ссылка оплаты будет собрана автоматически.</>
-                : <>Укажите <span className="admin-mono">DIGISELLER_SELLER_ID</span> в <span className="admin-mono">.env</span>, иначе ссылка не сгенерируется.</>}
-            </p>
-
-            <form className="admin-scheduler-controls" onSubmit={handleDigSave} style={{ gap: '0.75rem' }}>
-              <label className="admin-field">
-                <span>Xbox Product ID</span>
-                <input
-                  type="text"
-                  placeholder="Напр. 9NGGGPZPS1KC"
-                  value={digForm.productId}
-                  onChange={(e) => setDigForm({ ...digForm, productId: e.target.value })}
-                />
-              </label>
-              <label className="admin-field">
-                <span>Digiseller ID (id_d)</span>
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="Напр. 5837241"
-                  value={digForm.digisellerId}
-                  onChange={(e) => setDigForm({ ...digForm, digisellerId: e.target.value })}
-                />
-              </label>
-              <label className="admin-field">
-                <span>Заметка (опционально)</span>
-                <input
-                  type="text"
-                  placeholder="Название издания / комментарий"
-                  value={digForm.note}
-                  onChange={(e) => setDigForm({ ...digForm, note: e.target.value })}
-                />
-              </label>
-              <div className="admin-scheduler-action">
-                <button type="submit" className="admin-btn admin-btn-primary">Сохранить</button>
-                {digForm.productId && (
-                  <button
-                    type="button"
-                    className="admin-btn admin-btn-sm"
-                    onClick={() => setDigForm({ productId: '', digisellerId: '', note: '' })}
-                  >
-                    Очистить форму
-                  </button>
-                )}
-                {digMessage && <span className="admin-scheduler-result">{digMessage}</span>}
-              </div>
-            </form>
-          </div>
-
-          <div className="admin-card">
             <div className="admin-card-head">
               <div>
                 <h3>Курсы Digiseller для Xbox USD</h3>
@@ -761,57 +649,6 @@ export default function AdminPage({ currentUser, onLoginClick }) {
             </div>
           </div>
 
-          <form className="admin-search-bar" onSubmit={handleDigSearch}>
-            <input
-              type="text"
-              placeholder="Поиск по productId / digisellerId / заметке..."
-              value={digSearch}
-              onChange={(e) => setDigSearch(e.target.value)}
-            />
-            <button type="submit" className="admin-btn admin-btn-primary">Найти</button>
-          </form>
-
-          <p className="admin-total">Всего привязок: {digTotal}</p>
-
-          <div className="admin-table-wrap">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Product ID</th>
-                  <th>Digiseller ID</th>
-                  <th>Заметка</th>
-                  <th>Обновлено</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {digMappings.map((m) => (
-                  <tr key={m.product_id}>
-                    <td className="admin-mono">{m.product_id}</td>
-                    <td className="admin-mono">{m.digiseller_id}</td>
-                    <td>{m.note || '—'}</td>
-                    <td>{formatDate(m.updated_at)}</td>
-                    <td>
-                      <button className="admin-btn admin-btn-sm" onClick={() => handleDigEdit(m)}>Править</button>
-                      {' '}
-                      <button className="admin-btn admin-btn-sm" onClick={() => handleDigDelete(m.product_id)}>Удалить</button>
-                    </td>
-                  </tr>
-                ))}
-                {digMappings.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Привязок пока нет</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {digTotal > 50 && (
-            <div className="admin-pagination">
-              <button className="admin-btn admin-btn-sm" disabled={digPage <= 1} onClick={() => loadDigiseller(digPage - 1, digSearch)}>Назад</button>
-              <span>Стр. {digPage} / {Math.ceil(digTotal / 50)}</span>
-              <button className="admin-btn admin-btn-sm" disabled={digPage >= Math.ceil(digTotal / 50)} onClick={() => loadDigiseller(digPage + 1, digSearch)}>Вперёд</button>
-            </div>
-          )}
         </div>
       )}
     </div>

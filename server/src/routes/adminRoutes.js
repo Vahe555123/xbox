@@ -146,6 +146,7 @@ router.get('/users/:userId', requireAdmin, async (req, res, next) => {
 
     const user = userRows[0];
     delete user.password_hash;
+    delete user.xbox_account_password_encrypted;
 
     res.json({
       user,
@@ -221,23 +222,7 @@ router.post('/deal-check', requireAdmin, async (_req, res) => {
   }
 });
 
-// ==================== Digiseller mappings ====================
-
-router.get('/digiseller', requireAdmin, async (req, res, next) => {
-  try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
-    const search = (req.query.search || '').trim();
-
-    const result = await digisellerService.listMappings({ page, limit, search });
-    res.json({
-      ...result,
-      sellerId: config.digiseller.sellerId || null,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+// ==================== Digiseller rates ====================
 
 router.get('/digiseller/rates', requireAdmin, async (_req, res, next) => {
   try {
@@ -252,37 +237,6 @@ router.post('/digiseller/rates/refresh', requireAdmin, async (_req, res, next) =
   try {
     const result = await digisellerService.refreshPriceRateTable();
     res.json({ success: true, ...result });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post('/digiseller', requireAdmin, async (req, res, next) => {
-  try {
-    const productId = String(req.body.productId || '').trim();
-    const digisellerIdRaw = req.body.digisellerId;
-    const note = req.body.note != null ? String(req.body.note).trim() : null;
-
-    if (!productId) {
-      return res.status(400).json({ error: 'productId is required' });
-    }
-    const digisellerId = Number(digisellerIdRaw);
-    if (!Number.isInteger(digisellerId) || digisellerId <= 0) {
-      return res.status(400).json({ error: 'digisellerId must be a positive integer' });
-    }
-
-    const item = await digisellerService.upsertMapping({ productId, digisellerId, note });
-    res.json({ item });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.delete('/digiseller/:productId', requireAdmin, async (req, res, next) => {
-  try {
-    const ok = await digisellerService.deleteMapping(req.params.productId);
-    if (!ok) return res.status(404).json({ error: 'Mapping not found' });
-    res.json({ success: true });
   } catch (err) {
     next(err);
   }

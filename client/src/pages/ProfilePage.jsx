@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { changePassword, fetchProfile } from '../services/api';
+import { changePassword, fetchProfile, updatePurchaseSettings } from '../services/api';
 
 const PROVIDER_LABELS = {
   email: 'Email',
@@ -37,6 +37,18 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
   const [passwordMessage, setPasswordMessage] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [purchaseForm, setPurchaseForm] = useState({
+    purchaseEmail: '',
+    xboxAccountEmail: '',
+    xboxAccountPassword: '',
+    clearXboxAccountPassword: false,
+    paymentMode: 'oplata',
+  });
+  const [purchaseSavedPassword, setPurchaseSavedPassword] = useState(false);
+  const [purchaseMessage, setPurchaseMessage] = useState('');
+  const [purchaseError, setPurchaseError] = useState('');
+  const [purchaseFeedbackBlock, setPurchaseFeedbackBlock] = useState('');
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
 
   useEffect(() => {
     if (!storedUser) return;
@@ -44,7 +56,18 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
     setLoading(true);
     setError('');
     fetchProfile()
-      .then(setProfile)
+      .then((data) => {
+        setProfile(data);
+        const settings = data.purchaseSettings || {};
+        setPurchaseForm({
+          purchaseEmail: settings.purchaseEmail || '',
+          xboxAccountEmail: settings.xboxAccountEmail || '',
+          xboxAccountPassword: '',
+          clearXboxAccountPassword: false,
+          paymentMode: settings.paymentMode || 'oplata',
+        });
+        setPurchaseSavedPassword(Boolean(settings.hasXboxAccountPassword));
+      })
       .catch((err) => {
         setError(err.response?.data?.error?.message || err.message || 'Не удалось загрузить профиль');
       })
@@ -88,6 +111,50 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
     }
   };
 
+  const handlePurchaseField = (event) => {
+    const { name, value, type, checked } = event.target;
+    setPurchaseForm((current) => ({
+      ...current,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
+    setPurchaseMessage('');
+    setPurchaseError('');
+    setPurchaseFeedbackBlock('');
+  };
+
+  const submitPurchaseSettings = async (event) => {
+    event.preventDefault();
+    const feedbackBlock = event.currentTarget.dataset.settingsBlock || 'purchase';
+    setPurchaseMessage('');
+    setPurchaseError('');
+    setPurchaseFeedbackBlock(feedbackBlock);
+    setPurchaseLoading(true);
+
+    try {
+      const settings = await updatePurchaseSettings({
+        purchaseEmail: purchaseForm.purchaseEmail,
+        xboxAccountEmail: purchaseForm.xboxAccountEmail,
+        xboxAccountPassword: purchaseForm.xboxAccountPassword || undefined,
+        clearXboxAccountPassword: purchaseForm.clearXboxAccountPassword,
+        paymentMode: purchaseForm.paymentMode,
+      });
+      setPurchaseForm({
+        purchaseEmail: settings.purchaseEmail || '',
+        xboxAccountEmail: settings.xboxAccountEmail || '',
+        xboxAccountPassword: '',
+        clearXboxAccountPassword: false,
+        paymentMode: settings.paymentMode || 'oplata',
+      });
+      setPurchaseSavedPassword(Boolean(settings.hasXboxAccountPassword));
+      setProfile((current) => current ? { ...current, purchaseSettings: settings } : current);
+      setPurchaseMessage('Настройки покупки сохранены');
+    } catch (err) {
+      setPurchaseError(err.response?.data?.error?.message || err.message || 'Не удалось сохранить настройки покупки');
+    } finally {
+      setPurchaseLoading(false);
+    }
+  };
+
   return (
     <div className="profile-page">
       <div className="profile-page-hero">
@@ -125,6 +192,100 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
             <dt>Статус</dt>
             <dd>{profile?.verified ? 'Подтверждён' : 'Не подтверждён'}</dd>
           </dl>
+        </section>
+
+        <section className="profile-page-card">
+          <h2>Почта для покупки</h2>
+          <p>На эту почту будет приходить информация по оплате.</p>
+          <form className="profile-password-form" onSubmit={submitPurchaseSettings} data-settings-block="email">
+            <label>
+              Email для покупки
+              <input
+                type="email"
+                name="purchaseEmail"
+                value={purchaseForm.purchaseEmail}
+                onChange={handlePurchaseField}
+                placeholder="mail@example.com"
+              />
+            </label>
+            <div className="profile-payment-modes">
+              <label className="profile-payment-mode active">
+                <input
+                  type="radio"
+                  name="paymentMode"
+                  value="oplata"
+                  checked={purchaseForm.paymentMode === 'oplata'}
+                  onChange={handlePurchaseField}
+                />
+                <span>
+                  <strong>Oplata.info</strong>
+                  <small>Генерация ссылки на оплату</small>
+                </span>
+              </label>
+              <label className="profile-payment-mode disabled">
+                <input type="radio" disabled />
+                <span>
+                  <strong>Режим 2</strong>
+                  <small>Скоро добавим</small>
+                </span>
+              </label>
+              <label className="profile-payment-mode disabled">
+                <input type="radio" disabled />
+                <span>
+                  <strong>Режим 3</strong>
+                  <small>Скоро добавим</small>
+                </span>
+              </label>
+            </div>
+            <button type="submit" disabled={purchaseLoading}>
+              {purchaseLoading ? 'Сохраняем...' : 'Сохранить почту и способ'}
+            </button>
+            {purchaseFeedbackBlock === 'email' && purchaseMessage && <p className="profile-success">{purchaseMessage}</p>}
+            {purchaseFeedbackBlock === 'email' && purchaseError && <p className="profile-error">{purchaseError}</p>}
+          </form>
+        </section>
+
+        <section className="profile-page-card">
+          <h2>Аккаунт Xbox для покупки</h2>
+          <p>Email и пароль аккаунта хранятся отдельно от входа на сайт.</p>
+          <form className="profile-password-form" onSubmit={submitPurchaseSettings} data-settings-block="account">
+            <label>
+              Email аккаунта Xbox
+              <input
+                type="email"
+                name="xboxAccountEmail"
+                value={purchaseForm.xboxAccountEmail}
+                onChange={handlePurchaseField}
+                placeholder="xbox@example.com"
+              />
+            </label>
+            <label>
+              Пароль аккаунта Xbox
+              <input
+                type="password"
+                name="xboxAccountPassword"
+                value={purchaseForm.xboxAccountPassword}
+                onChange={handlePurchaseField}
+                placeholder={purchaseSavedPassword ? 'Пароль сохранён. Оставьте пустым, чтобы не менять' : 'Пароль'}
+              />
+            </label>
+            {purchaseSavedPassword && (
+              <label className="profile-checkbox-row">
+                <input
+                  type="checkbox"
+                  name="clearXboxAccountPassword"
+                  checked={purchaseForm.clearXboxAccountPassword}
+                  onChange={handlePurchaseField}
+                />
+                Удалить сохранённый пароль
+              </label>
+            )}
+            {purchaseFeedbackBlock === 'account' && purchaseMessage && <p className="profile-success">{purchaseMessage}</p>}
+            {purchaseFeedbackBlock === 'account' && purchaseError && <p className="profile-error">{purchaseError}</p>}
+            <button type="submit" disabled={purchaseLoading}>
+              {purchaseLoading ? 'Сохраняем...' : 'Сохранить аккаунт Xbox'}
+            </button>
+          </form>
         </section>
 
         <section className="profile-page-card">

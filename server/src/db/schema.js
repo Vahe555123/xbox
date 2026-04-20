@@ -15,6 +15,12 @@ async function initDb() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS purchase_email TEXT,
+      ADD COLUMN IF NOT EXISTS xbox_account_email TEXT,
+      ADD COLUMN IF NOT EXISTS xbox_account_password_encrypted TEXT,
+      ADD COLUMN IF NOT EXISTS purchase_payment_mode TEXT NOT NULL DEFAULT 'oplata';
+
     CREATE TABLE IF NOT EXISTS oauth_accounts (
       provider TEXT NOT NULL,
       provider_user_id TEXT NOT NULL,

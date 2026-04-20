@@ -9,6 +9,10 @@ const {
   enrichProductsWithRub,
   createPurchasePaymentUrl,
 } = require('../services/digisellerService');
+const {
+  getPurchaseSettingsForCheckout,
+  updatePurchaseSettings,
+} = require('../services/authService');
 const logger = require('../utils/logger');
 
 async function searchXbox(req, res, next) {
@@ -97,7 +101,14 @@ async function getProductDetail(req, res, next) {
 async function createProductPurchase(req, res, next) {
   try {
     const { productId } = req.params;
-    const { accountEmail, accountPassword, gameName } = req.body || {};
+    const {
+      accountEmail,
+      accountPassword,
+      purchaseEmail,
+      paymentMode,
+      gameName,
+      saveToProfile,
+    } = req.body || {};
     logger.info('Product purchase request', { productId });
 
     const raw = await getProductById(productId);
@@ -105,10 +116,30 @@ async function createProductPurchase(req, res, next) {
     await enrichProductWithRub(product).catch((e) =>
       logger.warn('RUB detail enrichment failed before purchase', { productId: product.id, message: e.message }));
 
+    const savedSettings = req.user ? await getPurchaseSettingsForCheckout(req.user.id) : null;
+    const finalAccountEmail = String(accountEmail || savedSettings?.xboxAccountEmail || '').trim();
+    const finalAccountPassword = String(accountPassword || savedSettings?.xboxAccountPassword || '').trim();
+    const finalPurchaseEmail = String(purchaseEmail || savedSettings?.purchaseEmail || req.user?.email || '').trim();
+    const finalPaymentMode = paymentMode || savedSettings?.paymentMode || 'oplata';
+
+    if (req.user && saveToProfile) {
+      await updatePurchaseSettings(req.user.id, {
+        purchaseEmail: finalPurchaseEmail,
+        xboxAccountEmail: finalAccountEmail,
+        xboxAccountPassword: accountPassword || undefined,
+        paymentMode: finalPaymentMode,
+      }).catch((e) => logger.warn('Purchase settings save failed during checkout', {
+        userId: req.user.id,
+        message: e.message,
+      }));
+    }
+
     const payment = await createPurchasePaymentUrl(product, {
       gameName,
-      accountEmail,
-      accountPassword,
+      accountEmail: finalAccountEmail,
+      accountPassword: finalAccountPassword,
+      purchaseEmail: finalPurchaseEmail,
+      paymentMode: finalPaymentMode,
     });
 
     res.json({

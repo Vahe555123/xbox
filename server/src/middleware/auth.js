@@ -40,6 +40,22 @@ async function requireAuth(req, _res, next) {
   }
 }
 
+async function optionalAuth(req, _res, next) {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const token = bearerToken || readCookie(req, config.auth.cookieName);
+    if (!token) return next();
+
+    const payload = verifyToken(token);
+    const user = await findUserById(payload.sub);
+    if (user) req.user = user;
+    return next();
+  } catch (_err) {
+    return next();
+  }
+}
+
 async function requireAdmin(req, _res, next) {
   try {
     const authHeader = req.headers.authorization || '';
@@ -86,4 +102,4 @@ async function requireAdmin(req, _res, next) {
   }
 }
 
-module.exports = { requireAuth, requireAdmin };
+module.exports = { requireAuth, optionalAuth, requireAdmin };

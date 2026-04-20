@@ -6,6 +6,7 @@ const {
   verifyEmail,
   loginUser,
   getProfile,
+  updatePurchaseSettings,
   changePassword,
   getAuthProviderConfig,
   createOAuthStartUrl,
@@ -249,6 +250,21 @@ async function updatePassword(req, res, next) {
   }
 }
 
+async function savePurchaseSettings(req, res, next) {
+  try {
+    const settings = await updatePurchaseSettings(req.user.id, req.body || {});
+    res.json({
+      success: true,
+      purchaseSettings: settings,
+    });
+  } catch (err) {
+    if (err.message === 'User not found') {
+      return next(new AppError(err.message, 404));
+    }
+    next(err);
+  }
+}
+
 module.exports = {
   register,
   verify,
@@ -260,5 +276,5 @@ module.exports = {
   telegram,
   me,
   updatePassword,
+  savePurchaseSettings,
 };
-

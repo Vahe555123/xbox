@@ -14,6 +14,56 @@ function getJwtSecret() {
   return process.env.JWT_SECRET || 'dev-secret-change-me';
 }
 
+function getProfileEncryptionKey() {
+  const secret = process.env.PROFILE_ENCRYPTION_SECRET || getJwtSecret();
+  return crypto.createHash('sha256').update(secret).digest();
+}
+
+function encryptProfileSecret(value) {
+  if (!value) return null;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', getProfileEncryptionKey(), iv);
+  const encrypted = Buffer.concat([
+    cipher.update(String(value), 'utf8'),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return `v1:${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+function decryptProfileSecret(value) {
+  if (!value) return '';
+  const [version, ivHex, tagHex, encryptedHex] = String(value).split(':');
+  if (version !== 'v1' || !ivHex || !tagHex || !encryptedHex) return '';
+  try {
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      getProfileEncryptionKey(),
+      Buffer.from(ivHex, 'hex'),
+    );
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    return Buffer.concat([
+      decipher.update(Buffer.from(encryptedHex, 'hex')),
+      decipher.final(),
+    ]).toString('utf8');
+  } catch (_err) {
+    return '';
+  }
+}
+
+function normalizePurchasePaymentMode(mode) {
+  return mode === 'oplata' ? 'oplata' : 'oplata';
+}
+
+function toPurchaseSettings(user) {
+  return {
+    purchaseEmail: user.purchase_email || '',
+    xboxAccountEmail: user.xbox_account_email || '',
+    hasXboxAccountPassword: Boolean(user.xbox_account_password_encrypted),
+    paymentMode: normalizePurchasePaymentMode(user.purchase_payment_mode),
+  };
+}
+
 function getApiOrigin() {
   return config.apiPublicOrigin.replace(/\/$/, '');
 }
@@ -54,8 +104,55 @@ async function getProfile(userId) {
     verified: user.verified,
     hasPassword: Boolean(user.password_hash),
     providers: [...new Set(providerNames)],
+    purchaseSettings: toPurchaseSettings(user),
     createdAt: user.created_at,
   };
+}
+
+async function getPurchaseSettingsForCheckout(userId) {
+  const user = await findUserById(userId);
+  if (!user) return null;
+  return {
+    ...toPurchaseSettings(user),
+    xboxAccountPassword: decryptProfileSecret(user.xbox_account_password_encrypted),
+  };
+}
+
+async function updatePurchaseSettings(userId, settings = {}) {
+  const current = await findUserById(userId);
+  if (!current) {
+    throw new Error('User not found');
+  }
+
+  const purchaseEmail = normalizeEmail(settings.purchaseEmail);
+  const xboxAccountEmail = normalizeEmail(settings.xboxAccountEmail);
+  const paymentMode = normalizePurchasePaymentMode(settings.paymentMode);
+  let encryptedPassword = current.xbox_account_password_encrypted || null;
+  if (settings.clearXboxAccountPassword) {
+    encryptedPassword = null;
+  } else if (settings.xboxAccountPassword) {
+    encryptedPassword = encryptProfileSecret(settings.xboxAccountPassword);
+  }
+
+  const { rows } = await pool.query(
+    `UPDATE users
+     SET purchase_email = $2,
+         xbox_account_email = $3,
+         xbox_account_password_encrypted = $4,
+         purchase_payment_mode = $5,
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [
+      userId,
+      purchaseEmail || null,
+      xboxAccountEmail || null,
+      encryptedPassword,
+      paymentMode,
+    ],
+  );
+
+  return toPurchaseSettings(rows[0]);
 }
 
 function issueToken(user) {
@@ -511,6 +608,8 @@ module.exports = {
   verifyEmail,
   loginUser,
   getProfile,
+  getPurchaseSettingsForCheckout,
+  updatePurchaseSettings,
   changePassword,
   verifyToken,
   findUserById,

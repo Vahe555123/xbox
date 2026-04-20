@@ -108,6 +108,11 @@ export async function fetchProfile() {
   return data;
 }
 
+export async function updatePurchaseSettings(payload) {
+  const { data } = await api.put('/auth/purchase-settings', payload);
+  return data.purchaseSettings;
+}
+
 export async function changePassword(currentPassword, newPassword) {
   const { data } = await api.post('/auth/change-password', {
     currentPassword,
@@ -180,13 +185,6 @@ export async function triggerDealCheck() {
   return data;
 }
 
-export async function fetchDigisellerMappings({ page = 1, limit = 50, search = '' } = {}) {
-  const params = { page, limit };
-  if (search) params.search = search;
-  const { data } = await api.get('/admin/digiseller', { params });
-  return data;
-}
-
 export async function fetchDigisellerRates() {
   const { data } = await api.get('/admin/digiseller/rates');
   return data;
@@ -194,15 +192,5 @@ export async function fetchDigisellerRates() {
 
 export async function refreshDigisellerRates() {
   const { data } = await api.post('/admin/digiseller/rates/refresh');
-  return data;
-}
-
-export async function saveDigisellerMapping({ productId, digisellerId, note }) {
-  const { data } = await api.post('/admin/digiseller', { productId, digisellerId, note });
-  return data.item;
-}
-
-export async function deleteDigisellerMapping(productId) {
-  const { data } = await api.delete(`/admin/digiseller/${encodeURIComponent(productId)}`);
   return data;
 }
