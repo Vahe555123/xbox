@@ -417,68 +417,207 @@ function summarizeCombo(cardList, cardMap) {
   };
 }
 
+function parseJsonOrXmlPayload(payload) {
+  if (!payload) return {};
+  if (typeof payload === 'object') return payload;
+  const text = String(payload).trim();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    const readTag = (name) => {
+      const match = text.match(new RegExp(`<${name}>\\s*([^<]*)\\s*<\\/${name}>`, 'i'));
+      return match ? match[1] : null;
+    };
+    return {
+      retval: readTag('retval'),
+      retdesc: readTag('retdesc'),
+      id_po: readTag('id_po'),
+      cart_err_num: readTag('cart_err_num'),
+      cart_err: readTag('cart_err'),
+      cart_uid: readTag('cart_uid'),
+      cart_cnt: readTag('cart_cnt'),
+    };
+  }
+}
+
+function normalizeIp(value) {
+  const ip = String(value || '').split(',')[0].trim();
+  if (!ip) return '127.0.0.1';
+  if (ip.startsWith('::ffff:')) return ip.slice(7);
+  if (ip === '::1') return '127.0.0.1';
+  return ip;
+}
+
+function getCartAddCurrency() {
+  const currency = String(config.digiseller.cartCurrency || TOPUP_TYPE_CURRENCY).toUpperCase();
+  if (currency.includes('_RUB') || currency === 'RUR') return 'RUB';
+  if (currency.includes('_USD')) return 'USD';
+  if (currency.includes('_EUR')) return 'EUR';
+  return currency || 'RUB';
+}
+
+async function getPurchaseOptionsId({
+  card,
+  quantity = 1,
+  optionCategoryId,
+  buyerIp,
+}) {
+  const productId = config.digiseller.topupCardProductId;
+  if (!productId || !card?.optionId || !optionCategoryId) return null;
+
+  try {
+    const response = await axios.post('https://api.digiseller.com/api/purchases/options', {
+      product_id: productId,
+      options: [
+        {
+          id: Number(optionCategoryId),
+          value: { id: Number(card.optionId) },
+        },
+      ],
+      unit_cnt: Math.max(1, Number(quantity) || 1),
+      lang: 'ru-RU',
+      ip: normalizeIp(buyerIp),
+    }, {
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      timeout: 12000,
+      validateStatus: (status) => status >= 200 && status < 500,
+    });
+
+    const payload = parseJsonOrXmlPayload(response.data);
+    const retval = String(payload.retval ?? '');
+    if (retval !== '0' || !payload.id_po) {
+      logger.warn('Digiseller purchase options returned error', {
+        usd: card.usdValue,
+        optionId: card.optionId,
+        retval: payload.retval ?? null,
+        retdesc: payload.retdesc || null,
+      });
+      return null;
+    }
+    return String(payload.id_po);
+  } catch (err) {
+    logger.error('Digiseller purchase options failed', {
+      usd: card.usdValue,
+      optionId: card.optionId,
+      message: err.message,
+    });
+    return null;
+  }
+}
+
 function buildCartPayUrl(cartUid, { purchaseEmail } = {}) {
   const sellerId = config.digiseller.sellerId;
   if (!cartUid || !sellerId) return null;
-  const url = new URL(config.digiseller.payApiBaseUrl);
-  url.searchParams.set('id_d', '0');
-  url.searchParams.set('id_po', '0');
+  const url = new URL(config.digiseller.payBaseUrl);
   url.searchParams.set('cart_uid', cartUid);
   url.searchParams.set('ai', String(sellerId));
-  url.searchParams.set('ain', '');
-  url.searchParams.set('curr', config.digiseller.cartCurrency || TOPUP_TYPE_CURRENCY);
+  url.searchParams.set('typecurr', config.digiseller.cartCurrency || TOPUP_TYPE_CURRENCY);
   url.searchParams.set('lang', 'ru-RU');
   url.searchParams.set('_ow', '0');
-  url.searchParams.set('_ids_shop', String(sellerId));
   url.searchParams.set('failpage', getFailPageForTopup());
   if (purchaseEmail) url.searchParams.set('email', purchaseEmail);
   return url.toString();
 }
 
-async function addItemToCart(cartUid, { card, quantity = 1, optionCategoryId, purchaseEmail }) {
-  const productId = config.digiseller.topupCardProductId;
+async function createCartPayApiUrl(cartUid, { purchaseEmail } = {}) {
   const sellerId = config.digiseller.sellerId;
-  if (!cartUid || !productId || !card?.optionId || !optionCategoryId) {
+  if (!cartUid || !sellerId) return null;
+
+  const body = new URLSearchParams({
+    id_d: '',
+    cart_uid: cartUid,
+    typecurr: config.digiseller.cartCurrency || TOPUP_TYPE_CURRENCY,
+    email: purchaseEmail || '',
+    lang: 'ru-RU',
+    failpage: getFailPageForTopup(),
+    agent: String(sellerId),
+    havetoshowoptions: '0',
+  });
+
+  try {
+    const response = await axios.post(config.digiseller.payPostUrl, body.toString(), {
+      headers: POST_PAYMENT_HEADERS,
+      timeout: 12000,
+      maxRedirects: 0,
+      validateStatus: (status) => status >= 200 && status < 400,
+    });
+    const url = absoluteOplataUrl(response.headers.location);
+    if (url && /pay_(api|cart)\.asp/i.test(url)) {
+      return url;
+    }
+    logger.warn('Digiseller cart payment returned non-final redirect', {
+      cartUid,
+      location: response.headers.location || null,
+    });
+    return null;
+  } catch (err) {
+    logger.error('Digiseller cart payment POST failed', {
+      cartUid,
+      message: err.message,
+    });
+    return null;
+  }
+}
+
+async function addItemToCart(cartUid, {
+  card,
+  quantity = 1,
+  optionCategoryId,
+  purchaseEmail,
+  buyerIp,
+}) {
+  const productId = config.digiseller.topupCardProductId;
+  if (!productId || !card?.optionId || !optionCategoryId) {
     return { ok: false, reason: 'missing_params' };
   }
 
-  const typeCurr = config.digiseller.cartCurrency || TOPUP_TYPE_CURRENCY;
-  const base = (config.digiseller.cartBaseUrl || 'https://shop.digiseller.com').replace(/\/$/, '');
+  const idPo = await getPurchaseOptionsId({
+    card,
+    quantity,
+    optionCategoryId,
+    buyerIp,
+  });
+  if (!idPo) return { ok: false, reason: 'id_po_missing' };
+
+  const typeCurr = getCartAddCurrency();
+  const base = (config.digiseller.cartBaseUrl || 'https://shop.digiseller.ru').replace(/\/$/, '');
   const url = `${base}/xml/shop_cart_add.asp`;
 
   const body = new URLSearchParams({
-    cart_uid: cartUid,
-    id_d: String(productId),
-    cnt_d: String(Math.max(1, Number(quantity) || 1)),
+    product_id: String(productId),
+    product_cnt: String(Math.max(1, Number(quantity) || 1)),
     typecurr: typeCurr,
-    ai: String(sellerId || ''),
+    email: purchaseEmail || '',
     lang: 'ru-RU',
-    [`Option_radio_${optionCategoryId}`]: String(card.optionId),
+    cart_uid: cartUid || '',
+    id_po: idPo,
   });
-  if (purchaseEmail) body.set('email', purchaseEmail);
 
   try {
     const response = await axios.post(url, body.toString(), {
-      headers: POST_PAYMENT_HEADERS,
+      headers: {
+        ...POST_PAYMENT_HEADERS,
+        Accept: 'application/json, text/plain, */*',
+      },
       timeout: 12000,
-      responseType: 'text',
-      transformResponse: [(d) => d],
       validateStatus: (status) => status >= 200 && status < 500,
     });
-    const payload = String(response.data || '');
-    const retvalMatch = payload.match(/<retval>\s*(-?\d+)\s*<\/retval>/i);
-    const retval = retvalMatch ? parseInt(retvalMatch[1], 10) : null;
-    if (retval !== null && retval !== 0) {
-      const descMatch = payload.match(/<retdesc>([^<]+)<\/retdesc>/i);
+    const payload = parseJsonOrXmlPayload(response.data);
+    const cartErr = String(payload.cart_err_num ?? payload.cart_err ?? payload.retval ?? '');
+    if ((cartErr !== '0' && cartErr !== '') || !payload.cart_uid) {
       logger.warn('Digiseller cart add returned non-zero', {
         cartUid,
         usd: card.usdValue,
-        retval,
-        retdesc: descMatch?.[1] || null,
+        cartErr,
+        retdesc: payload.retdesc || null,
       });
-      return { ok: false, retval, retdesc: descMatch?.[1] || null };
+      return { ok: false, cartErr, retdesc: payload.retdesc || null };
     }
-    return { ok: true, retval };
+    return { ok: true, cartUid: payload.cart_uid, cart: payload };
   } catch (err) {
     logger.error('Digiseller cart add failed', {
       cartUid,
@@ -487,10 +626,6 @@ async function addItemToCart(cartUid, { card, quantity = 1, optionCategoryId, pu
     });
     return { ok: false, reason: err.message };
   }
-}
-
-function newCartUid() {
-  return randomUUID().replace(/-/g, '').toUpperCase();
 }
 
 function buildCardPayUrl(card, { quantity = 1, purchaseEmail, optionCategoryId } = {}) {
@@ -598,7 +733,7 @@ async function createCardPayApiUrl(card, { quantity = 1, purchaseEmail, optionCa
   }
 }
 
-async function buildComboPurchase(priceUsd, { purchaseEmail } = {}) {
+async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp } = {}) {
   const combo = await computeCombo(priceUsd);
   if (!combo?.available) return combo;
   const state = await getTopupState();
@@ -627,21 +762,26 @@ async function buildComboPurchase(priceUsd, { purchaseEmail } = {}) {
   let cartError = null;
 
   if (state.optionCategoryId) {
-    cartUid = newCartUid();
-    const addResults = await Promise.all(combo.items.map((item) => {
+    const addResults = [];
+    for (const item of combo.items) {
       const card = cardMap.get(item.usdValue);
-      return addItemToCart(cartUid, {
+      const result = await addItemToCart(cartUid || '', {
         card,
         quantity: item.count,
         optionCategoryId: state.optionCategoryId,
         purchaseEmail,
+        buyerIp,
       });
-    }));
+      addResults.push(result);
+      if (!result.ok) break;
+      cartUid = result.cartUid;
+    }
     const failures = addResults.filter((r) => !r.ok);
-    if (failures.length === 0) {
-      cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail });
+    if (failures.length === 0 && cartUid) {
+      cartPaymentUrl = await createCartPayApiUrl(cartUid, { purchaseEmail })
+        || buildCartPayUrl(cartUid, { purchaseEmail });
     } else {
-      cartError = failures[0].retdesc || failures[0].reason || 'cart_add_failed';
+      cartError = failures[0]?.retdesc || failures[0]?.reason || 'cart_add_failed';
       logger.warn('Cart build failed, falling back to per-card links', {
         cartUid,
         failures: failures.length,

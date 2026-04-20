@@ -30,6 +30,12 @@ function getProductUsdPrice(product) {
   return null;
 }
 
+function getRequestIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const raw = forwarded || req.ip || req.socket?.remoteAddress || '';
+  return String(raw).startsWith('::ffff:') ? String(raw).slice(7) : raw;
+}
+
 async function assignTopupCombo(product) {
   if (!product) return product;
   if (isGameCurrencyProduct(product)) return product;
@@ -255,6 +261,7 @@ async function createProductPurchase(req, res, next) {
       if (!usd) throw new AppError('Не удалось определить цену в USD для карт', 400);
       const combo = await topupCardService.buildComboPurchase(usd, {
         purchaseEmail: finalPurchaseEmail,
+        buyerIp: getRequestIp(req),
       });
       if (!combo?.available) {
         throw new AppError('Комбинация карт недоступна: нет в наличии нужных номиналов', 502);
