@@ -63,7 +63,7 @@ export default function ProductCard({ product }) {
                 )}
                 {gamePassSavingsPercent && (
                   <span className="product-image-flag product-image-flag-gamepass">
-                    Сэкономь {Math.round(gamePassSavingsPercent)}% с Game Pass
+                    Сэкономь 40% с Game Pass
                   </span>
                 )}
               </div>

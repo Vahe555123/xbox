@@ -389,7 +389,7 @@ export default function GameDetailPage() {
               {discountPercent && <span className="product-image-flag product-image-flag-sale">-{discountPercent}%</span>}
               {data.gamePassSavingsPercent && (
                 <span className="product-image-flag product-image-flag-gamepass">
-                  Сэкономь {Math.round(data.gamePassSavingsPercent)}% с Game Pass
+                    Сэкономь 40% с Game Pass
                 </span>
               )}
             </div>
