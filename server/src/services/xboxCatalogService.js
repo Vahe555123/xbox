@@ -46,20 +46,46 @@ async function browseGames({ encodedFilters = '', encodedCT = '', returnFilters 
 }
 
 /**
+ * Sanitize the user query before sending to the Emerald API.
+ * Emerald's search endpoint tokenizes on word boundaries and does not treat
+ * an apostrophe as one, so queries like "Billy's" return zero matches while
+ * "Billy" returns 9. Titles in the catalog are stored with curly apostrophes
+ * (e.g. "Billy's Job", "Tom Clancy's Rainbow Six"), so we:
+ *   1. Normalize curly/backtick apostrophes to a straight one.
+ *   2. Drop the English possessive suffix `'s` (both ASCII and curly).
+ *   3. Strip any remaining apostrophes (handles contractions like "don't").
+ * This makes "Billy's" → "Billy", "Tom Clancy's" → "Tom Clancy",
+ * "Assassin's Creed" → "Assassin Creed", "Don't Starve" → "Dont Starve".
+ */
+function sanitizeEmeraldQuery(query) {
+  if (query === undefined || query === null) return query;
+  const raw = String(query);
+  const sanitized = raw
+    .replace(/[\u2018\u2019\u201B\u0060\u00B4]/g, "'")
+    .replace(/'s\b/gi, '')
+    .replace(/'/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return sanitized || raw.trim();
+}
+
+/**
  * Search for games by query.
  * Returns results matching the Xbox.com search behavior.
  */
 async function searchGames({ query, encodedFilters = '', encodedCT = '', returnFilters = true } = {}) {
-  const cacheKey = `search:${query}:${encodedFilters}:${encodedCT}`;
+  const sanitizedQuery = sanitizeEmeraldQuery(query);
+  const cacheKey = `search:${sanitizedQuery}:${encodedFilters}:${encodedCT}`;
   const cached = cache.get(cacheKey);
   if (cached) {
-    logger.debug('Cache hit for search', { query });
+    logger.debug('Cache hit for search', { query: sanitizedQuery });
     return cached;
   }
 
   const response = await withRetry(() =>
     client.post(`/search/games?locale=${config.xbox.locale}`, {
-      Query: query,
+      Query: sanitizedQuery,
       Filters: encodedFilters,
       ReturnFilters: returnFilters,
       ChannelKeyToBeUsedInResponse: 'SEARCH',
