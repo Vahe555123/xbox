@@ -71,6 +71,20 @@ function buildRubPaymentPrice(id, title, price, extra = {}) {
   };
 }
 
+function buildTopupPaymentSource(combo) {
+  if (!combo) return null;
+  const proportionalRub = Number.isFinite(Number(combo.proportionalRub))
+    ? Number(combo.proportionalRub)
+    : null;
+  if (proportionalRub != null) {
+    return {
+      value: proportionalRub,
+      formatted: combo.proportionalRubFormatted || null,
+    };
+  }
+  return combo;
+}
+
 async function assignPaymentPrices(product) {
   if (!product) return product;
 
@@ -92,12 +106,16 @@ async function assignPaymentPrices(product) {
     key_activation: buildRubPaymentPrice('key_activation', 'Ключ активации', keyActivationRub, {
       enabled: Boolean(product.keyActivationPayUrl),
     }),
-    topup_cards: buildRubPaymentPrice('topup_cards', 'Карты пополнения', product.topupCombo, {
+    topup_cards: buildRubPaymentPrice('topup_cards', 'Карты пополнения', buildTopupPaymentSource(product.topupCombo), {
       enabled: Boolean(product.topupCombo?.available),
       cardsCount: product.topupCombo?.cardsCount ?? null,
       totalUsd: product.topupCombo?.totalUsd ?? null,
       priceUsd: product.topupCombo?.price ?? null,
       substituted: Boolean(product.topupCombo?.substituted),
+      cardsTotalRub: product.topupCombo?.totalRub ?? null,
+      cardsTotalRubFormatted: product.topupCombo?.totalRubFormatted ?? null,
+      leftoverUsd: product.topupCombo?.leftoverUsd ?? null,
+      leftoverUsdFormatted: product.topupCombo?.leftoverUsdFormatted ?? null,
     }),
   };
 

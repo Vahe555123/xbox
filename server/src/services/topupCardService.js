@@ -879,12 +879,53 @@ async function computeCombo(priceUsd) {
   }
 
   const sum = summarizeCombo(combo, cardMap);
+  const proportionalInfo = computeProportionalPrice({
+    totalRub: sum.totalRub,
+    totalUsd: sum.totalUsd,
+    priceUsd: price,
+  });
   return {
     available: true,
     price,
     ...sum,
+    ...proportionalInfo,
     substituted: needsSubstitute,
   };
+}
+
+function computeProportionalPrice({ totalRub, totalUsd, priceUsd }) {
+  const totalRubNum = Number(totalRub);
+  const totalUsdNum = Number(totalUsd);
+  const priceUsdNum = Number(priceUsd);
+  const hasTotals = Number.isFinite(totalRubNum) && Number.isFinite(totalUsdNum) && totalUsdNum > 0;
+  const hasPrice = Number.isFinite(priceUsdNum) && priceUsdNum > 0;
+
+  const proportionalRubRaw = hasTotals && hasPrice
+    ? (totalRubNum / totalUsdNum) * priceUsdNum
+    : null;
+  const proportionalRub = Number.isFinite(proportionalRubRaw)
+    ? Math.round(proportionalRubRaw)
+    : null;
+
+  const leftoverUsdRaw = hasPrice && Number.isFinite(totalUsdNum)
+    ? totalUsdNum - priceUsdNum
+    : null;
+  const leftoverUsd = Number.isFinite(leftoverUsdRaw)
+    ? Math.round(leftoverUsdRaw * 100) / 100
+    : null;
+
+  return {
+    proportionalRub,
+    proportionalRubFormatted: proportionalRub != null ? formatRub(proportionalRub) : null,
+    leftoverUsd,
+    leftoverUsdFormatted: leftoverUsd != null ? formatLeftoverUsd(leftoverUsd) : null,
+  };
+}
+
+function formatLeftoverUsd(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return (Math.round(num * 100) / 100).toFixed(2);
 }
 
 module.exports = {

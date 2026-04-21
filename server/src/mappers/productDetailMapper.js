@@ -24,7 +24,7 @@ const PASS_LABELS = {
   CFQ7TTC0KHS0: 'Ultimate',
   CFQ7TTC0P85B: 'Premium',
   CFQ7TTC0K5DJ: 'Essential',
-  CFQ7TTC0K6L8: 'Game Pass',
+  CFQ7TTC0K6L8: 'Ultimate',
   CFQ7TTC0KGQ8: 'PC Game Pass',
   CFQ7TTC0K5DH: 'EA Play',
   CFQ7TTC0QH5H: 'Ubisoft+',

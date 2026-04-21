@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getPaymentPriceEntries, getPaymentPriceLine } from '../utils/paymentPrices';
+import { getPaymentPriceEntries, getPaymentPriceLine, getTopupCardsBreakdown } from '../utils/paymentPrices';
 
 export default function RelatedProductCard({ product }) {
   const [imgError, setImgError] = useState(false);
@@ -32,12 +32,18 @@ export default function RelatedProductCard({ product }) {
           {!paymentPriceEntries.length && priceRub?.formatted && <span className="rp-price-rub">{priceRub.formatted}</span>}
           {paymentPriceEntries.length > 0 && (
             <div className="payment-price-list payment-price-list--related">
-              {paymentPriceEntries.map((paymentPrice) => (
-                <div className="payment-price-row" key={paymentPrice.id}>
-                  <span>{paymentPrice.shortTitle}</span>
-                  <strong>{getPaymentPriceLine(paymentPrice)}</strong>
-                </div>
-              ))}
+              {paymentPriceEntries.map((paymentPrice) => {
+                const breakdown = getTopupCardsBreakdown(paymentPrice);
+                return (
+                  <div className="payment-price-row" key={paymentPrice.id}>
+                    <span>{paymentPrice.shortTitle}</span>
+                    <strong>
+                      {getPaymentPriceLine(paymentPrice)}
+                      {breakdown && <span className="payment-price-breakdown"> ({breakdown})</span>}
+                    </strong>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -58,12 +64,18 @@ export default function RelatedProductCard({ product }) {
         )}
         {paymentPriceEntries.length > 0 && (
           <div className="payment-price-list payment-price-list--related">
-            {paymentPriceEntries.map((paymentPrice) => (
-              <div className="payment-price-row" key={paymentPrice.id}>
-                <span>{paymentPrice.shortTitle}</span>
-                <strong>{getPaymentPriceLine(paymentPrice)}</strong>
-              </div>
-            ))}
+            {paymentPriceEntries.map((paymentPrice) => {
+              const breakdown = getTopupCardsBreakdown(paymentPrice);
+              return (
+                <div className="payment-price-row" key={paymentPrice.id}>
+                  <span>{paymentPrice.shortTitle}</span>
+                  <strong>
+                    {getPaymentPriceLine(paymentPrice)}
+                    {breakdown && <span className="payment-price-breakdown"> ({breakdown})</span>}
+                  </strong>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
