@@ -126,8 +126,38 @@ function mapPriceFromOrder(price) {
   };
 }
 
-function pickPrimaryPrice(skus) {
-  const candidates = (skus || [])
+function isKnownSubscriptionId(id) {
+  return GAME_PASS_IDS.has(id) || EA_PLAY_IDS.has(id) || UBISOFT_PLUS_IDS.has(id);
+}
+
+function getAvailabilityPassIds(availability) {
+  const ids = new Set(availability?.passProductIds || []);
+
+  for (const remediation of availability?.Remediations || availability?.remediations || []) {
+    const id = remediation.BigId || remediation.bigId || remediation.productId || remediation.id;
+    if (id) ids.add(id);
+  }
+
+  const text = JSON.stringify(availability?.LicensingData || availability?.licensingData || '');
+  for (const id of Object.keys(PASS_LABELS)) {
+    if (text.includes(id)) ids.add(id);
+  }
+
+  return [...ids];
+}
+
+function isSubscriptionOfferAvailability(availability) {
+  if (availability?.isSubscriptionOffer) return true;
+  return getAvailabilityPassIds(availability).some((id) => isKnownSubscriptionId(id));
+}
+
+function isGamePassOfferAvailability(availability) {
+  if (availability?.isGamePassOffer) return true;
+  return getAvailabilityPassIds(availability).some((id) => GAME_PASS_IDS.has(id));
+}
+
+function collectPurchasePriceCandidates(skus) {
+  return (skus || [])
     .flatMap((sku) => (sku.availabilities || []).map((availability) => ({
       sku,
       availability,
@@ -140,27 +170,135 @@ function pickPrimaryPrice(skus) {
       && Array.isArray(availability.actions)
       && availability.actions.includes('Purchase')
     ));
+}
+
+function pickBestPriceCandidate(candidates) {
+  if (!candidates.length) return null;
+  const paid = candidates.filter(({ price }) => Number(price.listPrice) > 0);
+  const pool = paid.length ? paid : candidates;
+  return pool.reduce((best, item) => {
+    const itemPrice = Number(item.price.listPrice);
+    const bestPrice = Number(best.price.listPrice);
+    if (itemPrice < bestPrice) return item;
+    if (itemPrice > bestPrice) return best;
+
+    const itemRank = Number.isFinite(Number(item.availability.displayRank))
+      ? Number(item.availability.displayRank)
+      : Number.POSITIVE_INFINITY;
+    const bestRank = Number.isFinite(Number(best.availability.displayRank))
+      ? Number(best.availability.displayRank)
+      : Number.POSITIVE_INFINITY;
+    return itemRank < bestRank ? item : best;
+  }, pool[0]);
+}
+
+function buildPrimaryPrice(price) {
+  const hasDiscount = price.msrp != null && Number(price.listPrice) < Number(price.msrp);
+
+  return {
+    value: price.listPrice,
+    currency: price.currency,
+    formatted: price.formattedList,
+    isFree: Number(price.listPrice) === 0,
+    original: hasDiscount ? price.msrp : null,
+    originalFormatted: hasDiscount ? price.formattedMsrp : null,
+    discountPercent: hasDiscount ? Math.round(((Number(price.msrp) - Number(price.listPrice)) / Number(price.msrp)) * 100) : null,
+    msrp: price.msrp,
+    formattedMsrp: price.formattedMsrp,
+    status: 'available',
+  };
+}
+
+function pickPrimaryPrice(skus) {
+  const candidates = collectPurchasePriceCandidates(skus);
 
   if (!candidates.length) return null;
 
-  const paid = candidates.filter(({ price }) => Number(price.listPrice) > 0);
-  const pool = paid.length ? paid : candidates;
-  const best = pool.reduce((min, item) => (
-    Number(item.price.listPrice) < Number(min.price.listPrice) ? item : min
-  ), pool[0]).price;
-  const hasDiscount = best.msrp != null && Number(best.listPrice) < Number(best.msrp);
+  const publicCandidates = candidates.filter(({ availability }) => !isSubscriptionOfferAvailability(availability));
+  const best = pickBestPriceCandidate(publicCandidates.length ? publicCandidates : candidates);
+  return best ? buildPrimaryPrice(best.price) : null;
+}
+
+function extractGamePassSavings(skus) {
+  const candidates = collectPurchasePriceCandidates(skus);
+  const publicCandidates = candidates.filter(({ availability }) => !isSubscriptionOfferAvailability(availability));
+  const gamePassCandidates = candidates.filter(({ availability }) => isGamePassOfferAvailability(availability));
+
+  if (!gamePassCandidates.length) return null;
+
+  const savings = gamePassCandidates
+    .map((candidate) => {
+      const offerPrice = Number(candidate.price.listPrice);
+      if (!Number.isFinite(offerPrice)) return null;
+
+      const publicCandidate = pickBestPriceCandidate(
+        publicCandidates.filter(({ price }) => price.currency === candidate.price.currency),
+      ) || pickBestPriceCandidate(publicCandidates);
+      const basePrice = publicCandidate
+        ? Number(publicCandidate.price.listPrice)
+        : Number(candidate.price.msrp);
+
+      if (!Number.isFinite(basePrice) || basePrice <= 0 || offerPrice >= basePrice) return null;
+
+      const amount = basePrice - offerPrice;
+      return {
+        percent: Math.round((amount / basePrice) * 100),
+        amount,
+        formattedAmount: formatMoney(amount, candidate.price.currency),
+        publicPrice: basePrice,
+        publicFormatted: formatMoney(basePrice, candidate.price.currency),
+        gamePassPrice: offerPrice,
+        gamePassFormatted: candidate.price.formattedList,
+        currency: candidate.price.currency,
+      };
+    })
+    .filter(Boolean);
+
+  if (!savings.length) return null;
+  return savings.reduce((best, item) => (item.percent > best.percent ? item : best), savings[0]);
+}
+
+function mapPricingSkus(displaySkuAvailabilities) {
+  if (!Array.isArray(displaySkuAvailabilities)) return [];
+
+  return displaySkuAvailabilities.map((entry) => {
+    const sku = entry.Sku || {};
+    const skuLp = sku.LocalizedProperties?.[0] || {};
+
+    return {
+      skuId: sku.SkuId,
+      skuType: sku.SkuType || null,
+      title: skuLp.SkuTitle || null,
+      description: typeof skuLp.SkuDescription === 'string' ? skuLp.SkuDescription : null,
+      skuButtonTitle: typeof skuLp.SkuButtonTitle === 'string' ? skuLp.SkuButtonTitle : null,
+      availabilities: (entry.Availabilities || []).map((av) => {
+        const passProductIds = getAvailabilityPassIds(av);
+        return {
+          availabilityId: av.AvailabilityId,
+          skuId: av.SkuId,
+          actions: av.Actions || [],
+          displayRank: av.DisplayRank ?? null,
+          price: mapPriceFromOrder(av.OrderManagementData?.Price),
+          passProductIds,
+          isSubscriptionOffer: passProductIds.some((id) => isKnownSubscriptionId(id)),
+          isGamePassOffer: passProductIds.some((id) => GAME_PASS_IDS.has(id)),
+        };
+      }),
+    };
+  });
+}
+
+function getCatalogProductPriceInfo(raw) {
+  const skus = mapPricingSkus(raw?.DisplaySkuAvailabilities);
+  const gamePassSavings = extractGamePassSavings(skus);
 
   return {
-    value: best.listPrice,
-    currency: best.currency,
-    formatted: best.formattedList,
-    isFree: Number(best.listPrice) === 0,
-    original: hasDiscount ? best.msrp : null,
-    originalFormatted: hasDiscount ? best.formattedMsrp : null,
-    discountPercent: hasDiscount ? Math.round(((Number(best.msrp) - Number(best.listPrice)) / Number(best.msrp)) * 100) : null,
-    msrp: best.msrp,
-    formattedMsrp: best.formattedMsrp,
-    status: 'available',
+    price: pickPrimaryPrice(skus),
+    gamePassSavingsPercent: gamePassSavings?.percent ?? null,
+    gamePassSavingsAmount: gamePassSavings?.amount ?? null,
+    gamePassSavingsFormatted: gamePassSavings?.formattedAmount ?? null,
+    gamePassPrice: gamePassSavings?.gamePassPrice ?? null,
+    gamePassPriceFormatted: gamePassSavings?.gamePassFormatted ?? null,
   };
 }
 
@@ -339,14 +477,20 @@ function mapSkus(displaySkuAvailabilities) {
     const sku = entry.Sku || {};
     const skuLp = sku.LocalizedProperties?.[0] || {};
     const skuProps = sku.Properties || {};
-    const availabilities = (entry.Availabilities || []).map((av) => ({
-      availabilityId: av.AvailabilityId,
-      skuId: av.SkuId,
-      actions: av.Actions || [],
-      displayRank: av.DisplayRank ?? null,
-      price: mapPriceFromOrder(av.OrderManagementData?.Price),
-      alternateIds: av.AlternateIds || [],
-    }));
+    const availabilities = (entry.Availabilities || []).map((av) => {
+      const passProductIds = getAvailabilityPassIds(av);
+      return {
+        availabilityId: av.AvailabilityId,
+        skuId: av.SkuId,
+        actions: av.Actions || [],
+        displayRank: av.DisplayRank ?? null,
+        price: mapPriceFromOrder(av.OrderManagementData?.Price),
+        alternateIds: av.AlternateIds || [],
+        passProductIds,
+        isSubscriptionOffer: passProductIds.some((id) => isKnownSubscriptionId(id)),
+        isGamePassOffer: passProductIds.some((id) => GAME_PASS_IDS.has(id)),
+      };
+    });
 
     return {
       skuId: sku.SkuId,
@@ -483,6 +627,18 @@ function buildReleaseInfo({ releaseDate, price, contentRatings }) {
   };
 }
 
+function extractCatalogPassInfo(raw) {
+  const lp = raw?.LocalizedProperties?.[0] || {};
+  const eligibility = mapEligibility(lp);
+  const passIds = extractPassIds(raw || {}, eligibility);
+
+  return {
+    passIds,
+    subscriptions: buildSubscriptions(passIds),
+    subscriptionLabels: buildSubscriptionLabels(passIds),
+  };
+}
+
 function mapProductDetail(raw) {
   const lp = raw.LocalizedProperties?.[0] || {};
   const mp = raw.MarketProperties?.[0] || {};
@@ -493,6 +649,7 @@ function mapProductDetail(raw) {
   const skus = mapSkus(raw.DisplaySkuAvailabilities);
   const playWith = mapPlatforms(props.XboxConsoleGenCompatible);
   const price = pickPrimaryPrice(skus);
+  const gamePassSavings = extractGamePassSavings(skus);
   const contentRatings = mapContentRatings(mp.ContentRatings);
   const releaseDate = normalizeReleaseDate(mp.OriginalReleaseDate);
   const releaseInfo = buildReleaseInfo({ releaseDate, price, contentRatings });
@@ -548,6 +705,11 @@ function mapProductDetail(raw) {
     relatedProducts: mapRelatedProducts(mp.RelatedProducts),
 
     price,
+    gamePassSavingsPercent: gamePassSavings?.percent ?? null,
+    gamePassSavingsAmount: gamePassSavings?.amount ?? null,
+    gamePassSavingsFormatted: gamePassSavings?.formattedAmount ?? null,
+    gamePassPrice: gamePassSavings?.gamePassPrice ?? null,
+    gamePassPriceFormatted: gamePassSavings?.gamePassFormatted ?? null,
     playWith,
     supportedLanguage: lp.Language || null,
     ...languageInfo,
@@ -598,4 +760,8 @@ function mapProductDetail(raw) {
   };
 }
 
-module.exports = { mapProductDetail };
+module.exports = {
+  mapProductDetail,
+  getCatalogProductPriceInfo,
+  extractCatalogPassInfo,
+};

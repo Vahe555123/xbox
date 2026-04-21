@@ -1,4 +1,8 @@
 const config = require('../config');
+const {
+  getCatalogProductPriceInfo,
+  extractCatalogPassInfo,
+} = require('./productDetailMapper');
 
 const PLATFORM_MAP = {
   XboxSeriesX: 'Xbox Series X|S',
@@ -46,7 +50,8 @@ function mapProduct({ summary, availability }) {
 
   const releaseDate = normalizeReleaseDate(summary.releaseDate);
   const releaseInfo = buildReleaseInfo(summary, availability, releaseDate);
-  const basePrice = extractPrice(summary, availability);
+  const subscriptions = extractSubscriptions(summary);
+  const basePrice = extractPrice(summary, availability, subscriptions);
   const price = releaseInfo.status === 'unreleased'
     ? {
         value: null,
@@ -59,8 +64,7 @@ function mapProduct({ summary, availability }) {
   const image = extractImage(summary.images);
   const platforms = (summary.availableOn || []).map((p) => PLATFORM_MAP[p] || p);
   const tags = extractTags(summary);
-  const subscriptions = extractSubscriptions(summary);
-  const gamePassSavingsPercent = extractGamePassSavingsPercent(summary);
+  const gamePassSavingsPercent = extractGamePassSavingsPercent(summary, subscriptions);
 
   return {
     id: summary.productId,
@@ -101,11 +105,11 @@ function mapProduct({ summary, availability }) {
   };
 }
 
-function extractPrice(summary, availability) {
+function extractPrice(summary, availability, subscriptions = extractSubscriptions(summary)) {
   const purchaseablePrices = Array.isArray(summary?.specificPrices?.purchaseable)
     ? summary.specificPrices.purchaseable
     : [];
-  const priceData = pickBestPrice(purchaseablePrices) || pickAvailabilityPrice(availability);
+  const priceData = pickBestPrice(purchaseablePrices, subscriptions) || pickAvailabilityPrice(availability);
 
   if (!priceData) {
     return { value: null, formatted: 'Price not available', currency: null, original: null, status: 'unavailable' };
@@ -115,6 +119,9 @@ function extractPrice(summary, availability) {
   const original = priceData.msrp ?? null;
   const currency = priceData.currency || priceData.currencyCode || 'USD';
   const isOnSale = priceData.discountPercentage > 0 || (original !== null && value !== null && value < original);
+  const computedDiscountPercent = isOnSale && original && value !== null && Number(original) > 0
+    ? Math.round(((Number(original) - Number(value)) / Number(original)) * 100)
+    : null;
 
   let formatted;
   if (value === 0) {
@@ -131,7 +138,7 @@ function extractPrice(summary, availability) {
     currency,
     original: isOnSale ? original : null,
     originalFormatted: isOnSale && original ? formatCurrency(original, currency) : null,
-    discountPercent: priceData.discountPercentage || null,
+    discountPercent: priceData.discountPercentage || computedDiscountPercent,
     status: 'available',
   };
 }
@@ -142,7 +149,7 @@ function pickAvailabilityPrice(availability) {
   return actions.includes('Purchase') ? availability.price : null;
 }
 
-function pickBestPrice(prices) {
+function pickBestPrice(prices, subscriptions = {}) {
   const candidates = prices
     .filter((price) => price && price.listPrice != null)
     .filter((price) => {
@@ -151,9 +158,13 @@ function pickBestPrice(prices) {
     });
 
   if (!candidates.length) return null;
-  return candidates.reduce((best, price) => (
+
+  const publicCandidates = candidates.filter((price) => !isSubscriptionOnlyPrice(price, subscriptions));
+  const pool = publicCandidates.length ? publicCandidates : candidates;
+
+  return pool.reduce((best, price) => (
     Number(price.listPrice) < Number(best.listPrice) ? price : best
-  ), candidates[0]);
+  ), pool[0]);
 }
 
 function buildReleaseInfo(summary, availability, releaseDate) {
@@ -255,8 +266,7 @@ function buildSubscriptionLabels(subscriptions) {
   return labels;
 }
 
-function extractGamePassSavingsPercent(summary) {
-  const subscriptions = extractSubscriptions(summary);
+function extractGamePassSavingsPercent(summary, subscriptions = extractSubscriptions(summary)) {
   const subscriptionDiscounts = getPriceEntries(summary.specificPrices)
     .filter((price) => Number(price?.discountPercentage) > 0)
     .filter((price) => isGamePassPrice(price) || (subscriptions.gamePass && isSubscriptionPrice(price)));
@@ -289,6 +299,25 @@ function isSubscriptionPrice(price) {
     price?.hasXPriceOffer
     || (eligibility.eligibility && eligibility.eligibility !== 'None')
     || /subscription|member/i.test(JSON.stringify(eligibility)),
+  );
+}
+
+function isSubscriptionOnlyPrice(price, subscriptions = {}) {
+  const eligibility = price?.eligibilityInfo || {};
+  const haystack = [
+    eligibility.eligibility,
+    eligibility.type,
+    eligibility.name,
+    eligibility.description,
+    price?.name,
+    price?.displayName,
+  ].filter(Boolean).join(' ');
+
+  return Boolean(
+    isGamePassPrice(price)
+    || (eligibility.eligibility && eligibility.eligibility !== 'None')
+    || /subscription|member/i.test(haystack)
+    || (subscriptions.gamePass && /game\s*pass|xgpu|xgp|ultimate/i.test(JSON.stringify(price || {})))
   );
 }
 
@@ -350,12 +379,39 @@ function enrichProductsWithCatalogDetails(products, catalogProducts) {
     if (!catalogProduct) return product;
 
     const languageInfo = extractLanguageInfo(catalogProduct);
+    const catalogPriceInfo = getCatalogProductPriceInfo(catalogProduct);
+    const catalogPassInfo = extractCatalogPassInfo(catalogProduct);
+    const gamePassSavingsPercent = catalogPriceInfo.gamePassSavingsPercent ?? product.gamePassSavingsPercent ?? null;
+    const subscriptions = mergeSubscriptions(product.subscriptions, catalogPassInfo.subscriptions);
+    const subscriptionLabels = mergeSubscriptionLabels(product.subscriptionLabels, catalogPassInfo.subscriptionLabels);
 
     return {
       ...product,
       ...languageInfo,
+      price: gamePassSavingsPercent && catalogPriceInfo.price ? catalogPriceInfo.price : product.price,
+      subscriptions,
+      subscriptionLabels,
+      gamePassSavingsPercent,
+      gamePassSavingsAmount: catalogPriceInfo.gamePassSavingsAmount ?? product.gamePassSavingsAmount ?? null,
+      gamePassSavingsFormatted: catalogPriceInfo.gamePassSavingsFormatted ?? product.gamePassSavingsFormatted ?? null,
+      gamePassPrice: catalogPriceInfo.gamePassPrice ?? product.gamePassPrice ?? null,
+      gamePassPriceFormatted: catalogPriceInfo.gamePassPriceFormatted ?? product.gamePassPriceFormatted ?? null,
     };
   });
+}
+
+function mergeSubscriptions(primary = {}, secondary = {}) {
+  return {
+    gamePass: Boolean(primary.gamePass || secondary.gamePass),
+    eaPlay: Boolean(primary.eaPlay || secondary.eaPlay),
+    ubisoftPlus: Boolean(primary.ubisoftPlus || secondary.ubisoftPlus),
+  };
+}
+
+function mergeSubscriptionLabels(primary = [], secondary = []) {
+  return [...primary, ...secondary]
+    .filter(Boolean)
+    .filter((label, index, labels) => labels.indexOf(label) === index);
 }
 
 function encodeSlug(title) {
