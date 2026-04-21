@@ -229,7 +229,7 @@ function extractGamePassSavings(skus) {
   const savings = gamePassCandidates
     .map((candidate) => {
       const offerPrice = Number(candidate.price.listPrice);
-      if (!Number.isFinite(offerPrice)) return null;
+      if (!Number.isFinite(offerPrice) || offerPrice <= 0) return null;
 
       const publicCandidate = pickBestPriceCandidate(
         publicCandidates.filter(({ price }) => price.currency === candidate.price.currency),
@@ -290,10 +290,12 @@ function mapPricingSkus(displaySkuAvailabilities) {
 
 function getCatalogProductPriceInfo(raw) {
   const skus = mapPricingSkus(raw?.DisplaySkuAvailabilities);
+  const price = pickPrimaryPrice(skus);
   const gamePassSavings = extractGamePassSavings(skus);
 
   return {
-    price: pickPrimaryPrice(skus),
+    price,
+    hasPurchasePrice: Boolean(price),
     gamePassSavingsPercent: gamePassSavings?.percent ?? null,
     gamePassSavingsAmount: gamePassSavings?.amount ?? null,
     gamePassSavingsFormatted: gamePassSavings?.formattedAmount ?? null,
@@ -705,6 +707,7 @@ function mapProductDetail(raw) {
     relatedProducts: mapRelatedProducts(mp.RelatedProducts),
 
     price,
+    notAvailableSeparately: !price && releaseInfo.status !== 'unreleased' && releaseInfo.status !== 'comingSoon',
     gamePassSavingsPercent: gamePassSavings?.percent ?? null,
     gamePassSavingsAmount: gamePassSavings?.amount ?? null,
     gamePassSavingsFormatted: gamePassSavings?.formattedAmount ?? null,

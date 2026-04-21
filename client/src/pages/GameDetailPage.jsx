@@ -6,6 +6,7 @@ import ErrorMessage from '../components/ErrorMessage';
 import RelatedProductCard from '../components/RelatedProductCard';
 import FavoriteHeartButton from '../components/FavoriteHeartButton';
 import {
+  getPaymentOriginalPriceText,
   getPaymentPrice,
   getPaymentPriceEntries,
   getPaymentPriceLine,
@@ -227,6 +228,9 @@ export default function GameDetailPage() {
   const storePriceLabel = getStorePriceLabel(price, data.releaseInfo, isUnavailablePrice);
   const fallbackPriceLabel = hasRubPrice ? null : 'Цена недоступна';
   const discountPercent = price?.discountPercent ? Math.round(price.discountPercent) : null;
+  const gamePassSavingsBadgePercent = Number(data.gamePassSavingsPercent) > 0
+    ? Math.round(Number(data.gamePassSavingsPercent))
+    : null;
   const paymentPriceEntries = getPaymentPriceEntries(data, { includeUnavailable: true });
   const reviewSummary = getRatingSummary(data.usage);
   const esrbRating = getPrimaryRating(data.contentRatings);
@@ -385,16 +389,6 @@ export default function GameDetailPage() {
           ) : (
             <div className="product-image-placeholder"><span>No Image</span></div>
           )}
-          {(discountPercent || data.gamePassSavingsPercent) && (
-            <div className="product-image-flags">
-              {discountPercent && <span className="product-image-flag product-image-flag-sale">-{discountPercent}%</span>}
-              {data.gamePassSavingsPercent && (
-                <span className="product-image-flag product-image-flag-gamepass">
-                    Сэкономь 40% с Game Pass
-                </span>
-              )}
-            </div>
-          )}
           {data.hasRussianLanguage && <span className="product-language-badge">Русский язык</span>}
           <FavoriteHeartButton product={favoriteProduct} />
         </div>
@@ -405,25 +399,28 @@ export default function GameDetailPage() {
           <div className="ps-buy-row">
             <div className="ps-price">
               <div className="ps-price-main">
+                {discountPercent && <span className="price-discount-badge">-{discountPercent}%</span>}
+                {gamePassSavingsBadgePercent && (
+                  <span className="price-gamepass-badge price-gamepass-badge--before">
+                    {getGamePassSavingsText(gamePassSavingsBadgePercent)}
+                  </span>
+                )}
                 {price?.originalFormatted && <span className="ps-price-original">{price.originalFormatted}</span>}
                 {storePriceLabel && <strong>{storePriceLabel}</strong>}
+                {gamePassSavingsBadgePercent && (
+                  <span className="price-gamepass-badge price-gamepass-badge--after">
+                    {getGamePassSavingsText(gamePassSavingsBadgePercent)}
+                  </span>
+                )}
               </div>
               {paymentPriceEntries.length > 0 && (
                 <div className="payment-price-list payment-price-list--detail">
-                  {paymentPriceEntries.map((paymentPrice) => {
-                    const breakdown = getTopupCardsBreakdown(paymentPrice);
-                    return (
-                      <div className="payment-price-row" key={paymentPrice.id}>
-                        <span>{paymentPrice.title}</span>
-                        <strong>
-                          {getPaymentPriceLine(paymentPrice)}
-                          {breakdown && (
-                            <span className="payment-price-breakdown"> ({breakdown})</span>
-                          )}
-                        </strong>
-                      </div>
-                    );
-                  })}
+                  {paymentPriceEntries.map((paymentPrice) => (
+                    <div className="payment-price-row" key={paymentPrice.id}>
+                      <span>{paymentPrice.title}</span>
+                      <PaymentPriceAmount price={paymentPrice} />
+                    </div>
+                  ))}
                 </div>
               )}
               {!paymentPriceEntries.length && data.priceRub?.formatted && (
@@ -447,7 +444,7 @@ export default function GameDetailPage() {
             {(data.playWith || []).map((platform) => <span key={platform} className="ps-chip">{platform}</span>)}
             <span className={`ps-chip ${data.hasRussianLanguage ? 'ps-chip-good' : ''}`}>{getLanguageLabel(data.russianLanguageMode)}</span>
             {(data.subscriptionLabels || []).map((label) => (
-              <span key={label} className="ps-chip ps-chip-subscription">{label}</span>
+              <span key={label} className={getSubscriptionChipClass(label)}>{label}</span>
             ))}
           </div>
 
@@ -923,6 +920,30 @@ export default function GameDetailPage() {
       })}
     </div>
   );
+}
+
+function PaymentPriceAmount({ price, fallback }) {
+  const originalPriceText = getPaymentOriginalPriceText(price);
+  const breakdown = getTopupCardsBreakdown(price);
+  return (
+    <strong className="payment-price-amount">
+      <span className="payment-price-current">{getPaymentPriceLine(price, fallback)}</span>
+      {breakdown && <span className="payment-price-breakdown"> ({breakdown})</span>}
+      {originalPriceText && <span className="payment-price-original">{originalPriceText}</span>}
+    </strong>
+  );
+}
+
+function getGamePassSavingsText(percent) {
+  return `Сэкономь ${Math.round(Number(percent) || 0)}% с Game Pass`;
+}
+
+function getSubscriptionChipClass(label) {
+  const normalized = String(label || '').toLowerCase();
+  const modifiers = [];
+  if (normalized.includes('ea play')) modifiers.push('ps-chip-subscription--ea-play');
+  if (normalized.includes('ubisoft')) modifiers.push('ps-chip-subscription--ubisoft-plus');
+  return ['ps-chip', 'ps-chip-subscription', ...modifiers].join(' ');
 }
 
 function SystemRequirements({ title, items, notes }) {

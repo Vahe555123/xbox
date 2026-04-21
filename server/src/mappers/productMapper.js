@@ -64,7 +64,7 @@ function mapProduct({ summary, availability }) {
   const image = extractImage(summary.images);
   const platforms = (summary.availableOn || []).map((p) => PLATFORM_MAP[p] || p);
   const tags = extractTags(summary);
-  const gamePassSavingsPercent = extractGamePassSavingsPercent(summary, subscriptions);
+  const gamePassSavingsPercent = null;
 
   return {
     id: summary.productId,
@@ -381,13 +381,17 @@ function enrichProductsWithCatalogDetails(products, catalogProducts) {
     const languageInfo = extractLanguageInfo(catalogProduct);
     const catalogPriceInfo = getCatalogProductPriceInfo(catalogProduct);
     const catalogPassInfo = extractCatalogPassInfo(catalogProduct);
-    const gamePassSavingsPercent = catalogPriceInfo.gamePassSavingsPercent ?? product.gamePassSavingsPercent ?? null;
+    const gamePassSavingsPercent = catalogPriceInfo.gamePassSavingsPercent ?? null;
     const subscriptions = mergeSubscriptions(product.subscriptions, catalogPassInfo.subscriptions);
     const subscriptionLabels = mergeSubscriptionLabels(product.subscriptionLabels, catalogPassInfo.subscriptionLabels);
+    const notAvailableSeparately = !catalogPriceInfo.price
+      && product.releaseInfo?.status !== 'unreleased'
+      && product.releaseInfo?.status !== 'comingSoon';
 
     return {
       ...product,
       ...languageInfo,
+      notAvailableSeparately,
       price: gamePassSavingsPercent && catalogPriceInfo.price ? catalogPriceInfo.price : product.price,
       subscriptions,
       subscriptionLabels,

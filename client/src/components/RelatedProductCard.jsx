@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getPaymentPriceEntries, getPaymentPriceLine, getTopupCardsBreakdown } from '../utils/paymentPrices';
+import {
+  getPaymentOriginalPriceText,
+  getPaymentPriceEntries,
+  getPaymentPriceLine,
+  getTopupCardsBreakdown,
+} from '../utils/paymentPrices';
 
 export default function RelatedProductCard({ product }) {
   const [imgError, setImgError] = useState(false);
@@ -32,18 +37,12 @@ export default function RelatedProductCard({ product }) {
           {!paymentPriceEntries.length && priceRub?.formatted && <span className="rp-price-rub">{priceRub.formatted}</span>}
           {paymentPriceEntries.length > 0 && (
             <div className="payment-price-list payment-price-list--related">
-              {paymentPriceEntries.map((paymentPrice) => {
-                const breakdown = getTopupCardsBreakdown(paymentPrice);
-                return (
-                  <div className="payment-price-row" key={paymentPrice.id}>
-                    <span>{paymentPrice.shortTitle}</span>
-                    <strong>
-                      {getPaymentPriceLine(paymentPrice)}
-                      {breakdown && <span className="payment-price-breakdown"> ({breakdown})</span>}
-                    </strong>
-                  </div>
-                );
-              })}
+              {paymentPriceEntries.map((paymentPrice) => (
+                <div className="payment-price-row" key={paymentPrice.id}>
+                  <span>{paymentPrice.shortTitle}</span>
+                  <PaymentPriceAmount price={paymentPrice} />
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -52,6 +51,9 @@ export default function RelatedProductCard({ product }) {
 
     return (
       <div className="rp-price-row">
+        {price.hasDiscount && price.discountPercent > 0 && (
+          <span className="rp-price-discount">-{price.discountPercent}%</span>
+        )}
         {price.hasDiscount && price.formattedMsrp && (
           <span className="rp-price-original">{price.formattedMsrp}</span>
         )}
@@ -59,23 +61,14 @@ export default function RelatedProductCard({ product }) {
           <span className="rp-price-current">{price.formattedListPrice}</span>
         )}
         {!paymentPriceEntries.length && priceRub?.formatted && <span className="rp-price-rub">{priceRub.formatted}</span>}
-        {price.hasDiscount && price.discountPercent > 0 && (
-          <span className="rp-price-discount">-{price.discountPercent}%</span>
-        )}
         {paymentPriceEntries.length > 0 && (
           <div className="payment-price-list payment-price-list--related">
-            {paymentPriceEntries.map((paymentPrice) => {
-              const breakdown = getTopupCardsBreakdown(paymentPrice);
-              return (
-                <div className="payment-price-row" key={paymentPrice.id}>
-                  <span>{paymentPrice.shortTitle}</span>
-                  <strong>
-                    {getPaymentPriceLine(paymentPrice)}
-                    {breakdown && <span className="payment-price-breakdown"> ({breakdown})</span>}
-                  </strong>
-                </div>
-              );
-            })}
+            {paymentPriceEntries.map((paymentPrice) => (
+              <div className="payment-price-row" key={paymentPrice.id}>
+                <span>{paymentPrice.shortTitle}</span>
+                <PaymentPriceAmount price={paymentPrice} />
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -114,9 +107,6 @@ export default function RelatedProductCard({ product }) {
           <div className="rp-card-badges">
             {isGamePass && <span className="rp-badge rp-badge-gamepass">Game Pass</span>}
             {price?.isFree && <span className="rp-badge rp-badge-free">Бесплатно</span>}
-            {price?.hasDiscount && price.discountPercent > 0 && (
-              <span className="rp-badge rp-badge-sale">-{price.discountPercent}%</span>
-            )}
           </div>
         </div>
 
@@ -139,5 +129,17 @@ export default function RelatedProductCard({ product }) {
         </div>
       </Link>
     </article>
+  );
+}
+
+function PaymentPriceAmount({ price, fallback }) {
+  const originalPriceText = getPaymentOriginalPriceText(price);
+  const breakdown = getTopupCardsBreakdown(price);
+  return (
+    <strong className="payment-price-amount">
+      <span className="payment-price-current">{getPaymentPriceLine(price, fallback)}</span>
+      {breakdown && <span className="payment-price-breakdown"> ({breakdown})</span>}
+      {originalPriceText && <span className="payment-price-original">{originalPriceText}</span>}
+    </strong>
   );
 }

@@ -23,8 +23,6 @@ const SEARCH_NOISE_TOKENS = new Set([
   'an',
   'and',
   'for',
-  'game',
-  'games',
   'of',
   'one',
   'pc',
@@ -37,6 +35,11 @@ const SEARCH_NOISE_TOKENS = new Set([
   'xbox',
   'xs',
   's',
+]);
+const SEARCH_EXPANSION_NOISE_TOKENS = new Set([
+  ...SEARCH_NOISE_TOKENS,
+  'game',
+  'games',
 ]);
 
 async function search({ query, page, sort, filters, priceRange, languageMode, freeOnly = false, encodedCT, channelId = '' }) {
@@ -127,27 +130,33 @@ async function searchWithRelevanceRerank({
   channelId,
 }) {
   const collectedRawProducts = [];
+  const queryVariants = getSearchQueryVariants(query);
   let raw = null;
-  let nextEncodedCT = '';
-  let pagesFetched = 0;
+  let nextEncodedCT = null;
+  let bestScore = 0;
 
-  do {
-    raw = await fetchCatalogPage({
-      query,
+  for (const [index, searchQuery] of queryVariants.entries()) {
+    const result = await collectSearchPagesForRerank({
+      searchQuery,
+      scoreQuery: query,
       encodedFilters,
-      encodedCT: nextEncodedCT,
-      returnFilters: pagesFetched === 0,
       channelId,
+      returnFilters: index === 0,
+      maxPages: index === 0 && queryVariants.length > 1
+        ? Math.max(1, Math.ceil(SEARCH_RERANK_MAX_PAGES / 2))
+        : SEARCH_RERANK_MAX_PAGES,
     });
 
-    collectedRawProducts.push(...(raw.products || []));
-    nextEncodedCT = raw.encodedCT || '';
-    pagesFetched += 1;
+    collectedRawProducts.push(...result.rawProducts);
+    bestScore = Math.max(bestScore, result.bestScore);
 
-    if (!nextEncodedCT) break;
-    if (getMeaningfulSearchTokens(query).length < 2) break;
-    if (bestRawSearchScore(collectedRawProducts, query) >= STRONG_MATCH_SCORE) break;
-  } while (pagesFetched < SEARCH_RERANK_MAX_PAGES);
+    if (index === 0) {
+      raw = result.raw;
+      nextEncodedCT = result.nextEncodedCT;
+    }
+
+    if (bestScore >= STRONG_MATCH_SCORE && !(index === 0 && queryVariants.length > 1)) break;
+  }
 
   const mappedProducts = mapProducts(dedupeRawProducts(collectedRawProducts));
   const products = priceFilterActive
@@ -176,6 +185,47 @@ async function searchWithRelevanceRerank({
     encodedCT: bufferedToken,
     filters: mappedFilters,
     hasMorePages: Boolean(bufferedToken),
+  };
+}
+
+async function collectSearchPagesForRerank({
+  searchQuery,
+  scoreQuery,
+  encodedFilters,
+  channelId,
+  returnFilters,
+  maxPages,
+}) {
+  const rawProducts = [];
+  let raw = null;
+  let nextEncodedCT = '';
+  let pagesFetched = 0;
+  let bestScore = 0;
+
+  do {
+    raw = await fetchCatalogPage({
+      query: searchQuery,
+      encodedFilters,
+      encodedCT: nextEncodedCT,
+      returnFilters: returnFilters && pagesFetched === 0,
+      channelId,
+    });
+
+    rawProducts.push(...(raw.products || []));
+    nextEncodedCT = raw.encodedCT || '';
+    pagesFetched += 1;
+    bestScore = Math.max(bestScore, bestRawSearchScore(rawProducts, scoreQuery));
+
+    if (!nextEncodedCT) break;
+    if (getMeaningfulSearchTokens(scoreQuery).length < 2) break;
+    if (bestScore >= STRONG_MATCH_SCORE) break;
+  } while (pagesFetched < maxPages);
+
+  return {
+    raw,
+    rawProducts,
+    nextEncodedCT: nextEncodedCT || null,
+    bestScore,
   };
 }
 
@@ -231,6 +281,40 @@ function shouldUseSearchRerank({ query, sort, encodedCT }) {
   return Boolean(query && query.trim() && !sort && !encodedCT);
 }
 
+function getSearchQueryVariants(query) {
+  const variants = [String(query || '').trim()].filter(Boolean);
+  const comparableVariant = getMeaningfulSearchTokens(query).join(' ');
+  const comparableTokens = getSearchTokens(query).map(toComparableToken).filter(Boolean);
+  const hasExpansionNoise = comparableTokens.some((token) => SEARCH_EXPANSION_NOISE_TOKENS.has(token));
+  const distinctiveTokens = getDistinctiveSearchTokens(query);
+  const distinctiveVariant = distinctiveTokens.join(' ');
+  const leadDistinctiveVariant = distinctiveTokens[0] || '';
+
+  if (
+    hasExpansionNoise
+    && leadDistinctiveVariant
+    && normalizeSearchText(leadDistinctiveVariant) !== normalizeSearchText(query)
+  ) {
+    variants.push(leadDistinctiveVariant);
+  }
+  if (
+    distinctiveVariant
+    && normalizeSearchText(distinctiveVariant) !== normalizeSearchText(query)
+  ) {
+    variants.push(distinctiveVariant);
+  }
+  if (
+    comparableVariant
+    && normalizeSearchText(comparableVariant) !== normalizeSearchText(query)
+  ) {
+    variants.push(comparableVariant);
+  }
+
+  return variants.filter((value, index) => (
+    value && variants.findIndex((item) => normalizeSearchText(item) === normalizeSearchText(value)) === index
+  ));
+}
+
 function dedupeRawProducts(rawProducts) {
   const seen = new Set();
   const deduped = [];
@@ -276,10 +360,17 @@ function scoreSearchTitle(title, query, originalIndex = 0) {
   const titleTokens = getComparableTokenSet(title);
   const queryTokens = getSearchTokens(query);
   const meaningfulTokens = getMeaningfulSearchTokens(query);
+  const distinctiveTokens = getDistinctiveSearchTokens(query);
+  const leadDistinctiveToken = distinctiveTokens[0] || null;
   const tokensToMatch = meaningfulTokens.length ? meaningfulTokens : queryTokens;
   const matchedCount = tokensToMatch.filter((token) => titleTokens.has(toComparableToken(token))).length;
+  const distinctiveMatchedCount = distinctiveTokens.filter((token) => titleTokens.has(toComparableToken(token))).length;
+  const hasLeadDistinctiveToken = leadDistinctiveToken
+    ? titleTokens.has(toComparableToken(leadDistinctiveToken))
+    : false;
   const missingCount = Math.max(0, tokensToMatch.length - matchedCount);
   const matchRatio = tokensToMatch.length ? matchedCount / tokensToMatch.length : 0;
+  const hasAllQueryTokens = tokensToMatch.length > 0 && missingCount === 0;
   let score = 0;
 
   if (normalizedTitle === normalizedQuery) score += 10000;
@@ -288,10 +379,15 @@ function scoreSearchTitle(title, query, originalIndex = 0) {
   if (queryCore && normalizedTitle.includes(queryCore)) score += 3000;
   if (normalizedTitle.includes(normalizedQuery)) score += 2500;
   if (queryCore && (titleCore.startsWith(queryCore) || queryCore.startsWith(titleCore))) score += 1800;
-  if (matchedCount === tokensToMatch.length && tokensToMatch.length > 0) score += 2200;
+  if (hasAllQueryTokens) score += 2200;
+  if (tokensToMatch.length > 1 && hasAllQueryTokens) score += 12000;
+  if (tokensToMatch.length > 1 && !hasAllQueryTokens) score -= missingCount * 3500;
 
   score += matchRatio * 1800;
   score += matchedCount * 350;
+  if (leadDistinctiveToken) score += hasLeadDistinctiveToken ? 4000 : -2000;
+  score += distinctiveMatchedCount * 2500;
+  if (distinctiveTokens.length > 0 && distinctiveMatchedCount === 0) score -= 2500;
   score += countOrderedMatches(tokensToMatch, getSearchTokens(title).map(toComparableToken)) * 120;
   score -= missingCount * 1200;
   score -= originalIndex * 0.01;
@@ -322,6 +418,14 @@ function getMeaningfulSearchTokens(value) {
   const tokens = getSearchTokens(value)
     .map(toComparableToken)
     .filter((token) => token && !SEARCH_NOISE_TOKENS.has(token));
+
+  return tokens.filter((token, index) => tokens.indexOf(token) === index);
+}
+
+function getDistinctiveSearchTokens(value) {
+  const tokens = getSearchTokens(value)
+    .map(toComparableToken)
+    .filter((token) => token && !SEARCH_EXPANSION_NOISE_TOKENS.has(token));
 
   return tokens.filter((token, index) => tokens.indexOf(token) === index);
 }
@@ -363,7 +467,9 @@ function normalizePriceRange(priceRange) {
 
 function applyPostFilters(products, { languageMode, freeOnly }) {
   return products.filter((product) => {
+    if (product.notAvailableSeparately) return false;
     if (freeOnly && product.price?.value !== 0) return false;
+    if (!freeOnly && product.price?.value === 0) return false;
     if (languageMode && languageMode !== 'all' && product.russianLanguageMode !== languageMode) return false;
     return true;
   });

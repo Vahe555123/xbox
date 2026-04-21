@@ -41,6 +41,15 @@ function normalizePaymentPrice(modeId, price) {
   if (!price) return null;
   const value = price.value ?? price.amount ?? price.totalRub ?? null;
   const formatted = price.formatted || price.totalRubFormatted || formatRub(value);
+  const originalValue = price.originalValue
+    ?? price.originalAmount
+    ?? price.originalRub
+    ?? price.originalTotalRub
+    ?? null;
+  const originalFormatted = price.originalFormatted
+    || price.originalRubFormatted
+    || price.originalTotalRubFormatted
+    || formatRub(originalValue);
   return {
     ...price,
     id: price.id || modeId,
@@ -48,6 +57,8 @@ function normalizePaymentPrice(modeId, price) {
     shortTitle: PAYMENT_PRICE_SHORT_TITLES[modeId] || price.title || modeId,
     formatted,
     value,
+    originalValue,
+    originalFormatted,
     enabled: price.enabled !== false,
     available: Boolean(price.available || formatted || value),
   };
@@ -106,6 +117,18 @@ export function getPaymentPriceEntries(product, { includeUnavailable = false } =
 export function getPaymentPriceText(price, fallback = 'Цена будет рассчитана') {
   if (!price) return fallback;
   return price.formatted || formatRub(price.value) || fallback;
+}
+
+export function getPaymentOriginalPriceText(price) {
+  if (!price) return null;
+  const text = price.originalFormatted || formatRub(price.originalValue);
+  if (!text) return null;
+
+  const original = Number(price.originalValue);
+  const current = Number(price.value);
+  if (Number.isFinite(original) && Number.isFinite(current) && original <= current) return null;
+
+  return text;
 }
 
 export function getPaymentPriceMeta(price) {
