@@ -4,6 +4,7 @@ import {
   getPaymentOriginalPriceText,
   getPaymentPriceEntries,
   getPaymentPriceLine,
+  getTopupCardsBreakdown,
 } from '../utils/paymentPrices';
 
 export default function RelatedProductCard({ product }) {
@@ -133,9 +134,11 @@ export default function RelatedProductCard({ product }) {
 
 function PaymentPriceAmount({ price, fallback }) {
   const originalPriceText = getPaymentOriginalPriceText(price);
+  const breakdown = getTopupCardsBreakdown(price);
   return (
     <strong className="payment-price-amount">
       <span className="payment-price-current">{getPaymentPriceLine(price, fallback)}</span>
+      {breakdown && <span className="payment-price-breakdown"> ({breakdown})</span>}
       {originalPriceText && <span className="payment-price-original">{originalPriceText}</span>}
     </strong>
   );

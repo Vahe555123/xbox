@@ -412,10 +412,35 @@ function mergeSubscriptions(primary = {}, secondary = {}) {
   };
 }
 
+const GAME_PASS_TIER_LABELS = new Set([
+  'Game Pass',
+  'Ultimate',
+  'Premium',
+  'Essential',
+  'PC Game Pass',
+]);
+
 function mergeSubscriptionLabels(primary = [], secondary = []) {
-  return [...primary, ...secondary]
+  const merged = [...primary, ...secondary]
     .filter(Boolean)
     .filter((label, index, labels) => labels.indexOf(label) === index);
+
+  return collapseGamePassLabels(merged);
+}
+
+function collapseGamePassLabels(labels) {
+  const result = [];
+  let gamePassInserted = false;
+  for (const label of labels) {
+    if (GAME_PASS_TIER_LABELS.has(label)) {
+      if (gamePassInserted) continue;
+      result.push('Game Pass');
+      gamePassInserted = true;
+      continue;
+    }
+    result.push(label);
+  }
+  return result;
 }
 
 function encodeSlug(title) {

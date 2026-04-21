@@ -1721,6 +1721,18 @@ img {
   font-size: 0.74rem;
 }
 
+.payment-price-breakdown {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.72rem;
+  margin-left: 0.25rem;
+  white-space: nowrap;
+}
+
+.payment-price-list--detail .payment-price-breakdown {
+  font-size: 0.82rem;
+}
+
 /* ========== Load More ========== */
 .load-more-wrap {
   display: flex;

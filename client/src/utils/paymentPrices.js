@@ -76,17 +76,27 @@ function fallbackPaymentPrice(product, modeId) {
   }
 
   if (modeId === 'topup_cards' && product?.topupCombo?.available) {
+    const combo = product.topupCombo;
+    const hasProportional = Number.isFinite(Number(combo.proportionalRub));
+    const value = hasProportional ? Number(combo.proportionalRub) : combo.totalRub;
+    const formatted = hasProportional
+      ? (combo.proportionalRubFormatted || formatRub(combo.proportionalRub))
+      : combo.totalRubFormatted;
     return normalizePaymentPrice(modeId, {
       id: modeId,
       title: PAYMENT_PRICE_TITLES[modeId],
-      available: Boolean(product.topupCombo.totalRubFormatted || product.topupCombo.totalRub),
+      available: Boolean(formatted || value),
       enabled: true,
-      value: product.topupCombo.totalRub,
-      formatted: product.topupCombo.totalRubFormatted,
-      cardsCount: product.topupCombo.cardsCount,
-      totalUsd: product.topupCombo.totalUsd,
-      priceUsd: product.topupCombo.price,
-      substituted: product.topupCombo.substituted,
+      value,
+      formatted,
+      cardsCount: combo.cardsCount,
+      totalUsd: combo.totalUsd,
+      priceUsd: combo.price,
+      substituted: combo.substituted,
+      cardsTotalRub: combo.totalRub ?? null,
+      cardsTotalRubFormatted: combo.totalRubFormatted ?? null,
+      leftoverUsd: combo.leftoverUsd ?? null,
+      leftoverUsdFormatted: combo.leftoverUsdFormatted ?? null,
     });
   }
 
@@ -135,4 +145,22 @@ export function getPaymentPriceLine(price, fallback) {
   if (!text) return fallback || null;
   const meta = getPaymentPriceMeta(price);
   return meta ? `${text} · ${meta}` : text;
+}
+
+function formatLeftoverUsdDisplay(value) {
+  if (value == null) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return (Math.round(numeric * 100) / 100).toFixed(2);
+}
+
+export function getTopupCardsBreakdown(price) {
+  if (!price || price.id !== 'topup_cards') return null;
+  const leftoverNumeric = Number(price.leftoverUsd);
+  const hasLeftover = Number.isFinite(leftoverNumeric) && leftoverNumeric > 0;
+  if (!hasLeftover) return null;
+  const cardsRub = price.cardsTotalRubFormatted || formatRub(price.cardsTotalRub);
+  const leftover = price.leftoverUsdFormatted || formatLeftoverUsdDisplay(price.leftoverUsd);
+  if (!cardsRub || leftover == null) return null;
+  return `${cardsRub} / ${leftover}$ на баланс`;
 }
