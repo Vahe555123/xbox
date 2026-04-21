@@ -129,7 +129,13 @@ img {
   align-items: center;
   justify-content: flex-end;
   gap: 0.4rem;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+}
+
+.top-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .top-nav-link,
@@ -175,6 +181,10 @@ img {
   border-color: rgba(255, 160, 0, 0.72);
   background: rgba(255, 140, 0, 0.16);
   color: #ffd080;
+}
+
+.top-nav-link--wide {
+  max-width: 230px;
 }
 
 .top-nav-dropdown {
@@ -1471,6 +1481,18 @@ img {
   line-height: 1;
 }
 
+.subscription-chip--ea-play {
+  background: #fff;
+  color: #ff4747;
+  border-color: rgba(255, 255, 255, 0.82);
+}
+
+.subscription-chip--ubisoft-plus {
+  background: #1b1b1b;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
 .product-publisher {
   font-size: 0.72rem;
   color: var(--text-muted);
@@ -1569,6 +1591,32 @@ img {
   text-decoration: line-through;
 }
 
+.price-discount-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #d83b01;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.price-gamepass-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #107c10;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
 .price-rub {
   flex-basis: 100%;
   color: #8ff0a4;
@@ -1605,7 +1653,7 @@ img {
   min-width: 0;
 }
 
-.payment-price-row span {
+.payment-price-row > span {
   color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 750;
@@ -1620,6 +1668,26 @@ img {
   text-align: right;
 }
 
+.payment-price-amount {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.payment-price-current {
+  color: #8ff0a4;
+}
+
+.payment-price-original {
+  color: var(--text-muted);
+  font-size: 0.72em;
+  font-weight: 800;
+  text-decoration: line-through;
+  white-space: nowrap;
+}
+
 .payment-price-list--detail {
   width: min(100%, 520px);
   gap: 0.45rem;
@@ -1631,7 +1699,7 @@ img {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.payment-price-list--detail .payment-price-row span {
+.payment-price-list--detail .payment-price-row > span {
   font-size: 0.86rem;
 }
 
@@ -1645,7 +1713,7 @@ img {
   margin-top: 0.1rem;
 }
 
-.payment-price-list--related .payment-price-row span {
+.payment-price-list--related .payment-price-row > span {
   font-size: 0.66rem;
 }
 
@@ -3511,6 +3579,18 @@ img {
   color: #9ff39f;
 }
 
+.ps-chip-subscription--ea-play {
+  border-color: rgba(255, 255, 255, 0.82);
+  background: #fff;
+  color: #ff4747;
+}
+
+.ps-chip-subscription--ubisoft-plus {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: #1b1b1b;
+  color: #fff;
+}
+
 .ps-product-facts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4260,11 +4340,11 @@ code {
 
 .rp-price-discount {
   font-size: 0.62rem;
-  color: var(--danger);
+  color: #fff;
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 3px;
-  background: rgba(216, 59, 1, 0.15);
+  background: #d83b01;
 }
 
 /* ========== Skeleton Loading ========== */

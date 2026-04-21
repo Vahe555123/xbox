@@ -17,6 +17,10 @@ const topupCardService = require('../services/topupCardService');
 
 function assignKeyActivationUrl(product) {
   if (!product) return product;
+  if (!isPaidReleasedProduct(product)) {
+    product.keyActivationPayUrl = null;
+    return product;
+  }
   product.keyActivationPayUrl = buildKeyActivationPayUrl(product);
   return product;
 }
@@ -30,6 +34,23 @@ function getProductUsdPrice(product) {
   return null;
 }
 
+function getProductOriginalUsdPrice(product) {
+  const current = getProductUsdPrice(product);
+  const original = Number(product?.price?.original || product?.price?.msrp);
+  if (!Number.isFinite(original) || original <= 0) return null;
+  if (current && original <= current) return null;
+  return Math.round(original * 100) / 100;
+}
+
+function isPaidReleasedProduct(product) {
+  const status = product?.releaseInfo?.status;
+  if (status === 'unreleased' || status === 'comingSoon') return false;
+  if (product?.notAvailableSeparately) return false;
+  const current = Number(product?.price?.value);
+  if (Number.isFinite(current) && current <= 0) return false;
+  return Boolean(getProductUsdPrice(product));
+}
+
 function getRequestIp(req) {
   const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
   const raw = forwarded || req.ip || req.socket?.remoteAddress || '';
@@ -39,11 +60,17 @@ function getRequestIp(req) {
 async function assignTopupCombo(product) {
   if (!product) return product;
   if (isGameCurrencyProduct(product)) return product;
+  if (!isPaidReleasedProduct(product)) return product;
   const usd = getProductUsdPrice(product);
   if (!usd) return product;
   try {
     const combo = await topupCardService.computeCombo(usd);
     if (combo?.available) product.topupCombo = combo;
+    const originalUsd = getProductOriginalUsdPrice(product);
+    if (originalUsd) {
+      const originalCombo = await topupCardService.computeCombo(originalUsd);
+      if (originalCombo?.available) product.topupComboOriginal = originalCombo;
+    }
   } catch (e) {
     logger.warn('Topup combo computation failed', { productId: product.id, message: e.message });
   }
@@ -59,15 +86,36 @@ function getRubValue(price) {
 function buildRubPaymentPrice(id, title, price, extra = {}) {
   const value = getRubValue(price);
   const formatted = price?.formatted || price?.totalRubFormatted || null;
+  const originalValue = getRubValue(extra.originalPrice);
+  const originalFormatted = extra.originalPrice?.formatted || extra.originalPrice?.totalRubFormatted || null;
+  const { originalPrice, ...rest } = extra;
   return {
     id,
     title,
-    enabled: extra.enabled ?? Boolean(formatted || value),
+    enabled: rest.enabled ?? Boolean(formatted || value),
     available: Boolean(formatted || value),
     value,
     formatted,
+    originalValue,
+    originalFormatted,
     currency: 'RUB',
-    ...extra,
+    ...rest,
+  };
+}
+
+function estimateOriginalRubPrice(currentRub, product) {
+  const value = getRubValue(currentRub);
+  const currentUsd = getProductUsdPrice(product);
+  const originalUsd = getProductOriginalUsdPrice(product);
+  if (!value || !currentUsd || !originalUsd) return null;
+  const originalValue = Math.round(value * (originalUsd / currentUsd));
+  return {
+    value: originalValue,
+    formatted: new Intl.NumberFormat('ru-RU', {
+      style: 'currency',
+      currency: 'RUB',
+      maximumFractionDigits: 0,
+    }).format(originalValue),
   };
 }
 
@@ -88,12 +136,15 @@ async function assignPaymentPrices(product) {
   product.paymentPrices = {
     oplata: buildRubPaymentPrice('oplata', 'Oplata.info', product.priceRub, {
       enabled: Boolean(product.digisellerId || product.digisellerPayUrl),
+      originalPrice: estimateOriginalRubPrice(product.priceRub, product),
     }),
     key_activation: buildRubPaymentPrice('key_activation', 'Ключ активации', keyActivationRub, {
       enabled: Boolean(product.keyActivationPayUrl),
+      originalPrice: estimateOriginalRubPrice(keyActivationRub, product),
     }),
     topup_cards: buildRubPaymentPrice('topup_cards', 'Карты пополнения', product.topupCombo, {
       enabled: Boolean(product.topupCombo?.available),
+      originalPrice: product.topupComboOriginal,
       cardsCount: product.topupCombo?.cardsCount ?? null,
       totalUsd: product.topupCombo?.totalUsd ?? null,
       priceUsd: product.topupCombo?.price ?? null,
@@ -249,6 +300,9 @@ async function createProductPurchase(req, res, next) {
 
     let payment;
     if (finalPaymentMode === 'key_activation') {
+      if (!isPaidReleasedProduct(product)) {
+        throw new AppError('Ключ активации недоступен для этого товара', 400);
+      }
       payment = await createKeyActivationPayment(product, {
         gameName,
         purchaseEmail: finalPurchaseEmail,
@@ -256,6 +310,9 @@ async function createProductPurchase(req, res, next) {
     } else if (finalPaymentMode === 'topup_cards') {
       if (isGameCurrencyProduct(product)) {
         throw new AppError('Карты пополнения недоступны для игровой валюты', 400);
+      }
+      if (!isPaidReleasedProduct(product)) {
+        throw new AppError('Карты пополнения недоступны для этого товара', 400);
       }
       const usd = getProductUsdPrice(product);
       if (!usd) throw new AppError('Не удалось определить цену в USD для карт', 400);

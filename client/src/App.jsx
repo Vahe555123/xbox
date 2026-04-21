@@ -135,53 +135,30 @@ export default function App() {
             </Link>
           </h1>
           <nav className="top-nav" aria-label="Верхнее меню">
-            <Link
-              to="/"
-              className={`top-nav-link top-nav-home ${isHomeActive ? 'active' : ''}`}
-            >
-              <span className="top-nav-home-full">Каталог игр</span>
-              <span className="top-nav-home-short">Главная</span>
+            <Link to="/" className={`top-nav-link top-nav-home ${isHomeActive ? 'active' : ''}`}>
+              Каталог игр
             </Link>
-            <details className={`top-nav-dropdown ${isDealsActive ? 'active' : ''}`}>
-              <summary className="top-nav-link top-nav-dropdown-trigger">
-                <span>Магазин</span>
-                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                  <path
-                    fill="currentColor"
-                    d="M4.22 5.72a.75.75 0 0 1 1.06 0L8 8.44l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 6.78a.75.75 0 0 1 0-1.06Z"
-                  />
-                </svg>
-              </summary>
-              <div className="top-nav-dropdown-panel">
-                <Link
-                  to={isDealsActive ? '/' : '/?deals=true'}
-                  className={`top-nav-dropdown-item ${isDealsActive ? 'active' : ''}`}
-                >
-                  <strong>Скидки</strong>
-                  <span>Игры со скидками</span>
-                </Link>
-                <a className="top-nav-dropdown-item" href="https://xboxportal.ru/product/4687274">
-                  <strong>Game Pass</strong>
-                  <span>Быстрый доступ к подписке</span>
-                </a>
-                <a className="top-nav-dropdown-item" href="https://xboxportal.ru/category/152018">
-                  <strong>Игровая валюта</strong>
-                  <span>Валюта и донат для игр</span>
-                </a>
-                <a className="top-nav-dropdown-item" href="https://xboxportal.ru/category/149289">
-                  <strong>Подписки</strong>
-                  <span>Сервисы и продления</span>
-                </a>
-                <a className="top-nav-dropdown-item" href="https://xboxportal.ru/category/149293">
-                  <strong>Аккаунт</strong>
-                  <span>Услуги для аккаунта Xbox</span>
-                </a>
-                <a className="top-nav-dropdown-item" href="https://xboxportal.ru/category/154890">
-                  <strong>Коды пополнения баланса</strong>
-                  <span>Карты и пополнение</span>
-                </a>
-              </div>
-            </details>
+            <Link
+              to={isDealsActive ? '/' : '/?deals=true'}
+              className={`top-nav-link top-nav-sale ${isDealsActive ? 'active' : ''}`}
+            >
+              Скидки
+            </Link>
+            <a className="top-nav-link" href="https://xboxportal.ru/product/4687274">
+              Game Pass
+            </a>
+            <a className="top-nav-link" href="https://xboxportal.ru/category/152018">
+              Игровая валюта
+            </a>
+            <a className="top-nav-link" href="https://xboxportal.ru/category/149289">
+              Подписки
+            </a>
+            <a className="top-nav-link" href="https://xboxportal.ru/category/149293">
+              Аккаунт
+            </a>
+            <a className="top-nav-link top-nav-link--wide" href="https://xboxportal.ru/category/154890">
+              Коды пополнения баланса
+            </a>
             <a className="top-nav-link" href="https://xboxportal.ru/rules">
               Помощь
             </a>
