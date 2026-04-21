@@ -910,9 +910,10 @@ function computeProportionalPrice({ totalRub, totalUsd, priceUsd }) {
   const leftoverUsdRaw = hasPrice && Number.isFinite(totalUsdNum)
     ? totalUsdNum - priceUsdNum
     : null;
-  const leftoverUsd = Number.isFinite(leftoverUsdRaw)
+  const leftoverUsdRounded = Number.isFinite(leftoverUsdRaw)
     ? Math.round(leftoverUsdRaw * 100) / 100
     : null;
+  const leftoverUsd = leftoverUsdRounded != null && leftoverUsdRounded > 0 ? leftoverUsdRounded : null;
 
   return {
     proportionalRub,

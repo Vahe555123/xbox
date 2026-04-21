@@ -133,11 +133,11 @@ function formatLeftoverUsdDisplay(value) {
 
 export function getTopupCardsBreakdown(price) {
   if (!price || price.id !== 'topup_cards') return null;
+  const leftoverNumeric = Number(price.leftoverUsd);
+  const hasLeftover = Number.isFinite(leftoverNumeric) && leftoverNumeric > 0;
+  if (!hasLeftover) return null;
   const cardsRub = price.cardsTotalRubFormatted || formatRub(price.cardsTotalRub);
   const leftover = price.leftoverUsdFormatted || formatLeftoverUsdDisplay(price.leftoverUsd);
-  if (!cardsRub && leftover == null) return null;
-  const parts = [];
-  if (cardsRub) parts.push(cardsRub);
-  if (leftover != null) parts.push(`${leftover}$ на баланс`);
-  return parts.join(' / ');
+  if (!cardsRub || leftover == null) return null;
+  return `${cardsRub} / ${leftover}$ на баланс`;
 }

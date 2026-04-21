@@ -9,6 +9,7 @@ import {
   getPaymentPrice,
   getPaymentPriceEntries,
   getPaymentPriceLine,
+  getTopupCardsBreakdown,
 } from '../utils/paymentPrices';
 
 const RELATED_LABELS = {
@@ -409,12 +410,20 @@ export default function GameDetailPage() {
               </div>
               {paymentPriceEntries.length > 0 && (
                 <div className="payment-price-list payment-price-list--detail">
-                  {paymentPriceEntries.map((paymentPrice) => (
-                    <div className="payment-price-row" key={paymentPrice.id}>
-                      <span>{paymentPrice.title}</span>
-                      <strong>{getPaymentPriceLine(paymentPrice)}</strong>
-                    </div>
-                  ))}
+                  {paymentPriceEntries.map((paymentPrice) => {
+                    const breakdown = getTopupCardsBreakdown(paymentPrice);
+                    return (
+                      <div className="payment-price-row" key={paymentPrice.id}>
+                        <span>{paymentPrice.title}</span>
+                        <strong>
+                          {getPaymentPriceLine(paymentPrice)}
+                          {breakdown && (
+                            <span className="payment-price-breakdown"> ({breakdown})</span>
+                          )}
+                        </strong>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {!paymentPriceEntries.length && data.priceRub?.formatted && (
