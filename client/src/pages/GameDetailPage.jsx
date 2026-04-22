@@ -413,11 +413,6 @@ export default function GameDetailPage() {
             <div className="ps-price">
               <div className="ps-price-main">
                 {discountPercent && <span className="price-discount-badge">-{discountPercent}%</span>}
-                {gamePassSavingsBadgePercent && (
-                  <span className="price-gamepass-badge price-gamepass-badge--before">
-                    {getGamePassSavingsText(gamePassSavingsBadgePercent)}
-                  </span>
-                )}
                 {price?.originalFormatted && <span className="ps-price-original">{price.originalFormatted}</span>}
                 {storePriceLabel && <strong>{storePriceLabel}</strong>}
                 {gamePassSavingsBadgePercent && (

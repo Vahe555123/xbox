@@ -104,11 +104,6 @@ export default function ProductCard({ product }) {
             {hasStorePriceRow && (
               <div className="product-price-store">
                 {discountPercent && <span className="price-discount-badge">-{discountPercent}%</span>}
-                {gamePassSavingsBadgePercent && (
-                  <span className="price-gamepass-badge price-gamepass-badge--before">
-                    {getGamePassSavingsText(gamePassSavingsBadgePercent)}
-                  </span>
-                )}
                 {price?.original && price.original > price.value && (
                   <span className="price-original">{price.originalFormatted}</span>
                 )}
