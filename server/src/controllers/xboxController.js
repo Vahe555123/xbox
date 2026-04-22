@@ -145,6 +145,8 @@ async function assignPaymentPrices(product) {
     topup_cards: buildRubPaymentPrice('topup_cards', 'Карты пополнения', product.topupCombo, {
       enabled: Boolean(product.topupCombo?.available),
       originalPrice: product.topupComboOriginal,
+      originalTotalUsd: product.topupComboOriginal?.totalUsd ?? null,
+      originalPriceUsd: product.topupComboOriginal?.price ?? null,
       cardsCount: product.topupCombo?.cardsCount ?? null,
       totalUsd: product.topupCombo?.totalUsd ?? null,
       priceUsd: product.topupCombo?.price ?? null,

@@ -2,10 +2,27 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import FavoriteHeartButton from './FavoriteHeartButton';
 import {
+  formatRub,
   getPaymentOriginalPriceText,
   getPaymentPriceEntries,
   getPaymentPriceLine,
 } from '../utils/paymentPrices';
+
+const CATALOG_PAYMENT_TITLES = {
+  oplata: 'ПОКУПКА НА АККАУНТ',
+  key_activation: 'КЛЮЧ НА ИГРУ',
+  topup_cards: 'КОДОМ ПОПОЛНЕНИЯ БАЛАНСА',
+};
+
+const GAME_PASS_LABELS = new Set([
+  'game pass',
+  'pc game pass',
+  'ultimate',
+  'premium',
+  'essential',
+  'core',
+  'standard',
+]);
 
 export default function ProductCard({ product }) {
   const [imgError, setImgError] = useState(false);
@@ -18,6 +35,7 @@ export default function ProductCard({ product }) {
     releaseInfo,
     subscriptionLabels = [],
     hasRussianLanguage,
+    russianLanguageMode,
     gamePassSavingsPercent,
   } = product;
   const to = detailPath || `/game/${product.id}`;
@@ -34,6 +52,8 @@ export default function ProductCard({ product }) {
   const shouldShowStorePrice = Boolean(storePriceLabel);
   const fallbackPriceLabel = hasRubPrice ? null : 'Цена недоступна';
   const paymentPriceEntries = getPaymentPriceEntries(product, { includeUnavailable: true });
+  const catalogSubscriptionLabels = getCatalogSubscriptionLabels(subscriptionLabels);
+  const languageBadge = getLanguageBadge(russianLanguageMode, hasRussianLanguage);
   const hasStorePriceRow = Boolean(
     (price?.original && price.original > price.value)
     || shouldShowStorePrice
@@ -61,9 +81,9 @@ export default function ProductCard({ product }) {
                 <span>No Image</span>
               </div>
             )}
-            {hasRussianLanguage && (
-              <span className="product-language-badge">Русский язык</span>
-            )}
+            <span className={`product-language-badge product-language-badge--${languageBadge.mode}`}>
+              {languageBadge.label}
+            </span>
           </Link>
           <FavoriteHeartButton product={product} />
         </div>
@@ -72,9 +92,9 @@ export default function ProductCard({ product }) {
           <div className="product-info">
           <h3 className="product-title">{title}</h3>
 
-          {subscriptionLabels.length > 0 && (
+          {catalogSubscriptionLabels.length > 0 && (
             <div className="product-subscriptions">
-              {subscriptionLabels.map((label) => (
+              {catalogSubscriptionLabels.map((label) => (
                 <span key={label} className={getSubscriptionChipClass(label)}>{label}</span>
               ))}
             </div>
@@ -111,9 +131,9 @@ export default function ProductCard({ product }) {
             {paymentPriceEntries.length > 0 && (
               <div className="payment-price-list payment-price-list--card">
                 {paymentPriceEntries.map((paymentPrice) => (
-                  <div className="payment-price-row" key={paymentPrice.id}>
-                    <span>{paymentPrice.shortTitle}</span>
-                    <PaymentPriceAmount price={paymentPrice} />
+                  <div className="payment-price-row payment-price-row--card" key={paymentPrice.id}>
+                    <span className="payment-price-title">{getCatalogPaymentTitle(paymentPrice)}</span>
+                    <PaymentPriceAmount price={paymentPrice} variant="catalog" />
                   </div>
                 ))}
               </div>
@@ -126,18 +146,86 @@ export default function ProductCard({ product }) {
   );
 }
 
-function PaymentPriceAmount({ price, fallback }) {
-  const originalPriceText = getPaymentOriginalPriceText(price);
+function PaymentPriceAmount({ price, fallback, variant }) {
+  const display = variant === 'catalog'
+    ? getCatalogPaymentPriceDisplay(price, fallback)
+    : {
+        current: getPaymentPriceLine(price, fallback),
+        original: getPaymentOriginalPriceText(price),
+        meta: null,
+      };
+
   return (
     <strong className="payment-price-amount">
-      <span className="payment-price-current">{getPaymentPriceLine(price, fallback)}</span>
-      {originalPriceText && <span className="payment-price-original">{originalPriceText}</span>}
+      <span className="payment-price-current">{display.current}</span>
+      {display.original && <span className="payment-price-original">{display.original}</span>}
+      {display.meta && <span className="payment-price-balance">({display.meta})</span>}
     </strong>
   );
 }
 
+function getCatalogPaymentPriceDisplay(price, fallback) {
+  if (price?.id !== 'topup_cards') {
+    return {
+      current: getPaymentPriceLine(price, fallback),
+      original: getPaymentOriginalPriceText(price),
+      meta: null,
+    };
+  }
+
+  const totalRub = Number(price.value);
+  const totalUsd = Number(price.totalUsd);
+  const priceUsd = Number(price.priceUsd);
+  if (!Number.isFinite(totalRub) || !Number.isFinite(totalUsd) || !Number.isFinite(priceUsd) || totalRub <= 0 || totalUsd <= 0 || priceUsd <= 0) {
+    return {
+      current: getPaymentPriceLine(price, fallback),
+      original: null,
+      meta: null,
+    };
+  }
+
+  const effectiveRub = Math.ceil((totalRub / totalUsd) * priceUsd);
+  const balanceUsd = Math.max(0, Math.round((totalUsd - priceUsd) * 100) / 100);
+
+  return {
+    current: formatRub(effectiveRub),
+    original: getTopupEffectiveOriginalText(price, effectiveRub),
+    meta: `${formatRub(totalRub)} / ${formatUsdBalance(balanceUsd)} на баланс`,
+  };
+}
+
+function getTopupEffectiveOriginalText(price, currentEffectiveRub) {
+  const totalRub = Number(price?.originalValue);
+  const totalUsd = Number(price?.originalTotalUsd);
+  const priceUsd = Number(price?.originalPriceUsd);
+
+  if (!Number.isFinite(totalRub) || !Number.isFinite(totalUsd) || !Number.isFinite(priceUsd) || totalRub <= 0 || totalUsd <= 0 || priceUsd <= 0) {
+    return null;
+  }
+
+  const effectiveRub = Math.ceil((totalRub / totalUsd) * priceUsd);
+  if (Number.isFinite(currentEffectiveRub) && effectiveRub <= currentEffectiveRub) return null;
+  return formatRub(effectiveRub);
+}
+
+function formatUsdBalance(value) {
+  const rounded = Math.round((Number(value) || 0) * 100) / 100;
+  return `${rounded.toFixed(2)}$`;
+}
+
+function getCatalogPaymentTitle(price) {
+  return CATALOG_PAYMENT_TITLES[price?.id] || String(price?.shortTitle || price?.title || '').toUpperCase();
+}
+
 function getGamePassSavingsText(percent) {
   return `Сэкономь ${Math.round(Number(percent) || 0)}% с Game Pass`;
+}
+
+function getCatalogSubscriptionLabels(labels) {
+  const normalizedLabels = (labels || []).filter(Boolean);
+  const hasGamePass = normalizedLabels.some((label) => isGamePassSubscriptionLabel(label));
+  const rest = normalizedLabels.filter((label) => !isGamePassSubscriptionLabel(label));
+  return hasGamePass ? ['Game Pass', ...rest] : rest;
 }
 
 function getSubscriptionChipClass(label) {
@@ -146,6 +234,17 @@ function getSubscriptionChipClass(label) {
   if (normalized.includes('ea play')) modifiers.push('subscription-chip--ea-play');
   if (normalized.includes('ubisoft')) modifiers.push('subscription-chip--ubisoft-plus');
   return ['subscription-chip', ...modifiers].join(' ');
+}
+
+function isGamePassSubscriptionLabel(label) {
+  const normalized = String(label || '').trim().toLowerCase();
+  return GAME_PASS_LABELS.has(normalized) || normalized.includes('game pass');
+}
+
+function getLanguageBadge(mode, hasRussian) {
+  if (mode === 'full_ru') return { mode: 'full-ru', label: 'Полностью на русском' };
+  if (mode === 'ru_subtitles' || hasRussian) return { mode: 'ru-subtitles', label: 'Русские субтитры' };
+  return { mode: 'no-ru', label: 'Без русского' };
 }
 
 function getStorePriceLabel(price, releaseInfo, isUnavailablePrice) {

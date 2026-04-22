@@ -1225,14 +1225,29 @@ img {
   bottom: 8px;
   z-index: 3;
   max-width: calc(100% - 16px);
-  padding: 4px 8px;
+  padding: 5px 9px;
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.72);
   color: #fff;
-  font-size: 0.68rem;
+  font-size: 0.84rem;
   font-weight: 800;
   line-height: 1.15;
   backdrop-filter: blur(6px);
+}
+
+.product-language-badge--full-ru {
+  background: rgba(16, 124, 16, 0.86);
+  color: #fff;
+}
+
+.product-language-badge--ru-subtitles {
+  background: rgba(9, 78, 132, 0.9);
+  color: #fff;
+}
+
+.product-language-badge--no-ru {
+  background: rgba(31, 36, 44, 0.9);
+  color: #d8dde7;
 }
 
 .badge-in-game-pass {
@@ -1568,7 +1583,7 @@ img {
 }
 
 .price-current {
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 
@@ -1645,6 +1660,10 @@ img {
   width: 100%;
 }
 
+.payment-price-list--card {
+  gap: 0.55rem;
+}
+
 .payment-price-row {
   display: flex;
   align-items: baseline;
@@ -1658,6 +1677,26 @@ img {
   font-size: 0.72rem;
   font-weight: 750;
   min-width: 0;
+}
+
+.payment-price-list--card .payment-price-row {
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-height: 72px;
+  padding: 0.62rem 0.72rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(16, 18, 24, 0.62);
+}
+
+.payment-price-list--card .payment-price-title {
+  color: #dfe5ef;
+  font-size: 0.8rem;
+  font-weight: 900;
+  line-height: 1.12;
+  text-transform: uppercase;
 }
 
 .payment-price-row strong {
@@ -1678,6 +1717,7 @@ img {
 
 .payment-price-current {
   color: #8ff0a4;
+  text-transform: uppercase;
 }
 
 .payment-price-original {
@@ -1686,6 +1726,24 @@ img {
   font-weight: 800;
   text-decoration: line-through;
   white-space: nowrap;
+}
+
+.payment-price-balance {
+  color: #9aa8bd;
+  font-size: 0.76em;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.payment-price-list--card .payment-price-row strong {
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.payment-price-list--card .payment-price-amount {
+  justify-content: flex-start;
+  align-items: baseline;
 }
 
 .payment-price-list--detail {
@@ -3577,6 +3635,24 @@ img {
   border-color: rgba(45, 189, 116, 0.32);
   background: rgba(16, 124, 16, 0.2);
   color: #9ff39f;
+}
+
+.ps-chip-language--full-ru {
+  border-color: rgba(45, 189, 116, 0.38);
+  background: rgba(16, 124, 16, 0.22);
+  color: #9ff39f;
+}
+
+.ps-chip-language--ru-subtitles {
+  border-color: rgba(125, 220, 255, 0.34);
+  background: rgba(20, 110, 170, 0.22);
+  color: #9fdcff;
+}
+
+.ps-chip-language--no-ru {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
 }
 
 .ps-chip-subscription--ea-play {
@@ -5623,7 +5699,7 @@ code {
     row-gap: 0.15rem;
   }
 
-  .price-current { font-size: 0.95rem; }
+  .price-current { font-size: 1rem; }
   .price-original { font-size: 0.72rem; }
 
   .product-badges,
@@ -5642,8 +5718,8 @@ code {
   .product-language-badge {
     left: 6px;
     bottom: 6px;
-    font-size: 0.58rem;
-    padding: 3px 6px;
+    font-size: 0.84rem;
+    padding: 4px 7px;
   }
 
   .favorite-heart {
@@ -5959,7 +6035,7 @@ code {
 
   .product-info { padding: 0.55rem 0.6rem 0.65rem; }
   .product-title { font-size: 0.95rem; }
-  .price-current { font-size: 0.88rem; }
+  .price-current { font-size: 1rem; }
 
   .admin-stats-grid { grid-template-columns: 1fr; }
 

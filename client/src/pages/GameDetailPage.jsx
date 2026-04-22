@@ -253,6 +253,7 @@ export default function GameDetailPage() {
     publisher: data.publisherName || null,
     subscriptionLabels: data.subscriptionLabels || [],
     hasRussianLanguage: data.hasRussianLanguage,
+    russianLanguageMode: data.russianLanguageMode,
     gamePassSavingsPercent: data.gamePassSavingsPercent || null,
   };
 
@@ -388,7 +389,9 @@ export default function GameDetailPage() {
           ) : (
             <div className="product-image-placeholder"><span>No Image</span></div>
           )}
-          {data.hasRussianLanguage && <span className="product-language-badge">Русский язык</span>}
+          <span className={`product-language-badge product-language-badge--${getLanguageClassSuffix(data.russianLanguageMode, data.hasRussianLanguage)}`}>
+            {getLanguageDisplayLabel(data.russianLanguageMode, data.hasRussianLanguage)}
+          </span>
           <FavoriteHeartButton product={favoriteProduct} />
         </div>
 
@@ -441,9 +444,11 @@ export default function GameDetailPage() {
 
           <div className="ps-chip-row">
             {(data.playWith || []).map((platform) => <span key={platform} className="ps-chip">{platform}</span>)}
-            <span className={`ps-chip ${data.hasRussianLanguage ? 'ps-chip-good' : ''}`}>{getLanguageLabel(data.russianLanguageMode)}</span>
+            <span className={`ps-chip ps-chip-language ps-chip-language--${getLanguageClassSuffix(data.russianLanguageMode, data.hasRussianLanguage)}`}>
+              {getLanguageDisplayLabel(data.russianLanguageMode, data.hasRussianLanguage)}
+            </span>
             {(data.subscriptionLabels || []).map((label) => (
-              <span key={label} className={getSubscriptionChipClass(label)}>{label}</span>
+              <span key={label} className={getSubscriptionChipClass(label)}>{getDetailSubscriptionLabel(label)}</span>
             ))}
           </div>
 
@@ -941,6 +946,22 @@ function getSubscriptionChipClass(label) {
   if (normalized.includes('ea play')) modifiers.push('ps-chip-subscription--ea-play');
   if (normalized.includes('ubisoft')) modifiers.push('ps-chip-subscription--ubisoft-plus');
   return ['ps-chip', 'ps-chip-subscription', ...modifiers].join(' ');
+}
+
+function getDetailSubscriptionLabel(label) {
+  return String(label || '').trim().toLowerCase() === 'game pass' ? 'Ultimate' : label;
+}
+
+function getLanguageDisplayLabel(mode, hasRussian) {
+  if (mode === 'full_ru') return 'Полностью на русском';
+  if (mode === 'ru_subtitles' || hasRussian) return 'Русские субтитры';
+  return 'Без русского';
+}
+
+function getLanguageClassSuffix(mode, hasRussian) {
+  if (mode === 'full_ru') return 'full-ru';
+  if (mode === 'ru_subtitles' || hasRussian) return 'ru-subtitles';
+  return 'no-ru';
 }
 
 function SystemRequirements({ title, items, notes }) {
