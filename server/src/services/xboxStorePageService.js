@@ -10,9 +10,14 @@ const RELATED_CHANNELS = [
 ];
 
 async function getStorePageRelatedProducts({ productId, storeUrl }) {
-  if (!productId || !storeUrl) return [];
+  const data = await getStorePageProductData({ productId, storeUrl });
+  return data.relatedProducts;
+}
+
+async function getStorePageProductData({ productId, storeUrl }) {
+  if (!productId || !storeUrl) return { relatedProducts: [], languageInfo: null };
   const normalizedProductId = String(productId).toUpperCase();
-  const cacheKey = `xbox-store-page-related:${normalizedProductId}`;
+  const cacheKey = `xbox-store-page-product:${normalizedProductId}`;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
@@ -27,6 +32,8 @@ async function getStorePageRelatedProducts({ productId, storeUrl }) {
 
   const state = extractPreloadedState(String(response.data || ''));
   const channelData = state?.core2?.channels?.channelData || {};
+  const productSummaries = state?.core2?.products?.productSummaries || {};
+  const productSummary = getCaseInsensitiveValue(productSummaries, normalizedProductId);
   const products = [];
   const seen = new Set([normalizedProductId]);
 
@@ -47,8 +54,12 @@ async function getStorePageRelatedProducts({ productId, storeUrl }) {
     products.push(...channelProducts);
   }
 
-  cache.set(cacheKey, products);
-  return products;
+  const data = {
+    relatedProducts: products,
+    languageInfo: extractStoreLanguageInfo(productSummary),
+  };
+  cache.set(cacheKey, data);
+  return data;
 }
 
 function toXboxRequestPath(storeUrl) {
@@ -70,6 +81,49 @@ function getChannelProductIds(channelData, prefix, productId) {
   return products
     .map((product) => product?.productId)
     .filter(Boolean);
+}
+
+function getCaseInsensitiveValue(source, key) {
+  if (!source || !key) return null;
+  const normalizedKey = String(key).toUpperCase();
+  const actualKey = Object.keys(source).find((itemKey) => itemKey.toUpperCase() === normalizedKey);
+  return actualKey ? source[actualKey] : null;
+}
+
+function extractStoreLanguageInfo(productSummary) {
+  const languagesSupported = productSummary?.languagesSupported;
+  if (!languagesSupported || typeof languagesSupported !== 'object') return null;
+
+  const russianEntry = Object.entries(languagesSupported).find(([code, language]) => (
+    isRussianLanguageCode(code)
+    || /russian/i.test(String(language?.languageDisplayName || ''))
+  ));
+
+  if (!russianEntry) {
+    return buildStoreLanguageInfo('no_ru', []);
+  }
+
+  const [code, language] = russianEntry;
+  const hasAudio = Boolean(language?.isAudioSupported);
+  const hasInterface = Boolean(language?.isInterfaceSupported);
+  const hasSubtitles = Boolean(language?.areSubtitlesSupported);
+  const hasAnyRussian = hasAudio || hasInterface || hasSubtitles;
+  const mode = hasAudio ? 'full_ru' : hasAnyRussian ? 'ru_subtitles' : 'no_ru';
+  return buildStoreLanguageInfo(mode, [code]);
+}
+
+function buildStoreLanguageInfo(mode, supportedLanguages) {
+  return {
+    supportedLanguages,
+    packageLanguages: [],
+    hasRussianLanguage: mode !== 'no_ru',
+    russianLanguageMode: mode,
+    languageSource: 'xbox-store-page',
+  };
+}
+
+function isRussianLanguageCode(code) {
+  return /^ru(?:-|$)/i.test(String(code || '').trim());
 }
 
 function extractPreloadedState(html) {
@@ -123,6 +177,8 @@ function readBalancedJsonObject(source, startIndex) {
 }
 
 module.exports = {
+  getStorePageProductData,
   getStorePageRelatedProducts,
   extractPreloadedState,
+  extractStoreLanguageInfo,
 };

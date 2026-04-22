@@ -150,20 +150,27 @@ img {
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.055);
   color: var(--text);
-  font-size: 0.86rem;
-  font-weight: 800;
+  font-size: 0.9rem;
+  font-weight: 400;
   line-height: 1;
   text-decoration: none;
   white-space: nowrap;
-  transition: border-color var(--transition), color var(--transition), background var(--transition), transform var(--transition);
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
 }
 
 .top-nav-link:hover,
 .top-nav-button:hover {
-  transform: translateY(-1px);
   border-color: rgba(125, 220, 255, 0.45);
   background: rgba(255, 255, 255, 0.09);
   color: #fff;
+}
+
+.top-nav-gamepass {
+  color: #8df58d;
+}
+
+.top-nav-gamepass:hover {
+  color: #8df58d;
 }
 
 .top-nav-link.active,
@@ -330,7 +337,6 @@ img {
   background: rgba(255, 140, 0, 0.2);
   border-color: rgba(255, 160, 0, 0.65);
   color: #ffd080;
-  transform: translateY(-1px);
 }
 
 .header-deals-btn.active {
@@ -972,7 +978,8 @@ img {
   .header-favorites-link {
     padding-left: 0.58rem;
     padding-right: 0.58rem;
-    font-size: 0.82rem;
+    font-size: 0.9rem;
+    font-weight: 400;
   }
 
   .logo-text {
@@ -1229,8 +1236,8 @@ img {
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.72);
   color: #fff;
-  font-size: 0.84rem;
-  font-weight: 800;
+  font-size: 0.9rem;
+  font-weight: normal;
   line-height: 1.15;
   backdrop-filter: blur(6px);
 }
@@ -1370,14 +1377,13 @@ img {
   text-decoration: none;
   color: var(--text);
   font-size: 0.9rem;
-  font-weight: 800;
+  font-weight: 400;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.055);
-  transition: border-color var(--transition), color var(--transition), background var(--transition), transform var(--transition);
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
 }
 
 .header-favorites-link:hover {
-  transform: translateY(-1px);
   border-color: rgba(125, 220, 255, 0.45);
   background: rgba(255, 255, 255, 0.09);
   color: #fff;
@@ -1492,7 +1498,7 @@ img {
   color: #8df58d;
   border: 1px solid rgba(45, 189, 116, 0.28);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -1584,7 +1590,7 @@ img {
 
 .price-current {
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .price-current.free {
@@ -1628,7 +1634,7 @@ img {
   background: #107c10;
   color: #fff;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.1;
 }
 
@@ -1636,7 +1642,7 @@ img {
   flex-basis: 100%;
   color: #8ff0a4;
   font-size: 0.84rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.15;
 }
 
@@ -1702,7 +1708,7 @@ img {
 .payment-price-row strong {
   color: #8ff0a4;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.15;
   text-align: right;
 }
@@ -1723,7 +1729,7 @@ img {
 .payment-price-original {
   color: var(--text-muted);
   font-size: 0.72em;
-  font-weight: 800;
+  font-weight: 600;
   text-decoration: line-through;
   white-space: nowrap;
 }
@@ -1731,7 +1737,7 @@ img {
 .payment-price-balance {
   color: #9aa8bd;
   font-size: 0.76em;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
   text-transform: none;
 }
@@ -3799,7 +3805,7 @@ img {
 
 .store-price strong {
   font-size: 1.85rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .store-price-original {
@@ -4411,14 +4417,14 @@ code {
 
 .rp-price-current {
   font-size: 0.88rem;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .rp-price-rub {
   flex-basis: 100%;
   color: #8ff0a4;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .rp-price-free {
@@ -4986,18 +4992,17 @@ code {
   border: 1px solid rgba(168, 130, 255, 0.35);
   background: rgba(138, 100, 240, 0.1);
   color: #c8b4ff;
-  font-size: 0.85rem;
-  font-weight: 700;
+  font-size: 0.9rem;
+  font-weight: 400;
   text-decoration: none;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .header-admin-btn:hover {
   background: rgba(138, 100, 240, 0.2);
   border-color: rgba(168, 130, 255, 0.65);
   color: #ddd0ff;
-  transform: translateY(-1px);
 }
 
 /* ========== Admin Page ========== */
@@ -5739,7 +5744,7 @@ code {
   .product-language-badge {
     left: 6px;
     bottom: 6px;
-    font-size: 0.84rem;
+    font-size: 0.9rem;
     padding: 4px 7px;
   }
 

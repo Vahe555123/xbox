@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const catalogService = require('./xboxCatalogService');
 const { getProductsByIds } = require('./displayCatalogService');
+const { getStorePageProductData } = require('./xboxStorePageService');
 const { mapProducts, enrichProductsWithCatalogDetails } = require('../mappers/productMapper');
 const { mapFilters, encodeFilters } = require('../mappers/filtersMapper');
 const config = require('../config');
@@ -481,11 +482,46 @@ async function enrichProducts(products) {
 
   try {
     const catalogProducts = await getProductsByIds(productIds);
-    return enrichProductsWithCatalogDetails(products, catalogProducts);
+    const enriched = enrichProductsWithCatalogDetails(products, catalogProducts);
+    return enrichProductsWithStoreLanguages(enriched);
   } catch (err) {
     logger.warn('Failed to enrich products with display catalog data', { message: err.message });
     return products;
   }
+}
+
+async function enrichProductsWithStoreLanguages(products) {
+  const candidates = (products || []).filter((product) => (
+    product?.storeUrl
+    && product.russianLanguageMode
+    && product.russianLanguageMode !== 'no_ru'
+  ));
+  if (!candidates.length) return products;
+
+  const concurrency = Math.max(1, Math.min(5, Number(process.env.XBOX_STORE_LANGUAGE_CONCURRENCY) || 4));
+  let index = 0;
+
+  async function worker() {
+    while (index < candidates.length) {
+      const product = candidates[index];
+      index += 1;
+      try {
+        const data = await getStorePageProductData({
+          productId: product.id,
+          storeUrl: product.storeUrl,
+        });
+        if (data.languageInfo) Object.assign(product, data.languageInfo);
+      } catch (err) {
+        logger.debug('Xbox store language verification failed', {
+          productId: product.id,
+          message: err.message,
+        });
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, candidates.length) }, worker));
+  return products;
 }
 
 function fetchCatalogPage({ query, encodedFilters, encodedCT, returnFilters, channelId = '' }) {

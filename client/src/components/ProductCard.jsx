@@ -190,7 +190,7 @@ function getCatalogPaymentPriceDisplay(price, fallback) {
   return {
     current: formatRub(effectiveRub),
     original: getTopupEffectiveOriginalText(price, effectiveRub),
-    meta: `${formatRub(totalRub)} / ${formatUsdBalance(balanceUsd)} на баланс`,
+    meta: balanceUsd <= 0.01 ? null : `${formatRub(totalRub)} / ${formatUsdBalance(balanceUsd)} на баланс`,
   };
 }
 

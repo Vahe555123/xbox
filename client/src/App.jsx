@@ -144,7 +144,7 @@ export default function App() {
             >
               Скидки
             </Link>
-            <a className="top-nav-link" href="https://xboxportal.ru/product/4687274">
+            <a className="top-nav-link top-nav-gamepass" href="https://xboxportal.ru/product/4687274">
               Game Pass
             </a>
             <a className="top-nav-link" href="https://xboxportal.ru/category/152018">

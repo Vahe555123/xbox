@@ -414,6 +414,7 @@ async function getMappingsByProductIds(productIds) {
 
 function getUsdPriceValue(product) {
   const candidates = [
+    product?.gamePassPrice,
     product?.price?.value,
     product?.price?.listPrice,
     product?.price?.msrp,

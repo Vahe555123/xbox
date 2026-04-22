@@ -1,6 +1,6 @@
 const { search } = require('../services/searchService');
 const { getProductById, getProductsByIds } = require('../services/displayCatalogService');
-const { getStorePageRelatedProducts } = require('../services/xboxStorePageService');
+const { getStorePageProductData } = require('../services/xboxStorePageService');
 const { mapProductDetail } = require('../mappers/productDetailMapper');
 const { mapRelatedProducts } = require('../mappers/relatedProductMapper');
 const { parseSearchParams } = require('../utils/queryParams');
@@ -28,6 +28,10 @@ function assignKeyActivationUrl(product) {
 
 function getProductUsdPrice(product) {
   const candidates = [product?.price?.value, product?.price?.listPrice, product?.price?.msrp];
+  const gamePassPrice = Number(product?.gamePassPrice);
+  if (Number.isFinite(gamePassPrice) && gamePassPrice > 0) {
+    return Math.round(gamePassPrice * 100) / 100;
+  }
   for (const c of candidates) {
     const n = Number(c);
     if (Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100;
@@ -37,7 +41,7 @@ function getProductUsdPrice(product) {
 
 function getProductOriginalUsdPrice(product) {
   const current = getProductUsdPrice(product);
-  const original = Number(product?.price?.original || product?.price?.msrp);
+  const original = Number(product?.price?.original || product?.price?.msrp || product?.price?.value);
   if (!Number.isFinite(original) || original <= 0) return null;
   if (current && original <= current) return null;
   return Math.round(original * 100) / 100;
@@ -45,7 +49,7 @@ function getProductOriginalUsdPrice(product) {
 
 function isPaidReleasedProduct(product) {
   const status = product?.releaseInfo?.status;
-  if (status === 'unreleased' || status === 'comingSoon') return false;
+  if (status === 'unreleased') return false;
   if (product?.notAvailableSeparately) return false;
   const current = Number(product?.price?.value);
   if (Number.isFinite(current) && current <= 0) return false;
@@ -242,7 +246,7 @@ async function getProductDetail(req, res, next) {
     product.digisellerPayUrl = product.digisellerPayUrl || null;
     product.priceRub = product.priceRub || null;
     await assignPurchaseOptions(product);
-    const storePageRelatedProducts = await getStorePageRelatedProducts({
+    const storePageProductData = await getStorePageProductData({
       productId: product.id,
       storeUrl: product.officialStoreUrl,
     }).catch((e) => {
@@ -250,10 +254,13 @@ async function getProductDetail(req, res, next) {
         productId: product.id,
         message: e.message,
       });
-      return [];
+      return { relatedProducts: [], languageInfo: null };
     });
-    if (storePageRelatedProducts.length) {
-      product.relatedProducts = storePageRelatedProducts;
+    if (storePageProductData.languageInfo) {
+      Object.assign(product, storePageProductData.languageInfo);
+    }
+    if (storePageProductData.relatedProducts.length) {
+      product.relatedProducts = storePageProductData.relatedProducts;
     }
 
     res.json({

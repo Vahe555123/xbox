@@ -65,6 +65,7 @@ function mapProduct({ summary, availability }) {
   const platforms = (summary.availableOn || []).map((p) => PLATFORM_MAP[p] || p);
   const tags = extractTags(summary);
   const gamePassSavingsPercent = null;
+  const languageInfo = extractStoreLanguageInfo(summary);
 
   return {
     id: summary.productId,
@@ -80,10 +81,7 @@ function mapProduct({ summary, availability }) {
     subscriptions,
     subscriptionLabels: buildSubscriptionLabels(subscriptions),
     gamePassSavingsPercent,
-    supportedLanguages: [],
-    packageLanguages: [],
-    hasRussianLanguage: false,
-    russianLanguageMode: RUSSIAN_LANGUAGE_MODE.NONE,
+    ...languageInfo,
     genre: summary.categories || [],
     publisher: summary.publisherName || null,
     developer: summary.developerName || null,
@@ -358,6 +356,58 @@ function extractLanguageInfo(product) {
   };
 }
 
+function extractStoreLanguageInfo(summary) {
+  const languagesSupported = summary?.languagesSupported;
+  if (!languagesSupported || typeof languagesSupported !== 'object') {
+    return {
+      supportedLanguages: [],
+      packageLanguages: [],
+      hasRussianLanguage: false,
+      russianLanguageMode: RUSSIAN_LANGUAGE_MODE.NONE,
+      languageSource: null,
+    };
+  }
+
+  const russianEntry = Object.entries(languagesSupported).find(([code, language]) => (
+    hasRussianLanguage([code])
+    || /russian/i.test(String(language?.languageDisplayName || ''))
+  ));
+
+  if (!russianEntry) {
+    return buildStoreLanguageInfo(RUSSIAN_LANGUAGE_MODE.NONE, []);
+  }
+
+  const [code, language] = russianEntry;
+  const hasAudio = Boolean(language?.isAudioSupported);
+  const hasInterface = Boolean(language?.isInterfaceSupported);
+  const hasSubtitles = Boolean(language?.areSubtitlesSupported);
+  const hasAnyRussian = hasAudio || hasInterface || hasSubtitles;
+
+  if (hasAudio) return buildStoreLanguageInfo(RUSSIAN_LANGUAGE_MODE.FULL, [code]);
+  if (hasAnyRussian) return buildStoreLanguageInfo(RUSSIAN_LANGUAGE_MODE.SUBTITLES, [code]);
+  return buildStoreLanguageInfo(RUSSIAN_LANGUAGE_MODE.NONE, [code]);
+}
+
+function buildStoreLanguageInfo(mode, supportedLanguages) {
+  return {
+    supportedLanguages,
+    packageLanguages: [],
+    hasRussianLanguage: mode !== RUSSIAN_LANGUAGE_MODE.NONE,
+    russianLanguageMode: mode,
+    languageSource: 'xbox-store-summary',
+  };
+}
+
+function getExistingLanguageInfo(product) {
+  return {
+    supportedLanguages: product.supportedLanguages || [],
+    packageLanguages: product.packageLanguages || [],
+    hasRussianLanguage: Boolean(product.hasRussianLanguage),
+    russianLanguageMode: product.russianLanguageMode || RUSSIAN_LANGUAGE_MODE.NONE,
+    languageSource: product.languageSource || null,
+  };
+}
+
 function addLanguageCode(codes, code) {
   if (!code) return;
   codes.add(String(code).trim().toLowerCase());
@@ -378,7 +428,9 @@ function enrichProductsWithCatalogDetails(products, catalogProducts) {
     const catalogProduct = byId.get(product.id);
     if (!catalogProduct) return product;
 
-    const languageInfo = extractLanguageInfo(catalogProduct);
+    const languageInfo = product.languageSource === 'xbox-store-summary'
+      ? getExistingLanguageInfo(product)
+      : extractLanguageInfo(catalogProduct);
     const catalogPriceInfo = getCatalogProductPriceInfo(catalogProduct);
     const catalogPassInfo = extractCatalogPassInfo(catalogProduct);
     const gamePassSavingsPercent = catalogPriceInfo.gamePassSavingsPercent ?? null;
