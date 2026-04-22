@@ -1,5 +1,6 @@
 const { search } = require('../services/searchService');
 const { getProductById, getProductsByIds } = require('../services/displayCatalogService');
+const { getStorePageRelatedProducts } = require('../services/xboxStorePageService');
 const { mapProductDetail } = require('../mappers/productDetailMapper');
 const { mapRelatedProducts } = require('../mappers/relatedProductMapper');
 const { parseSearchParams } = require('../utils/queryParams');
@@ -241,6 +242,19 @@ async function getProductDetail(req, res, next) {
     product.digisellerPayUrl = product.digisellerPayUrl || null;
     product.priceRub = product.priceRub || null;
     await assignPurchaseOptions(product);
+    const storePageRelatedProducts = await getStorePageRelatedProducts({
+      productId: product.id,
+      storeUrl: product.officialStoreUrl,
+    }).catch((e) => {
+      logger.warn('Xbox store page related products failed', {
+        productId: product.id,
+        message: e.message,
+      });
+      return [];
+    });
+    if (storePageRelatedProducts.length) {
+      product.relatedProducts = storePageRelatedProducts;
+    }
 
     res.json({
       success: true,
@@ -411,6 +425,7 @@ async function getRelatedProducts(req, res, next) {
 
     const rawProducts = await getProductsByIds(productIds);
     const products = mapRelatedProducts(rawProducts, relationMap);
+    sortProductsByRequestedIds(products, productIds);
 
     await enrichProductsWithRub(products).catch((e) =>
       logger.warn('RUB enrichment failed', { message: e.message }));
@@ -429,6 +444,17 @@ async function getRelatedProducts(req, res, next) {
     }
     next(err);
   }
+}
+
+function sortProductsByRequestedIds(products, requestedIds) {
+  const order = new Map(
+    requestedIds.map((id, index) => [String(id).toUpperCase(), index]),
+  );
+  products.sort((a, b) => {
+    const aOrder = order.get(String(a?.id || '').toUpperCase()) ?? Number.MAX_SAFE_INTEGER;
+    const bOrder = order.get(String(b?.id || '').toUpperCase()) ?? Number.MAX_SAFE_INTEGER;
+    return aOrder - bOrder;
+  });
 }
 
 function getHealth(_req, res) {

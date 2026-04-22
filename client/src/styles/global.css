@@ -4210,6 +4210,23 @@ code {
   scrollbar-color: var(--border) transparent;
 }
 
+.rp-catalog-carousel {
+  align-items: stretch;
+}
+
+.rp-catalog-carousel .product-card {
+  flex: 0 0 284px;
+  scroll-snap-align: start;
+}
+
+.rp-catalog-carousel .product-card-inner {
+  height: 100%;
+}
+
+.rp-catalog-carousel .product-card:hover {
+  transform: translateY(-4px);
+}
+
 .rp-carousel::-webkit-scrollbar {
   height: 6px;
 }
@@ -5553,6 +5570,10 @@ code {
   .rp-carousel {
     gap: 0.75rem;
   }
+
+  .rp-catalog-carousel .product-card {
+    flex-basis: 250px;
+  }
 }
 
 /* ===== Phone (≤ 600px) ===== */
@@ -5913,6 +5934,10 @@ code {
     -webkit-overflow-scrolling: touch;
   }
 
+  .rp-catalog-carousel .product-card {
+    flex-basis: 220px;
+  }
+
   .rp-card {
     flex: 0 0 145px;
     scroll-snap-align: start;
@@ -6040,6 +6065,7 @@ code {
   .admin-stats-grid { grid-template-columns: 1fr; }
 
   .rp-card { flex: 0 0 132px; }
+  .rp-catalog-carousel .product-card { flex-basis: 196px; }
 }
 
 /* ===== Landscape phone: reduce vertical chrome ===== */

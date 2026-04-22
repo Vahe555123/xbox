@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { createProductPurchase, fetchProductDetail, fetchProfile, fetchRelatedProducts } from '../services/api';
 import Spinner from '../components/Spinner';
 import ErrorMessage from '../components/ErrorMessage';
-import RelatedProductCard from '../components/RelatedProductCard';
+import ProductCard from '../components/ProductCard';
 import FavoriteHeartButton from '../components/FavoriteHeartButton';
 import {
   getPaymentOriginalPriceText,
@@ -13,7 +13,10 @@ import {
 } from '../utils/paymentPrices';
 
 const RELATED_LABELS = {
-  Bundle: 'В набор входит',
+  ProductAddOns: 'Дополнения для этой игры',
+  MoreLike: 'Вам может понравиться',
+  PeopleAlsoLike: 'Вам может понравиться',
+  Bundle: 'Дополнения для этой игры',
   SellableBy: 'Другие издания',
   AddOn: 'Дополнительно для этой игры',
   Consumable: 'Дополнительно для этой игры',
@@ -120,19 +123,27 @@ function getLanguageLabel(mode) {
 
 function groupRelatedProducts(products) {
   const groups = {
-    Bundle: [],
+    ProductAddOns: [],
     SellableBy: [],
-    AddOn: [],
-    Consumable: [],
+    MoreLike: [],
     Related: [],
   };
 
   (products || []).forEach((product) => {
-    const key = groups[product.relationshipType] ? product.relationshipType : 'Related';
+    const key = normalizeRelatedGroup(product.relationshipType);
     groups[key].push(product);
   });
 
   return groups;
+}
+
+function normalizeRelatedGroup(type) {
+  if (type === 'ProductAddOns' || type === 'AddOn' || type === 'Consumable' || type === 'Bundle') {
+    return 'ProductAddOns';
+  }
+  if (type === 'MoreLike' || type === 'PeopleAlsoLike') return 'MoreLike';
+  if (type === 'SellableBy') return 'SellableBy';
+  return 'Related';
 }
 
 export default function GameDetailPage() {
@@ -916,8 +927,8 @@ export default function GameDetailPage() {
                 </div>
               )}
             </div>
-            <div className="rp-carousel" ref={(el) => { scrollRefs.current[type] = el; }}>
-              {products.map((product) => <RelatedProductCard key={product.id} product={product} />)}
+            <div className="rp-carousel rp-catalog-carousel" ref={(el) => { scrollRefs.current[type] = el; }}>
+              {products.map((product) => <ProductCard key={product.id} product={product} />)}
             </div>
           </section>
         );
