@@ -29,6 +29,17 @@ async function initDb() {
       PRIMARY KEY (provider, provider_user_id)
     );
 
+    CREATE TABLE IF NOT EXISTS telegram_bot_chats (
+      telegram_user_id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      username TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS email_verification_codes (
       email TEXT PRIMARY KEY,
       code_hash TEXT NOT NULL,
@@ -76,6 +87,8 @@ async function initDb() {
       ON oauth_states (expires_at);
     CREATE INDEX IF NOT EXISTS idx_oauth_sessions_expires_at
       ON oauth_sessions (expires_at);
+    CREATE INDEX IF NOT EXISTS idx_telegram_bot_chats_user_id
+      ON telegram_bot_chats (user_id);
     CREATE INDEX IF NOT EXISTS idx_favorites_user_updated_at
       ON favorites (user_id, updated_at DESC);
 

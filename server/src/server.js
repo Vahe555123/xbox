@@ -3,6 +3,7 @@ const config = require('./config');
 const logger = require('./utils/logger');
 const { initDb } = require('./db/schema');
 const dealScheduler = require('./services/dealScheduler');
+const telegramBotService = require('./services/telegramBotService');
 
 let server;
 
@@ -13,6 +14,7 @@ initDb()
     });
 
     dealScheduler.start();
+    telegramBotService.startPolling();
   })
   .catch((err) => {
     logger.error('Failed to initialize PostgreSQL', {
@@ -29,6 +31,7 @@ process.on('unhandledRejection', (err) => {
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received — shutting down');
   dealScheduler.stop();
+  telegramBotService.stopPolling();
   if (server) {
     server.close(() => process.exit(0));
   } else {

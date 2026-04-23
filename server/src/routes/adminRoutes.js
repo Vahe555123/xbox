@@ -216,7 +216,11 @@ router.post('/deal-check', requireAdmin, async (_req, res) => {
     if (result.alreadyRunning) {
       return res.json({ success: false, message: 'Deal check is already running' });
     }
-    res.json({ success: true, message: 'Deal check completed' });
+    res.json({
+      success: result.success,
+      message: result.success ? 'Deal check completed' : 'Deal check finished with errors',
+      report: result.report,
+    });
   } catch (err) {
     logger.error('Manual deal check failed', { message: err.message });
     res.status(500).json({ success: false, error: err.message });

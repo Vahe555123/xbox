@@ -181,7 +181,7 @@ export async function updateSchedulerInterval(intervalHours) {
 }
 
 export async function triggerDealCheck() {
-  const { data } = await api.post('/admin/deal-check');
+  const { data } = await api.post('/admin/deal-check', {}, { timeout: 180000 });
   return data;
 }
 

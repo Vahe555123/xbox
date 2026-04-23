@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const config = require('../config');
 const pool = require('../db/pool');
+const { linkTelegramChatToUser } = require('./telegramBotService');
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -577,6 +578,7 @@ function verifyTelegramPayload(payload) {
 async function loginWithTelegram(payload) {
   const profile = verifyTelegramPayload(payload || {});
   const user = await upsertSocialUser(profile);
+  await linkTelegramChatToUser(user.id, profile.providerId);
   const token = issueToken(user);
   return { token, user: toPublicUser(user) };
 }

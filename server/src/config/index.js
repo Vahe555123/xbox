@@ -59,11 +59,19 @@ const config = {
     telegram: {
       botUsername: process.env.TELEGRAM_BOT_USERNAME || '',
       botToken: process.env.TELEGRAM_BOT_TOKEN || '',
+      webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || '',
+      pollingEnabled: parseBool(process.env.TELEGRAM_BOT_POLLING, true),
+      pollIntervalMs: parseInt(process.env.TELEGRAM_BOT_POLL_INTERVAL_MS, 10) || 3000,
+      requestTimeoutMs: parseInt(process.env.TELEGRAM_BOT_REQUEST_TIMEOUT_MS, 10) || 8000,
     },
     smtp: {
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
       port: parseInt(process.env.SMTP_PORT, 10) || 587,
       secure: parseBool(process.env.SMTP_SECURE, parseInt(process.env.SMTP_PORT, 10) === 465),
+      family: parseInt(process.env.SMTP_FAMILY, 10) || 4,
+      connectionTimeoutMs: parseInt(process.env.SMTP_CONNECTION_TIMEOUT_MS, 10) || 8000,
+      greetingTimeoutMs: parseInt(process.env.SMTP_GREETING_TIMEOUT_MS, 10) || 8000,
+      socketTimeoutMs: parseInt(process.env.SMTP_SOCKET_TIMEOUT_MS, 10) || 10000,
       username: process.env.SMTP_USERNAME || process.env.SMTP_USER || '',
       password: process.env.SMTP_APP_PASSWORD || process.env.SMTP_PASS || '',
       fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USERNAME || process.env.SMTP_USER || '',
@@ -100,6 +108,7 @@ const config = {
     cartCurrency: process.env.DIGISELLER_CART_CURRENCY || 'API_17432_RUB',
     cartPaymentCurrency: process.env.DIGISELLER_CART_PAYMENT_CURRENCY || 'API_5020_RUB',
     payApiBaseUrl: process.env.DIGISELLER_PAY_API_BASE_URL || 'https://www.oplata.info/asp2/pay_api.asp',
+    fallbackBuyerEmail: process.env.DIGISELLER_FALLBACK_BUYER_EMAIL || '',
   },
 };
 

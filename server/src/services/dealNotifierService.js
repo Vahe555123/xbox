@@ -1,8 +1,8 @@
-const axios = require('axios');
 const nodemailer = require('nodemailer');
 const pool = require('../db/pool');
 const config = require('../config');
 const { getProductsByIds } = require('./displayCatalogService');
+const { getChatIdForUser, sendTelegramMessage: sendBotMessage } = require('./telegramBotService');
 const logger = require('../utils/logger');
 
 // ---------------------------------------------------------------------------
@@ -178,12 +178,7 @@ async function markNotified(userId, productDealPairs) {
 // ---------------------------------------------------------------------------
 
 async function getTelegramChatId(userId) {
-  const { rows } = await pool.query(
-    `SELECT provider_user_id FROM oauth_accounts
-     WHERE user_id = $1 AND provider = 'telegram'`,
-    [userId],
-  );
-  return rows[0]?.provider_user_id || null;
+  return getChatIdForUser(userId);
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +190,10 @@ function createTransport() {
     host: config.auth.smtp.host,
     port: config.auth.smtp.port,
     secure: config.auth.smtp.secure,
+    family: config.auth.smtp.family,
+    connectionTimeout: config.auth.smtp.connectionTimeoutMs,
+    greetingTimeout: config.auth.smtp.greetingTimeoutMs,
+    socketTimeout: config.auth.smtp.socketTimeoutMs,
     auth: {
       user: config.auth.smtp.username,
       pass: config.auth.smtp.password,
@@ -343,17 +342,68 @@ function escapeMd(text) {
 }
 
 async function sendTelegramMessage(chatId, text) {
-  const botToken = config.auth.telegram.botToken;
-  if (!botToken) {
-    logger.warn('Telegram bot token not configured, skipping TG notification');
-    return;
-  }
+  await sendBotMessage(chatId, text, {
+    parseMode: 'MarkdownV2',
+    disableWebPagePreview: false,
+  });
+  return true;
+}
 
-  await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    chat_id: chatId,
-    text,
-    parse_mode: 'MarkdownV2',
-    disable_web_page_preview: false,
+function compactDealForReport(deal) {
+  return {
+    productId: deal.productId,
+    title: deal.title,
+    discountPercent: deal.discountPercent,
+    price: deal.formattedListPrice,
+    oldPrice: deal.formattedMsrp,
+    siteUrl: deal.siteUrl,
+  };
+}
+
+function createRunReport() {
+  return {
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    status: 'running',
+    totals: {
+      clients: 0,
+      favorites: 0,
+      productsChecked: 0,
+      productsOnSale: 0,
+      clientsWithDeals: 0,
+      clientsWithNewDeals: 0,
+      sent: 0,
+      email: 0,
+      telegram: 0,
+      skippedNoDeals: 0,
+      skippedAlreadyNotified: 0,
+      skippedNoContact: 0,
+      failed: 0,
+    },
+    entries: [],
+    errors: [],
+  };
+}
+
+function finishRunReport(report, status = 'success') {
+  report.status = status;
+  report.finishedAt = new Date().toISOString();
+  return report;
+}
+
+function addReportEntry(report, entry) {
+  report.entries.push({
+    userId: entry.user?.user_id || entry.userId,
+    name: entry.user?.name || null,
+    email: entry.user?.email || null,
+    provider: entry.user?.last_provider || null,
+    status: entry.status,
+    reason: entry.reason || null,
+    channel: entry.channel || null,
+    recipient: entry.recipient || null,
+    favoritesCount: entry.favoritesCount || 0,
+    deals: (entry.deals || []).map(compactDealForReport),
+    error: entry.error || null,
   });
 }
 
@@ -362,17 +412,22 @@ async function sendTelegramMessage(chatId, text) {
 // ---------------------------------------------------------------------------
 
 async function runDealNotifications() {
+  const report = createRunReport();
   logger.info('[DealNotifier] Starting deal check...');
 
   // 1. Get all users with favorites
   const users = await getUsersWithFavorites();
+  report.totals.clients = users.length;
+  report.totals.favorites = users.reduce((sum, user) => sum + (user.product_ids?.length || 0), 0);
+
   if (users.length === 0) {
     logger.info('[DealNotifier] No users with favorites, done.');
-    return;
+    return finishRunReport(report);
   }
 
   // 2. Collect unique product IDs across all users
   const allProductIds = [...new Set(users.flatMap((u) => u.product_ids))];
+  report.totals.productsChecked = allProductIds.length;
   logger.info(`[DealNotifier] Checking ${allProductIds.length} products for ${users.length} users`);
 
   // 3. Batch-fetch current product data from Display Catalog
@@ -381,7 +436,8 @@ async function runDealNotifications() {
     rawProducts = await getProductsByIds(allProductIds);
   } catch (err) {
     logger.error('[DealNotifier] Failed to fetch products', { message: err.message });
-    return;
+    report.errors.push({ stage: 'fetch_products', message: err.message });
+    return finishRunReport(report, 'failed');
   }
 
   // 4. Extract deal info for each product
@@ -394,9 +450,11 @@ async function runDealNotifications() {
   }
 
   const dealProductCount = Object.keys(dealsByProductId).length;
+  report.totals.productsOnSale = dealProductCount;
   if (dealProductCount === 0) {
     logger.info('[DealNotifier] No favorites are on sale right now, done.');
-    return;
+    report.totals.skippedNoDeals = users.length;
+    return finishRunReport(report);
   }
 
   logger.info(`[DealNotifier] ${dealProductCount} products have active deals`);
@@ -411,7 +469,12 @@ async function runDealNotifications() {
         .map((pid) => dealsByProductId[pid])
         .filter(Boolean);
 
-      if (userDeals.length === 0) continue;
+      if (userDeals.length === 0) {
+        report.totals.skippedNoDeals += 1;
+        continue;
+      }
+
+      report.totals.clientsWithDeals += 1;
 
       // Build (productId, dealKey) pairs to check dedup
       const pairs = userDeals.map((d) => [d.productId, dealKey(d.listPrice, d.msrp)]);
@@ -425,20 +488,43 @@ async function runDealNotifications() {
         return !alreadyNotifiedSet.has(key);
       });
 
-      if (newDeals.length === 0) continue;
+      if (newDeals.length === 0) {
+        report.totals.skippedAlreadyNotified += 1;
+        addReportEntry(report, {
+          user,
+          status: 'skipped',
+          reason: 'already_notified',
+          favoritesCount: user.product_ids.length,
+          deals: userDeals,
+        });
+        continue;
+      }
+
+      report.totals.clientsWithNewDeals += 1;
 
       // Determine notification channel: Telegram if logged in via TG, else email
       const isTelegramUser = user.last_provider === 'telegram';
       let sent = false;
+      let sentChannel = null;
+      let sentRecipient = null;
 
       if (isTelegramUser) {
         const chatId = await getTelegramChatId(user.user_id);
         if (chatId) {
           try {
             const msg = buildTelegramMessage(user.name, newDeals);
-            await sendTelegramMessage(chatId, msg);
+            const telegramSent = await sendTelegramMessage(chatId, msg);
+            if (!telegramSent) {
+              throw new Error('Telegram bot token not configured');
+            }
             sent = true;
-            logger.info(`[DealNotifier] Sent TG to user ${user.user_id} (${newDeals.length} deals)`);
+            sentChannel = 'telegram';
+            sentRecipient = chatId;
+            logger.info('[DealNotifier] Sent Telegram deals', {
+              userId: user.user_id,
+              recipient: chatId,
+              deals: newDeals.map((deal) => deal.title),
+            });
           } catch (err) {
             logger.error(`[DealNotifier] TG send failed for ${user.user_id}`, { message: err.message });
             // Fall back to email if user has one
@@ -446,10 +532,35 @@ async function runDealNotifications() {
               try {
                 await sendDealEmail(user.email, user.name, newDeals);
                 sent = true;
-                logger.info(`[DealNotifier] Fallback email to ${user.user_id}`);
+                sentChannel = 'email';
+                sentRecipient = user.email;
+                logger.info('[DealNotifier] Fallback email deals', {
+                  userId: user.user_id,
+                  recipient: user.email,
+                  deals: newDeals.map((deal) => deal.title),
+                });
               } catch (emailErr) {
                 logger.error(`[DealNotifier] Email fallback also failed`, { message: emailErr.message });
+                report.totals.failed += 1;
+                addReportEntry(report, {
+                  user,
+                  status: 'failed',
+                  reason: 'telegram_and_email_failed',
+                  favoritesCount: user.product_ids.length,
+                  deals: newDeals,
+                  error: `${err.message}; ${emailErr.message}`,
+                });
               }
+            } else {
+              report.totals.failed += 1;
+              addReportEntry(report, {
+                user,
+                status: 'failed',
+                reason: 'telegram_failed_no_email',
+                favoritesCount: user.product_ids.length,
+                deals: newDeals,
+                error: err.message,
+              });
             }
           }
         } else if (user.email) {
@@ -457,18 +568,67 @@ async function runDealNotifications() {
           try {
             await sendDealEmail(user.email, user.name, newDeals);
             sent = true;
+            sentChannel = 'email';
+            sentRecipient = user.email;
+            logger.info('[DealNotifier] Sent email deals after missing Telegram chat', {
+              userId: user.user_id,
+              recipient: user.email,
+              deals: newDeals.map((deal) => deal.title),
+            });
           } catch (err) {
             logger.error(`[DealNotifier] Email failed for ${user.user_id}`, { message: err.message });
+            report.totals.failed += 1;
+            addReportEntry(report, {
+              user,
+              status: 'failed',
+              reason: 'email_failed',
+              favoritesCount: user.product_ids.length,
+              deals: newDeals,
+              error: err.message,
+            });
           }
+        } else {
+          report.totals.skippedNoContact += 1;
+          addReportEntry(report, {
+            user,
+            status: 'skipped',
+            reason: 'no_telegram_chat_or_email',
+            favoritesCount: user.product_ids.length,
+            deals: newDeals,
+          });
         }
       } else if (user.email) {
         try {
           await sendDealEmail(user.email, user.name, newDeals);
           sent = true;
-          logger.info(`[DealNotifier] Sent email to ${user.user_id} (${newDeals.length} deals)`);
+          sentChannel = 'email';
+          sentRecipient = user.email;
+          logger.info('[DealNotifier] Sent email deals', {
+            userId: user.user_id,
+            recipient: user.email,
+            deals: newDeals.map((deal) => deal.title),
+          });
         } catch (err) {
           logger.error(`[DealNotifier] Email failed for ${user.user_id}`, { message: err.message });
+          report.totals.failed += 1;
+          addReportEntry(report, {
+            user,
+            status: 'failed',
+            reason: 'email_failed',
+            favoritesCount: user.product_ids.length,
+            deals: newDeals,
+            error: err.message,
+          });
         }
+      } else {
+        report.totals.skippedNoContact += 1;
+        addReportEntry(report, {
+          user,
+          status: 'skipped',
+          reason: 'no_email',
+          favoritesCount: user.product_ids.length,
+          deals: newDeals,
+        });
       }
 
       // Mark as notified only if we actually sent something
@@ -476,8 +636,29 @@ async function runDealNotifications() {
         const newPairs = newDeals.map((d) => [d.productId, dealKey(d.listPrice, d.msrp)]);
         await markNotified(user.user_id, newPairs);
         totalSent++;
+        report.totals.sent += 1;
+        if (sentChannel === 'telegram') report.totals.telegram += 1;
+        if (sentChannel === 'email') report.totals.email += 1;
+        addReportEntry(report, {
+          user,
+          status: 'sent',
+          channel: sentChannel,
+          recipient: sentRecipient,
+          favoritesCount: user.product_ids.length,
+          deals: newDeals,
+        });
       }
     } catch (err) {
+      report.totals.failed += 1;
+      report.errors.push({ stage: 'process_user', userId: user.user_id, message: err.message });
+      addReportEntry(report, {
+        user,
+        status: 'failed',
+        reason: 'process_user_error',
+        favoritesCount: user.product_ids?.length || 0,
+        deals: [],
+        error: err.message,
+      });
       logger.error(`[DealNotifier] Error processing user ${user.user_id}`, {
         message: err.message,
         stack: err.stack,
@@ -490,9 +671,20 @@ async function runDealNotifications() {
     await pool.query(`DELETE FROM deal_notifications WHERE notified_at < NOW() - INTERVAL '30 days'`);
   } catch (err) {
     logger.error('[DealNotifier] Cleanup failed', { message: err.message });
+    report.errors.push({ stage: 'cleanup', message: err.message });
   }
 
-  logger.info(`[DealNotifier] Done. Notified ${totalSent} users.`);
+  logger.info('[DealNotifier] Done.', {
+    clients: report.totals.clients,
+    sent: totalSent,
+    email: report.totals.email,
+    telegram: report.totals.telegram,
+    skippedAlreadyNotified: report.totals.skippedAlreadyNotified,
+    skippedNoContact: report.totals.skippedNoContact,
+    failed: report.totals.failed,
+  });
+
+  return finishRunReport(report, report.totals.failed > 0 || report.errors.length > 0 ? 'partial' : 'success');
 }
 
 module.exports = { runDealNotifications };

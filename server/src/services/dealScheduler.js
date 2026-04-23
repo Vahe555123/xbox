@@ -37,9 +37,9 @@ async function runNow() {
   isRunning = true;
   lastRunAt = new Date().toISOString();
   try {
-    await runDealNotifications();
-    lastRunStatus = 'success';
-    return { success: true };
+    const report = await runDealNotifications();
+    lastRunStatus = report?.status || 'success';
+    return { success: report?.status !== 'failed', report };
   } catch (err) {
     lastRunStatus = `error: ${err.message}`;
     logger.error('[DealScheduler] Manual run failed', { message: err.message });
@@ -54,8 +54,8 @@ async function tick() {
   isRunning = true;
   lastRunAt = new Date().toISOString();
   try {
-    await runDealNotifications();
-    lastRunStatus = 'success';
+    const report = await runDealNotifications();
+    lastRunStatus = report?.status || 'success';
   } catch (err) {
     lastRunStatus = `error: ${err.message}`;
     logger.error('[DealScheduler] Scheduled run failed', { message: err.message });

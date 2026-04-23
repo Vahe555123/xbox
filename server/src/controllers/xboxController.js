@@ -15,6 +15,11 @@ const {
   isGameCurrencyProduct,
 } = require('../services/digisellerService');
 const topupCardService = require('../services/topupCardService');
+const {
+  buildBuyerEmailForPayment,
+  notifyPurchaseCreated,
+  resolvePurchaseDeliveryTarget,
+} = require('../services/purchaseDeliveryService');
 
 function assignKeyActivationUrl(product) {
   if (!product) return product;
@@ -245,8 +250,7 @@ async function getProductDetail(req, res, next) {
     product.digisellerId = product.digisellerId || null;
     product.digisellerPayUrl = product.digisellerPayUrl || null;
     product.priceRub = product.priceRub || null;
-    await assignPurchaseOptions(product);
-    const storePageProductData = await getStorePageProductData({
+    const storePageProductDataPromise = getStorePageProductData({
       productId: product.id,
       storeUrl: product.officialStoreUrl,
     }).catch((e) => {
@@ -256,6 +260,8 @@ async function getProductDetail(req, res, next) {
       });
       return { relatedProducts: [], languageInfo: null };
     });
+    await assignPurchaseOptions(product);
+    const storePageProductData = await storePageProductDataPromise;
     if (storePageProductData.languageInfo) {
       Object.assign(product, storePageProductData.languageInfo);
     }
@@ -302,7 +308,13 @@ async function createProductPurchase(req, res, next) {
     const savedSettings = req.user ? await getPurchaseSettingsForCheckout(req.user.id) : null;
     const finalAccountEmail = String(accountEmail || savedSettings?.xboxAccountEmail || '').trim();
     const finalAccountPassword = String(accountPassword || savedSettings?.xboxAccountPassword || '').trim();
-    const finalPurchaseEmail = String(purchaseEmail || savedSettings?.purchaseEmail || req.user?.email || '').trim();
+    const finalPurchaseEmail = String(purchaseEmail || savedSettings?.purchaseEmail || '').trim();
+    const deliveryTarget = await resolvePurchaseDeliveryTarget({
+      user: req.user,
+      purchaseEmail: finalPurchaseEmail,
+      registrationEmail: req.user?.email,
+    });
+    const buyerEmailForPayment = buildBuyerEmailForPayment(deliveryTarget);
     const finalPaymentMode = paymentMode || savedSettings?.paymentMode || 'oplata';
 
     if (req.user && saveToProfile) {
@@ -328,7 +340,7 @@ async function createProductPurchase(req, res, next) {
       }
       payment = await createKeyActivationPayment(product, {
         gameName,
-        purchaseEmail: finalPurchaseEmail,
+        purchaseEmail: buyerEmailForPayment,
       });
     } else if (finalPaymentMode === 'topup_cards') {
       if (isGameCurrencyProduct(product)) {
@@ -340,7 +352,7 @@ async function createProductPurchase(req, res, next) {
       const usd = getProductUsdPrice(product);
       if (!usd) throw new AppError('Не удалось определить цену в USD для карт', 400);
       const combo = await topupCardService.buildComboPurchase(usd, {
-        purchaseEmail: finalPurchaseEmail,
+        purchaseEmail: buyerEmailForPayment,
         buyerIp: getRequestIp(req),
       });
       if (!combo?.available) {
@@ -363,22 +375,36 @@ async function createProductPurchase(req, res, next) {
         cartUid: combo.cartUid || null,
         cartBatch: Boolean(combo.cartUid),
         links: combo.links,
-        purchaseEmail: finalPurchaseEmail,
+        purchaseEmail: finalPurchaseEmail || null,
       };
     } else {
       payment = await createPurchasePaymentUrl(product, {
         gameName,
         accountEmail: finalAccountEmail,
         accountPassword: finalAccountPassword,
-        purchaseEmail: finalPurchaseEmail,
+        purchaseEmail: buyerEmailForPayment,
         paymentMode: finalPaymentMode,
       });
     }
+
+    const delivery = await notifyPurchaseCreated({
+      target: deliveryTarget,
+      product,
+      payment,
+    }).catch((e) => {
+      logger.warn('Purchase delivery notification failed', {
+        productId: product.id,
+        channel: deliveryTarget.type,
+        message: e.message,
+      });
+      return { sent: false, channel: deliveryTarget.type, error: e.message };
+    });
 
     res.json({
       success: true,
       paymentUrl: payment.paymentUrl,
       payment,
+      delivery,
       product: {
         id: product.id,
         title: product.title,
