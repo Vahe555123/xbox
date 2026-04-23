@@ -364,6 +364,7 @@ function extractLanguageInfo(product) {
       : hasRussian
         ? RUSSIAN_LANGUAGE_MODE.SUBTITLES
         : RUSSIAN_LANGUAGE_MODE.NONE,
+    languageSource: 'catalog',
   };
 }
 
@@ -439,7 +440,7 @@ function enrichProductsWithCatalogDetails(products, catalogProducts) {
     const catalogProduct = byId.get(product.id);
     if (!catalogProduct) return product;
 
-    const languageInfo = String(product.languageSource || '').startsWith('xbox-store-summary')
+    const languageInfo = product.languageSource === 'xbox-store-summary'
       ? getExistingLanguageInfo(product)
       : extractLanguageInfo(catalogProduct);
     const catalogPriceInfo = getCatalogProductPriceInfo(catalogProduct);

@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const pool = require('../db/pool');
 const config = require('../config');
 const { getProductsByIds } = require('./displayCatalogService');
@@ -11,6 +13,9 @@ const topupCardService = require('./topupCardService');
 const { getChatIdForUser, sendTelegramMessage: sendBotMessage } = require('./telegramBotService');
 const { createSmtpTransport, getFromAddress } = require('./mailTransport');
 const logger = require('../utils/logger');
+
+const FAVORITE_DEALS_BANNER_CID = 'favorite-deals-banner@xbox-store';
+const FAVORITE_DEALS_BANNER_PATH = path.resolve(__dirname, '../assets/favorite-deals-banner.png');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -128,6 +133,24 @@ function formatDealPaymentLine(deal) {
     formatPaymentPair(prices.key?.current, prices.key?.original),
     formatPaymentPair(prices.account?.current, prices.account?.original),
   ].filter(Boolean).join(' • ');
+}
+
+function getDealPaymentPairs(deal) {
+  const prices = deal.paymentPrices || {};
+  return [
+    prices.topup,
+    prices.key,
+    prices.account,
+  ].map((price) => {
+    const current = formatRubCompact(price?.current);
+    if (!current) return null;
+
+    const original = Number(price?.original) > Number(price?.current)
+      ? formatRubCompact(price?.original)
+      : null;
+
+    return { current, original };
+  }).filter(Boolean);
 }
 
 function formatDealEndDate(endDate) {
@@ -451,6 +474,7 @@ async function sendDealEmail(email, userName, deals) {
     subject: notificationSubject,
     html: buildFavoriteDealsEmailHtml(userName, deals),
     text: buildFavoriteDealsTelegramMessage(userName, deals),
+    attachments: getFavoriteDealsEmailAttachments(),
   });
 }
 
@@ -500,6 +524,30 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function buildPaymentPairsHtml(deal) {
+  const pairs = getDealPaymentPairs(deal);
+  if (!pairs.length) return '';
+
+  return pairs.map((pair) => {
+    const originalHtml = pair.original
+      ? ` <span style="color:#c2c8d2;text-decoration:line-through;text-decoration-thickness:2px;">${escapeHtml(pair.original)}</span>`
+      : '';
+
+    return `<span style="white-space:nowrap;color:#f4f7fb;font-size:16px;font-weight:800;">${escapeHtml(pair.current)}${originalHtml}</span>`;
+  }).join('<span style="color:#7d8794;font-weight:700;margin:0 7px;">•</span>');
+}
+
+function getFavoriteDealsEmailAttachments() {
+  if (!fs.existsSync(FAVORITE_DEALS_BANNER_PATH)) return [];
+
+  return [{
+    filename: 'favorite-deals-banner.png',
+    path: FAVORITE_DEALS_BANNER_PATH,
+    cid: FAVORITE_DEALS_BANNER_CID,
+    contentDisposition: 'inline',
+  }];
+}
+
 function visibleDeals(deals) {
   return deals.slice(0, Math.min(10, deals.length));
 }
@@ -538,7 +586,7 @@ function buildFavoriteDealsEmailHtml(userName, deals) {
   const hiddenCount = Math.max(0, deals.length - shownDeals.length);
   const safeName = userName ? `, ${escapeHtml(userName)}` : '';
   const itemsHtml = shownDeals.map((deal) => {
-    const paymentLine = formatDealPaymentLine(deal);
+    const paymentLineHtml = buildPaymentPairsHtml(deal);
     const endText = formatDealEndDate(deal.endDate);
     return `
       <tr>
@@ -553,15 +601,10 @@ function buildFavoriteDealsEmailHtml(userName, deals) {
               </td>
               <td style="vertical-align:top;">
                 <a href="${deal.siteUrl}" style="color:#f4f7fb;font-size:17px;line-height:1.25;font-weight:800;text-decoration:none;">
-                  ${escapeHtml(deal.title)}
+                  ↝ ${escapeHtml(deal.title)} (-${deal.discountPercent}%)
                 </a>
-                <div style="margin-top:8px;">
-                  <span style="display:inline-block;background:#d83622;color:#fff;font-size:13px;font-weight:800;border-radius:6px;padding:4px 8px;">-${deal.discountPercent}%</span>
-                  <span style="color:#8ef58d;font-size:16px;font-weight:800;margin-left:8px;">${escapeHtml(deal.formattedListPrice)}</span>
-                  <span style="color:#9aa4b2;font-size:13px;text-decoration:line-through;margin-left:5px;">${escapeHtml(deal.formattedMsrp)}</span>
-                </div>
-                ${paymentLine ? `<div style="margin-top:8px;color:#d7dde7;font-size:14px;font-weight:700;">${escapeHtml(paymentLine)}</div>` : ''}
-                ${endText ? `<div style="margin-top:5px;color:#9aa4b2;font-size:13px;">${escapeHtml(endText)}</div>` : ''}
+                ${paymentLineHtml ? `<div style="margin-top:7px;line-height:1.6;">${paymentLineHtml}</div>` : ''}
+                ${endText ? `<div style="margin-top:3px;color:#f4f7fb;font-size:15px;font-style:italic;">${escapeHtml(endText)}</div>` : ''}
               </td>
             </tr>
           </table>
@@ -581,7 +624,13 @@ function buildFavoriteDealsEmailHtml(userName, deals) {
     <tr><td align="center" style="padding:24px 12px;">
       <table cellpadding="0" cellspacing="0" border="0" width="620" style="max-width:620px;width:100%;">
         <tr>
-          <td style="padding:24px;background:#111820;border:1px solid #26313d;border-radius:12px 12px 0 0;">
+          <td style="background:#fafaf8;border:1px solid #26313d;border-bottom:none;border-radius:12px 12px 0 0;overflow:hidden;">
+            <img src="cid:${FAVORITE_DEALS_BANNER_CID}" alt="Избранные игры подешевели" width="620"
+                 style="width:100%;max-width:620px;height:auto;display:block;border:0;" />
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:24px;background:#111820;border:1px solid #26313d;border-radius:0;">
             <div style="color:#8ef58d;font-size:13px;font-weight:800;text-transform:uppercase;">Избранное Xbox Store</div>
             <h1 style="color:#ffffff;font-size:26px;line-height:1.2;margin:8px 0 8px;">Подешевели ${deals.length} игр из избранного</h1>
             <p style="color:#b8c1cc;font-size:15px;line-height:1.5;margin:0;">Привет${safeName}. Собрал свежие скидки и текущие цены в порядке: код пополнения, ключ, покупка на аккаунт.</p>
