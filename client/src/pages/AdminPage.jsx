@@ -29,6 +29,33 @@ function providerLabel(p) {
   return map[p] || p;
 }
 
+function dealRunStatusLabel(status) {
+  const map = {
+    sent: 'Отправлено',
+    skipped: 'Пропущено',
+    failed: 'Ошибка',
+  };
+  return map[status] || status || '—';
+}
+
+function dealRunReasonLabel(reason) {
+  const map = {
+    already_notified: 'уже отправляли',
+    no_email: 'нет email',
+    no_telegram_chat_or_email: 'нет Telegram chat_id и email',
+    telegram_failed_no_email: 'Telegram не отправился, email нет',
+    telegram_and_email_failed: 'Telegram и email не отправились',
+    email_failed: 'email не отправился',
+    process_user_error: 'ошибка обработки клиента',
+  };
+  return map[reason] || reason || '—';
+}
+
+function dealRunChannelLabel(channel) {
+  const map = { email: 'Email', telegram: 'Telegram' };
+  return map[channel] || '—';
+}
+
 const EMPTY_DIG_RATE_STATE = { lastRun: null, samples: [] };
 
 const DIG_RATE_MODES = [
@@ -73,6 +100,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [intervalInput, setIntervalInput] = useState('');
   const [dealCheckLoading, setDealCheckLoading] = useState(false);
   const [dealCheckResult, setDealCheckResult] = useState('');
+  const [dealCheckReport, setDealCheckReport] = useState(null);
 
   // Digiseller
   const [digRateStates, setDigRateStates] = useState({
@@ -232,13 +260,22 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const handleDealCheck = async () => {
     setDealCheckLoading(true);
     setDealCheckResult('');
+    setDealCheckReport(null);
     try {
       const result = await triggerDealCheck();
-      setDealCheckResult(result.message || 'Готово');
+      setDealCheckReport(result.report || null);
+      if (result.report) {
+        setDealCheckResult(`Готово: отправлено ${result.report.totals?.sent || 0}`);
+      } else if (result.message === 'Deal check is already running') {
+        setDealCheckResult('Проверка уже запущена');
+      } else {
+        setDealCheckResult(result.message || 'Готово');
+      }
       // Refresh scheduler state
       const state = await fetchSchedulerState();
       setScheduler(state);
     } catch (err) {
+      setDealCheckReport(err.response?.data?.report || null);
       setDealCheckResult('Ошибка: ' + (err.response?.data?.error || err.message));
     } finally {
       setDealCheckLoading(false);
@@ -651,6 +688,100 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 Обновить статус
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'scheduler' && dealCheckReport && (
+        <div className="admin-panel admin-deal-run-panel">
+          <div className="admin-card admin-deal-run-report">
+            <div className="admin-card-head">
+              <div>
+                <h3>Лог ручного запуска</h3>
+                <p className="admin-card-desc">
+                  {formatDate(dealCheckReport.startedAt)} - {formatDate(dealCheckReport.finishedAt)}
+                </p>
+              </div>
+              <span className={`admin-status ${dealCheckReport.status === 'success' ? 'admin-status-ok' : dealCheckReport.status === 'failed' ? 'admin-status-err' : ''}`}>
+                {dealCheckReport.status}
+              </span>
+            </div>
+
+            <div className="admin-report-stats">
+              <div className="admin-report-stat"><strong>{dealCheckReport.totals?.clients || 0}</strong><span>клиентов</span></div>
+              <div className="admin-report-stat"><strong>{dealCheckReport.totals?.favorites || 0}</strong><span>избранных игр</span></div>
+              <div className="admin-report-stat"><strong>{dealCheckReport.totals?.productsOnSale || 0}</strong><span>игр со скидкой</span></div>
+              <div className="admin-report-stat"><strong>{dealCheckReport.totals?.sent || 0}</strong><span>отправлено</span></div>
+              <div className="admin-report-stat"><strong>{dealCheckReport.totals?.email || 0}</strong><span>Email</span></div>
+              <div className="admin-report-stat"><strong>{dealCheckReport.totals?.telegram || 0}</strong><span>Telegram</span></div>
+            </div>
+
+            <div className="admin-table-wrap">
+              <table className="admin-table admin-table-compact">
+                <thead>
+                  <tr>
+                    <th>Клиент</th>
+                    <th>Статус</th>
+                    <th>Куда</th>
+                    <th>Игры</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(dealCheckReport.entries || []).map((entry, index) => (
+                    <tr key={`${entry.userId || 'user'}-${entry.status}-${index}`}>
+                      <td>
+                        <div>{entry.name || entry.email || entry.userId || '—'}</div>
+                        {entry.email && entry.name && <div className="admin-muted">{entry.email}</div>}
+                      </td>
+                      <td>
+                        <span className={`admin-report-status admin-report-status-${entry.status}`}>
+                          {dealRunStatusLabel(entry.status)}
+                        </span>
+                        {entry.reason && <div className="admin-muted">{dealRunReasonLabel(entry.reason)}</div>}
+                        {entry.error && <div className="admin-muted">{entry.error}</div>}
+                      </td>
+                      <td>
+                        <div>{dealRunChannelLabel(entry.channel)}</div>
+                        <div className="admin-muted">{entry.recipient || '—'}</div>
+                      </td>
+                      <td>
+                        <div className="admin-report-games">
+                          {(entry.deals || []).map((deal) => (
+                            <a
+                              key={deal.productId}
+                              href={deal.siteUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="admin-report-game"
+                            >
+                              {deal.title}
+                              <span>-{deal.discountPercent}%</span>
+                            </a>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {(dealCheckReport.entries || []).length === 0 && (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                        Новых отправок нет. Клиентов проверили, но подходящих новых скидок не нашли.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {Boolean(dealCheckReport.errors?.length) && (
+              <div className="admin-report-errors">
+                {dealCheckReport.errors.map((error, index) => (
+                  <div key={`${error.stage}-${index}`}>
+                    {error.stage}: {error.message}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
