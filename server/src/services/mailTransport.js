@@ -7,6 +7,13 @@ function getSmtpFamily() {
   return family === 4 || family === 6 ? family : null;
 }
 
+function getSecureMode() {
+  const port = Number(config.auth.smtp.port);
+  if (port === 465) return true;
+  if (port === 587) return false;
+  return Boolean(config.auth.smtp.secure);
+}
+
 function openFamilySocket(options, callback) {
   const family = getSmtpFamily();
   if (!family) {
@@ -50,10 +57,13 @@ function openFamilySocket(options, callback) {
 }
 
 function createSmtpTransport() {
+  const secure = getSecureMode();
+
   return nodemailer.createTransport({
     host: config.auth.smtp.host,
     port: config.auth.smtp.port,
-    secure: config.auth.smtp.secure,
+    secure,
+    requireTLS: !secure && Number(config.auth.smtp.port) === 587,
     family: config.auth.smtp.family,
     dnsTimeout: config.auth.smtp.dnsTimeoutMs,
     connectionTimeout: config.auth.smtp.connectionTimeoutMs,
