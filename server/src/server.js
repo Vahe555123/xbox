@@ -1,4 +1,5 @@
 const app = require('./app');
+const dns = require('dns');
 const config = require('./config');
 const logger = require('./utils/logger');
 const { initDb } = require('./db/schema');
@@ -6,6 +7,12 @@ const dealScheduler = require('./services/dealScheduler');
 const telegramBotService = require('./services/telegramBotService');
 
 let server;
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (_err) {
+  // Older Node versions may not support this. SMTP still has its own timeouts.
+}
 
 initDb()
   .then(() => {

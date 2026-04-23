@@ -20,15 +20,35 @@ async function callTelegram(method, payload = {}, options = {}) {
     throw new Error('Telegram bot token is not configured');
   }
 
-  const { data } = await axios.post(apiUrl(method), payload, {
-    timeout: options.timeout || config.auth.telegram.requestTimeoutMs,
-  });
+  let data;
+  try {
+    const response = await axios.post(apiUrl(method), payload, {
+      timeout: options.timeout || config.auth.telegram.requestTimeoutMs,
+    });
+    data = response.data;
+  } catch (err) {
+    const description = err.response?.data?.description || err.message;
+    const wrapped = new Error(description);
+    wrapped.status = err.response?.status;
+    wrapped.telegramDescription = description;
+    throw wrapped;
+  }
 
   if (!data?.ok) {
-    throw new Error(data?.description || `Telegram ${method} failed`);
+    const description = data?.description || `Telegram ${method} failed`;
+    const err = new Error(description);
+    err.telegramDescription = description;
+    throw err;
   }
 
   return data.result;
+}
+
+function stripTelegramMarkdown(text) {
+  return String(text || '')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1: $2')
+    .replace(/\\([_*\[\]()~`>#+\-=|{}.!\\])/g, '$1')
+    .replace(/[*_~`]/g, '');
 }
 
 async function sendTelegramMessage(chatId, text, options = {}) {
@@ -36,12 +56,27 @@ async function sendTelegramMessage(chatId, text, options = {}) {
     throw new Error('Telegram chat_id is missing. Ask the user to press /start in the bot.');
   }
 
-  return callTelegram('sendMessage', {
+  const payload = {
     chat_id: chatId,
     text,
-    parse_mode: options.parseMode,
     disable_web_page_preview: options.disableWebPagePreview ?? false,
-  });
+  };
+  if (options.parseMode) payload.parse_mode = options.parseMode;
+
+  try {
+    return await callTelegram('sendMessage', payload);
+  } catch (err) {
+    const description = err.telegramDescription || err.message;
+    if (options.parseMode && /parse entities|can't parse/i.test(description)) {
+      logger.warn('[TelegramBot] Markdown failed, retrying as plain text', { message: description });
+      return callTelegram('sendMessage', {
+        chat_id: chatId,
+        text: stripTelegramMarkdown(text),
+        disable_web_page_preview: options.disableWebPagePreview ?? false,
+      });
+    }
+    throw err;
+  }
 }
 
 async function findLinkedUserId(telegramUserId) {
@@ -149,14 +184,6 @@ async function handleTelegramUpdate(update) {
   }
 }
 
-async function handleWebhookUpdate(update) {
-  try {
-    await handleTelegramUpdate(update);
-  } catch (err) {
-    logger.error('[TelegramBot] Webhook update failed', { message: err.message });
-  }
-}
-
 async function pollOnce() {
   if (!hasBotToken() || pollingInFlight) return;
   pollingInFlight = true;
@@ -229,7 +256,6 @@ function stopPolling() {
 
 module.exports = {
   getChatIdForUser,
-  handleWebhookUpdate,
   linkTelegramChatToUser,
   sendTelegramMessage,
   startPolling,

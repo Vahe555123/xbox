@@ -13,6 +13,7 @@ function createTransport() {
     port: config.auth.smtp.port,
     secure: config.auth.smtp.secure,
     family: config.auth.smtp.family,
+    dnsTimeout: config.auth.smtp.dnsTimeoutMs,
     connectionTimeout: config.auth.smtp.connectionTimeoutMs,
     greetingTimeout: config.auth.smtp.greetingTimeoutMs,
     socketTimeout: config.auth.smtp.socketTimeoutMs,

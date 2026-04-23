@@ -59,7 +59,6 @@ const config = {
     telegram: {
       botUsername: process.env.TELEGRAM_BOT_USERNAME || '',
       botToken: process.env.TELEGRAM_BOT_TOKEN || '',
-      webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || '',
       pollingEnabled: parseBool(process.env.TELEGRAM_BOT_POLLING, true),
       pollIntervalMs: parseInt(process.env.TELEGRAM_BOT_POLL_INTERVAL_MS, 10) || 3000,
       requestTimeoutMs: parseInt(process.env.TELEGRAM_BOT_REQUEST_TIMEOUT_MS, 10) || 8000,
@@ -69,6 +68,7 @@ const config = {
       port: parseInt(process.env.SMTP_PORT, 10) || 587,
       secure: parseBool(process.env.SMTP_SECURE, parseInt(process.env.SMTP_PORT, 10) === 465),
       family: parseInt(process.env.SMTP_FAMILY, 10) || 4,
+      dnsTimeoutMs: parseInt(process.env.SMTP_DNS_TIMEOUT_MS, 10) || 8000,
       connectionTimeoutMs: parseInt(process.env.SMTP_CONNECTION_TIMEOUT_MS, 10) || 8000,
       greetingTimeoutMs: parseInt(process.env.SMTP_GREETING_TIMEOUT_MS, 10) || 8000,
       socketTimeoutMs: parseInt(process.env.SMTP_SOCKET_TIMEOUT_MS, 10) || 10000,
