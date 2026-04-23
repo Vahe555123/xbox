@@ -275,13 +275,16 @@ export default function GameDetailPage() {
   ];
 
   const purchaseSettings = purchaseProfile?.purchaseSettings || {};
+  const purchaseUser = purchaseProfile?.user || null;
+  const registrationEmail = purchaseUser?.email || '';
+  const canUseTelegramDelivery = purchaseUser?.provider === 'telegram';
   const hasSavedPurchaseEmail = Boolean(purchaseSettings.purchaseEmail);
   const hasSavedAccountEmail = Boolean(purchaseSettings.xboxAccountEmail);
   const hasSavedAccountPassword = Boolean(purchaseSettings.hasXboxAccountPassword);
   const isKeyActivationMode = purchaseForm.paymentMode === 'key_activation';
   const isTopupMode = purchaseForm.paymentMode === 'topup_cards';
   const skipAccountFields = isKeyActivationMode || isTopupMode;
-  const needsPurchaseEmail = !hasSavedPurchaseEmail;
+  const needsPurchaseEmail = !hasSavedPurchaseEmail && !registrationEmail && !canUseTelegramDelivery;
   const needsAccountEmail = !skipAccountFields && !hasSavedAccountEmail;
   const needsAccountPassword = !skipAccountFields && !hasSavedAccountPassword;
   const hasMissingPurchaseFields = needsPurchaseEmail || needsAccountEmail || needsAccountPassword;
@@ -314,7 +317,8 @@ export default function GameDetailPage() {
       const profile = await fetchProfile();
       const settings = profile.purchaseSettings || {};
       setPurchaseProfile(profile);
-      const settingsMissing = !settings.purchaseEmail || !settings.xboxAccountEmail || !settings.hasXboxAccountPassword;
+      const hasPurchaseDelivery = Boolean(settings.purchaseEmail || profile.user?.email || profile.user?.provider === 'telegram');
+      const settingsMissing = !hasPurchaseDelivery || !settings.xboxAccountEmail || !settings.hasXboxAccountPassword;
       setPurchaseForm((current) => ({
         ...current,
         paymentMode: settings.paymentMode || 'oplata',
@@ -577,6 +581,18 @@ export default function GameDetailPage() {
                       <div className="purchase-data-row">
                         <span>Email для покупки</span>
                         <strong>{purchaseSettings.purchaseEmail}</strong>
+                      </div>
+                    )}
+                    {!hasSavedPurchaseEmail && registrationEmail && (
+                      <div className="purchase-data-row">
+                        <span>Email регистрации</span>
+                        <strong>{registrationEmail}</strong>
+                      </div>
+                    )}
+                    {!hasSavedPurchaseEmail && !registrationEmail && canUseTelegramDelivery && (
+                      <div className="purchase-data-row">
+                        <span>Доставка ссылки</span>
+                        <strong>Telegram</strong>
                       </div>
                     )}
                     {hasSavedAccountEmail && !skipAccountFields && (
