@@ -1,33 +1,10 @@
-const nodemailer = require('nodemailer');
 const config = require('../config');
 const { getChatIdForUser, sendTelegramMessage } = require('./telegramBotService');
+const { createSmtpTransport, getFromAddress } = require('./mailTransport');
 const logger = require('../utils/logger');
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
-}
-
-function createTransport() {
-  return nodemailer.createTransport({
-    host: config.auth.smtp.host,
-    port: config.auth.smtp.port,
-    secure: config.auth.smtp.secure,
-    family: config.auth.smtp.family,
-    dnsTimeout: config.auth.smtp.dnsTimeoutMs,
-    connectionTimeout: config.auth.smtp.connectionTimeoutMs,
-    greetingTimeout: config.auth.smtp.greetingTimeoutMs,
-    socketTimeout: config.auth.smtp.socketTimeoutMs,
-    auth: {
-      user: config.auth.smtp.username,
-      pass: config.auth.smtp.password,
-    },
-  });
-}
-
-function getFromAddress() {
-  if (config.auth.smtp.from) return config.auth.smtp.from;
-  if (!config.auth.smtp.fromEmail) return config.auth.smtp.username;
-  return `"${config.auth.smtp.fromName}" <${config.auth.smtp.fromEmail}>`;
 }
 
 async function getTelegramChatId(userId) {
@@ -72,7 +49,7 @@ async function notifyPurchaseCreated({ target, product, payment }) {
 }
 
 async function sendPurchaseEmail(email, product, payment) {
-  const transporter = createTransport();
+  const transporter = createSmtpTransport();
   const title = product?.title || 'Xbox товар';
   const priceText = getPaymentPriceText(payment);
   const html = `

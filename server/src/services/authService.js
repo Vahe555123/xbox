@@ -2,10 +2,10 @@ const crypto = require('crypto');
 const axios = require('axios');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
 const config = require('../config');
 const pool = require('../db/pool');
 const { linkTelegramChatToUser } = require('./telegramBotService');
+const { createSmtpTransport, getFromAddress } = require('./mailTransport');
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -174,26 +174,8 @@ function verifyToken(token) {
   return jwt.verify(token, getJwtSecret());
 }
 
-function createTransport() {
-  return nodemailer.createTransport({
-    host: config.auth.smtp.host,
-    port: config.auth.smtp.port,
-    secure: config.auth.smtp.secure,
-    auth: {
-      user: config.auth.smtp.username,
-      pass: config.auth.smtp.password,
-    },
-  });
-}
-
-function getFromAddress() {
-  if (config.auth.smtp.from) return config.auth.smtp.from;
-  if (!config.auth.smtp.fromEmail) return config.auth.smtp.username;
-  return `"${config.auth.smtp.fromName}" <${config.auth.smtp.fromEmail}>`;
-}
-
 async function sendVerificationCode(email, code) {
-  const transporter = createTransport();
+  const transporter = createSmtpTransport();
 
   await transporter.sendMail({
     from: getFromAddress(),

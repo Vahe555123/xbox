@@ -1,4 +1,3 @@
-const nodemailer = require('nodemailer');
 const pool = require('../db/pool');
 const config = require('../config');
 const { getProductsByIds } = require('./displayCatalogService');
@@ -10,6 +9,7 @@ const {
 } = require('./digisellerService');
 const topupCardService = require('./topupCardService');
 const { getChatIdForUser, sendTelegramMessage: sendBotMessage } = require('./telegramBotService');
+const { createSmtpTransport, getFromAddress } = require('./mailTransport');
 const logger = require('../utils/logger');
 
 // ---------------------------------------------------------------------------
@@ -349,29 +349,6 @@ async function getTelegramChatId(userId) {
 // 5. Send email
 // ---------------------------------------------------------------------------
 
-function createTransport() {
-  return nodemailer.createTransport({
-    host: config.auth.smtp.host,
-    port: config.auth.smtp.port,
-    secure: config.auth.smtp.secure,
-    family: config.auth.smtp.family,
-    dnsTimeout: config.auth.smtp.dnsTimeoutMs,
-    connectionTimeout: config.auth.smtp.connectionTimeoutMs,
-    greetingTimeout: config.auth.smtp.greetingTimeoutMs,
-    socketTimeout: config.auth.smtp.socketTimeoutMs,
-    auth: {
-      user: config.auth.smtp.username,
-      pass: config.auth.smtp.password,
-    },
-  });
-}
-
-function getFromAddress() {
-  if (config.auth.smtp.from) return config.auth.smtp.from;
-  if (!config.auth.smtp.fromEmail) return config.auth.smtp.username;
-  return `"${config.auth.smtp.fromName}" <${config.auth.smtp.fromEmail}>`;
-}
-
 function buildEmailHtml(userName, deals) {
   const itemsHtml = deals.map((d) => {
     const endText = d.endDate
@@ -462,7 +439,7 @@ function buildEmailHtml(userName, deals) {
 }
 
 async function sendDealEmail(email, userName, deals) {
-  const transporter = createTransport();
+  const transporter = createSmtpTransport();
 
   const notificationSubject = deals.length === 1
     ? `Скидка ${deals[0].discountPercent}% на ${deals[0].title}`
