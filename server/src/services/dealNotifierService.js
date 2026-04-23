@@ -2,6 +2,13 @@ const nodemailer = require('nodemailer');
 const pool = require('../db/pool');
 const config = require('../config');
 const { getProductsByIds } = require('./displayCatalogService');
+const { mapRelatedProducts } = require('../mappers/relatedProductMapper');
+const {
+  enrichProductsWithRub,
+  getKeyActivationRubPriceForProduct,
+  isGameCurrencyProduct,
+} = require('./digisellerService');
+const topupCardService = require('./topupCardService');
 const { getChatIdForUser, sendTelegramMessage: sendBotMessage } = require('./telegramBotService');
 const logger = require('../utils/logger');
 
@@ -51,6 +58,85 @@ function dealKey(listPrice, msrp) {
   return `${Number(listPrice).toFixed(2)}_${Number(msrp).toFixed(2)}`;
 }
 
+function normalizeProductId(productId) {
+  return String(productId || '').trim().toUpperCase();
+}
+
+function favoritesUrl() {
+  return `${String(config.clientOrigin || '').replace(/\/$/, '')}/favorites`;
+}
+
+function formatRubCompact(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Math.round(numeric))}₽`;
+}
+
+function getRubValue(price) {
+  const value = price?.value ?? price?.amount ?? price?.totalRub;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : null;
+}
+
+function getProductUsdPrice(product) {
+  const candidates = [product?.gamePassPrice, product?.price?.value, product?.price?.listPrice, product?.price?.msrp];
+  for (const value of candidates) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) return Math.round(numeric * 100) / 100;
+  }
+  return null;
+}
+
+function getProductOriginalUsdPrice(product) {
+  const current = getProductUsdPrice(product);
+  const original = Number(product?.price?.original || product?.price?.msrp || product?.price?.value);
+  if (!Number.isFinite(original) || original <= 0) return null;
+  if (current && original <= current) return null;
+  return Math.round(original * 100) / 100;
+}
+
+function estimateOriginalRubValue(currentRub, product) {
+  const value = getRubValue(currentRub);
+  const currentUsd = getProductUsdPrice(product);
+  const originalUsd = getProductOriginalUsdPrice(product);
+  if (!value || !currentUsd || !originalUsd) return null;
+  return Math.round(value * (originalUsd / currentUsd));
+}
+
+function getTopupEffectiveRub(combo, priceUsd = combo?.price) {
+  const totalRub = Number(combo?.totalRub);
+  const totalUsd = Number(combo?.totalUsd);
+  const usd = Number(priceUsd);
+  if (!Number.isFinite(totalRub) || !Number.isFinite(totalUsd) || !Number.isFinite(usd)) return null;
+  if (totalRub <= 0 || totalUsd <= 0 || usd <= 0) return null;
+  return Math.ceil((totalRub / totalUsd) * usd);
+}
+
+function formatPaymentPair(currentValue, originalValue) {
+  const current = formatRubCompact(currentValue);
+  if (!current) return null;
+  const original = formatRubCompact(originalValue);
+  return original && Number(originalValue) > Number(currentValue)
+    ? `${current} ${original}`
+    : current;
+}
+
+function formatDealPaymentLine(deal) {
+  const prices = deal.paymentPrices || {};
+  return [
+    formatPaymentPair(prices.topup?.current, prices.topup?.original),
+    formatPaymentPair(prices.key?.current, prices.key?.original),
+    formatPaymentPair(prices.account?.current, prices.account?.original),
+  ].filter(Boolean).join(' • ');
+}
+
+function formatDealEndDate(endDate) {
+  if (!endDate) return null;
+  const date = new Date(endDate);
+  if (Number.isNaN(date.getTime())) return null;
+  return `до ${date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`;
+}
+
 // ---------------------------------------------------------------------------
 // 1. Gather all users who have favorites
 // ---------------------------------------------------------------------------
@@ -62,7 +148,7 @@ async function getUsersWithFavorites() {
       u.email,
       u.name,
       u.last_provider,
-      array_agg(f.product_id) AS product_ids
+      array_agg(f.product_id ORDER BY f.updated_at DESC) AS product_ids
     FROM users u
     JOIN favorites f ON f.user_id = u.id
     GROUP BY u.id
@@ -74,48 +160,34 @@ async function getUsersWithFavorites() {
 // 2. For a set of product IDs, fetch current prices from Display Catalog
 // ---------------------------------------------------------------------------
 
-function extractDealInfo(raw) {
+function extractDealInfo(raw, product) {
   const lp = raw.LocalizedProperties?.[0] || {};
   const images = lp.Images || [];
+  const price = product?.price || {};
+  const listPrice = Number(price.value ?? price.listPrice);
+  const msrp = Number(price.original ?? price.msrp);
 
-  const image =
+  const image = product?.image ||
     findImage(images, 'Poster') ||
     findImage(images, 'BoxArt') ||
     findImage(images, 'BrandedKeyArt') ||
     findImage(images, 'SuperHeroArt') ||
     (images[0] ? absUri(images[0].Uri) : null);
 
-  // Find best price across SKUs
-  let listPrice = null;
-  let msrp = null;
-  let currency = 'USD';
-  let endDate = null;
-
-  const skus = raw.DisplaySkuAvailabilities || [];
-  for (const skuEntry of skus) {
-    for (const av of skuEntry.Availabilities || []) {
-      const price = av.OrderManagementData?.Price;
-      if (price && price.ListPrice != null) {
-        listPrice = price.ListPrice;
-        msrp = price.MSRP ?? null;
-        currency = price.CurrencyCode || 'USD';
-        // EndDate signals when the sale ends
-        endDate = av.Conditions?.EndDate || av.EndDate || null;
-        break;
-      }
-    }
-    if (listPrice !== null) break;
-  }
-
-  const hasDiscount = msrp != null && listPrice != null && listPrice < msrp && listPrice > 0;
+  const hasDiscount = Number.isFinite(msrp)
+    && Number.isFinite(listPrice)
+    && listPrice < msrp
+    && listPrice > 0;
 
   if (!hasDiscount) return null;
 
   const discountPercent = Math.round(((msrp - listPrice) / msrp) * 100);
+  const currency = price.currency || 'USD';
+  const endDate = findDealEndDate(raw, listPrice, msrp);
 
   return {
     productId: raw.ProductId,
-    title: lp.ProductTitle || raw.ProductId,
+    title: product?.title || lp.ProductTitle || raw.ProductId,
     image,
     listPrice,
     msrp,
@@ -126,7 +198,99 @@ function extractDealInfo(raw) {
     endDate,
     storeUrl: storeUrl(raw.ProductId, lp.ProductTitle),
     siteUrl: `${config.clientOrigin}/game/${raw.ProductId}`,
+    paymentPrices: product?.notificationPaymentPrices || null,
   };
+}
+
+function findDealEndDate(raw, listPrice, msrp) {
+  const list = Number(listPrice);
+  const original = Number(msrp);
+  for (const skuEntry of raw.DisplaySkuAvailabilities || []) {
+    for (const av of skuEntry.Availabilities || []) {
+      const price = av.OrderManagementData?.Price;
+      const avList = Number(price?.ListPrice);
+      const avMsrp = Number(price?.MSRP);
+      const actions = av.Actions || [];
+      if (
+        Number.isFinite(avList)
+        && Number.isFinite(avMsrp)
+        && Math.abs(avList - list) < 0.01
+        && Math.abs(avMsrp - original) < 0.01
+        && (actions.length === 0 || actions.includes('Purchase'))
+      ) {
+        return av.Conditions?.EndDate || av.EndDate || null;
+      }
+    }
+  }
+  return null;
+}
+
+async function enrichProductsForDealNotifications(rawProducts) {
+  const products = mapRelatedProducts(rawProducts, {});
+  await enrichProductsWithRub(products).catch((err) => {
+    logger.warn('[DealNotifier] RUB enrichment failed', { message: err.message });
+  });
+
+  await Promise.all(products.map(enrichProductNotificationPrices));
+
+  return new Map(products.map((product) => [normalizeProductId(product.id), product]));
+}
+
+async function enrichProductNotificationPrices(product) {
+  if (!product || product.price?.value === 0 || product.price?.isFree || product.releaseInfo?.status === 'unreleased') {
+    product.notificationPaymentPrices = null;
+    return product;
+  }
+
+  const currentUsd = getProductUsdPrice(product);
+  const originalUsd = getProductOriginalUsdPrice(product);
+  const accountCurrent = getRubValue(product.priceRub);
+  const prices = {
+    account: {
+      current: accountCurrent,
+      original: estimateOriginalRubValue(product.priceRub, product),
+    },
+    key: null,
+    topup: null,
+  };
+
+  if (!isGameCurrencyProduct(product)) {
+    const keyRub = await getKeyActivationRubPriceForProduct(product).catch((err) => {
+      logger.warn('[DealNotifier] Key RUB enrichment failed', {
+        productId: product.id,
+        message: err.message,
+      });
+      return null;
+    });
+    if (keyRub) {
+      prices.key = {
+        current: getRubValue(keyRub),
+        original: estimateOriginalRubValue(keyRub, product),
+      };
+    }
+
+    if (currentUsd) {
+      const combo = await topupCardService.computeCombo(currentUsd).catch((err) => {
+        logger.warn('[DealNotifier] Topup combo failed', {
+          productId: product.id,
+          message: err.message,
+        });
+        return null;
+      });
+      const originalCombo = originalUsd
+        ? await topupCardService.computeCombo(originalUsd).catch(() => null)
+        : null;
+      if (combo?.available) {
+        prices.topup = {
+          current: getTopupEffectiveRub(combo, currentUsd),
+          original: originalCombo?.available ? getTopupEffectiveRub(originalCombo, originalUsd) : null,
+        };
+      }
+    }
+  }
+
+  product.notificationPaymentPrices = prices;
+  return product;
 }
 
 // ---------------------------------------------------------------------------
@@ -300,15 +464,16 @@ function buildEmailHtml(userName, deals) {
 async function sendDealEmail(email, userName, deals) {
   const transporter = createTransport();
 
-  const subject = deals.length === 1
-    ? `Скидка ${deals[0].discountPercent}% на ${deals[0].title}!`
-    : `Скидки на ${deals.length} ваших любимых игр!`;
+  const notificationSubject = deals.length === 1
+    ? `Скидка ${deals[0].discountPercent}% на ${deals[0].title}`
+    : `Подешевели ${deals.length} игр из избранного`;
 
   await transporter.sendMail({
     from: getFromAddress(),
     to: email,
-    subject,
-    html: buildEmailHtml(userName, deals),
+    subject: notificationSubject,
+    html: buildFavoriteDealsEmailHtml(userName, deals),
+    text: buildFavoriteDealsTelegramMessage(userName, deals),
   });
 }
 
@@ -344,10 +509,123 @@ function escapeMd(text) {
 
 async function sendTelegramMessage(chatId, text) {
   await sendBotMessage(chatId, text, {
-    parseMode: 'MarkdownV2',
-    disableWebPagePreview: false,
+    disableWebPagePreview: true,
   });
   return true;
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function visibleDeals(deals) {
+  return deals.slice(0, Math.min(10, deals.length));
+}
+
+function buildFavoriteDealsTelegramMessage(_userName, deals) {
+  const shownDeals = visibleDeals(deals);
+  const hiddenCount = Math.max(0, deals.length - shownDeals.length);
+  const lines = [
+    `🗣 Подешевели ${deals.length} игр из Избранного`,
+    favoritesUrl(),
+    '',
+  ];
+
+  for (const deal of shownDeals) {
+    const paymentLine = formatDealPaymentLine(deal);
+    const endText = formatDealEndDate(deal.endDate);
+    lines.push(`➬ ${deal.title} (-${deal.discountPercent}%)`);
+    lines.push(deal.siteUrl);
+    if (paymentLine) lines.push(paymentLine);
+    if (endText) lines.push(endText);
+    lines.push('');
+  }
+
+  if (hiddenCount > 0) {
+    lines.push(`Еще ${hiddenCount} игр со скидкой в избранном`);
+    lines.push('');
+  }
+
+  lines.push('·••• Открыть мое ИЗБРАННОЕ •••·');
+  lines.push(favoritesUrl());
+  return lines.join('\n');
+}
+
+function buildFavoriteDealsEmailHtml(userName, deals) {
+  const shownDeals = visibleDeals(deals);
+  const hiddenCount = Math.max(0, deals.length - shownDeals.length);
+  const safeName = userName ? `, ${escapeHtml(userName)}` : '';
+  const itemsHtml = shownDeals.map((deal) => {
+    const paymentLine = formatDealPaymentLine(deal);
+    const endText = formatDealEndDate(deal.endDate);
+    return `
+      <tr>
+        <td style="padding:14px 0;border-bottom:1px solid #27303a;">
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+            <tr>
+              <td width="72" style="vertical-align:top;">
+                <a href="${deal.siteUrl}" style="display:block;">
+                  <img src="${deal.image || ''}" alt="${escapeHtml(deal.title)}" width="58" height="58"
+                       style="border-radius:8px;object-fit:cover;display:block;background:#161b22;" />
+                </a>
+              </td>
+              <td style="vertical-align:top;">
+                <a href="${deal.siteUrl}" style="color:#f4f7fb;font-size:17px;line-height:1.25;font-weight:800;text-decoration:none;">
+                  ${escapeHtml(deal.title)}
+                </a>
+                <div style="margin-top:8px;">
+                  <span style="display:inline-block;background:#d83622;color:#fff;font-size:13px;font-weight:800;border-radius:6px;padding:4px 8px;">-${deal.discountPercent}%</span>
+                  <span style="color:#8ef58d;font-size:16px;font-weight:800;margin-left:8px;">${escapeHtml(deal.formattedListPrice)}</span>
+                  <span style="color:#9aa4b2;font-size:13px;text-decoration:line-through;margin-left:5px;">${escapeHtml(deal.formattedMsrp)}</span>
+                </div>
+                ${paymentLine ? `<div style="margin-top:8px;color:#d7dde7;font-size:14px;font-weight:700;">${escapeHtml(paymentLine)}</div>` : ''}
+                ${endText ? `<div style="margin-top:5px;color:#9aa4b2;font-size:13px;">${escapeHtml(endText)}</div>` : ''}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`;
+  }).join('');
+  const moreHtml = hiddenCount > 0
+    ? `<p style="color:#9aa4b2;font-size:14px;margin:14px 0 0;">Еще ${hiddenCount} игр со скидкой ждут в избранном.</p>`
+    : '';
+
+  return `
+<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#080d10;font-family:Arial,'Segoe UI',sans-serif;">
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#080d10;">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table cellpadding="0" cellspacing="0" border="0" width="620" style="max-width:620px;width:100%;">
+        <tr>
+          <td style="padding:24px;background:#111820;border:1px solid #26313d;border-radius:12px 12px 0 0;">
+            <div style="color:#8ef58d;font-size:13px;font-weight:800;text-transform:uppercase;">Избранное Xbox Store</div>
+            <h1 style="color:#ffffff;font-size:26px;line-height:1.2;margin:8px 0 8px;">Подешевели ${deals.length} игр из избранного</h1>
+            <p style="color:#b8c1cc;font-size:15px;line-height:1.5;margin:0;">Привет${safeName}. Собрал свежие скидки и текущие цены в порядке: код пополнения, ключ, покупка на аккаунт.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:6px 24px 20px;background:#0f141a;border-left:1px solid #26313d;border-right:1px solid #26313d;">
+            <table cellpadding="0" cellspacing="0" border="0" width="100%">${itemsHtml}</table>
+            ${moreHtml}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:22px 24px;background:#111820;border:1px solid #26313d;border-radius:0 0 12px 12px;text-align:center;">
+            <a href="${favoritesUrl()}" style="display:inline-block;background:#107c10;color:#fff;text-decoration:none;font-size:15px;font-weight:800;border-radius:8px;padding:13px 24px;">Открыть мое избранное</a>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
 
 function compactDealForReport(deal) {
@@ -358,6 +636,7 @@ function compactDealForReport(deal) {
     price: deal.formattedListPrice,
     oldPrice: deal.formattedMsrp,
     siteUrl: deal.siteUrl,
+    paymentLine: formatDealPaymentLine(deal),
   };
 }
 
@@ -441,12 +720,15 @@ async function runDealNotifications() {
     return finishRunReport(report, 'failed');
   }
 
+  const productsById = await enrichProductsForDealNotifications(rawProducts);
+
   // 4. Extract deal info for each product
   const dealsByProductId = {};
   for (const raw of rawProducts) {
-    const deal = extractDealInfo(raw);
+    const product = productsById.get(normalizeProductId(raw.ProductId));
+    const deal = extractDealInfo(raw, product);
     if (deal) {
-      dealsByProductId[deal.productId] = deal;
+      dealsByProductId[normalizeProductId(deal.productId)] = deal;
     }
   }
 
@@ -467,7 +749,7 @@ async function runDealNotifications() {
     try {
       // Find which of this user's favorites are on sale
       const userDeals = user.product_ids
-        .map((pid) => dealsByProductId[pid])
+        .map((pid) => dealsByProductId[normalizeProductId(pid)])
         .filter(Boolean);
 
       if (userDeals.length === 0) {
@@ -513,7 +795,7 @@ async function runDealNotifications() {
         const chatId = await getTelegramChatId(user.user_id);
         if (chatId) {
           try {
-            const msg = buildTelegramMessage(user.name, newDeals);
+            const msg = buildFavoriteDealsTelegramMessage(user.name, newDeals);
             const telegramSent = await sendTelegramMessage(chatId, msg);
             if (!telegramSent) {
               throw new Error('Telegram bot token not configured');

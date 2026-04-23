@@ -6,6 +6,7 @@ import ErrorMessage from '../components/ErrorMessage';
 import ProductCard from '../components/ProductCard';
 import FavoriteHeartButton from '../components/FavoriteHeartButton';
 import {
+  PAYMENT_PRICE_ORDER,
   getPaymentOriginalPriceText,
   getPaymentPrice,
   getPaymentPriceEntries,
@@ -504,7 +505,10 @@ export default function GameDetailPage() {
               <section className="purchase-modal-section">
                 <h3>Способ оплаты</h3>
                 <div className="purchase-mode-grid">
-                  {PAYMENT_MODES.map((mode) => {
+                  {PAYMENT_MODES
+                    .slice()
+                    .sort((a, b) => PAYMENT_PRICE_ORDER.indexOf(a.id) - PAYMENT_PRICE_ORDER.indexOf(b.id))
+                    .map((mode) => {
                     let modeEnabled = mode.enabled;
                     if (mode.id === 'key_activation') modeEnabled = modeEnabled && Boolean(data.keyActivationPayUrl);
                     if (mode.id === 'topup_cards') modeEnabled = modeEnabled && Boolean(data.topupCombo?.available);

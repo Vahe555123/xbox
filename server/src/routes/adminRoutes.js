@@ -57,9 +57,9 @@ router.get('/stats', requireAdmin, async (_req, res, next) => {
     `);
 
     const topFavorited = await pool.query(`
-      SELECT product_id, snapshot->>'title' AS title, COUNT(*)::int AS count
+      SELECT product_id, product_id AS title, COUNT(*)::int AS count
       FROM favorites
-      GROUP BY product_id, snapshot->>'title'
+      GROUP BY product_id
       ORDER BY count DESC
       LIMIT 10
     `);
@@ -144,7 +144,15 @@ router.get('/users/:userId', requireAdmin, async (req, res, next) => {
     }
 
     const [favorites, oauth, notifications] = await Promise.all([
-      pool.query('SELECT product_id, snapshot, created_at FROM favorites WHERE user_id = $1 ORDER BY updated_at DESC', [userId]),
+      pool.query(`
+        SELECT
+          product_id,
+          jsonb_build_object('id', product_id, 'detailPath', '/game/' || product_id) AS snapshot,
+          created_at
+        FROM favorites
+        WHERE user_id = $1
+        ORDER BY updated_at DESC
+      `, [userId]),
       pool.query('SELECT provider, provider_user_id, linked_at FROM oauth_accounts WHERE user_id = $1', [userId]),
       pool.query(`
         SELECT product_id, deal_key, notified_at

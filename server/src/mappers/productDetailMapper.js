@@ -389,12 +389,15 @@ function buildSubscriptionLabels(passIds) {
 }
 
 function isTrialSku(sku) {
-  return /trial/i.test([
-    sku?.skuType,
+  const skuType = String(sku?.skuType || '');
+  if (/\b(trial|demo)\b/i.test(skuType)) return true;
+
+  const label = [
     sku?.title,
-    sku?.description,
     sku?.skuButtonTitle,
-  ].filter(Boolean).join(' '));
+  ].filter(Boolean).join(' ');
+
+  return /\b(trial|demo|free\s+trial)\b/i.test(label);
 }
 
 /**

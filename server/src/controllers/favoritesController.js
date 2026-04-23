@@ -17,8 +17,9 @@ async function getFavorites(req, res, next) {
 
 async function addFavorite(req, res, next) {
   try {
-    const product = req.body?.product || req.body;
-    if (!product?.id) {
+    const product = req.body?.productId || req.body?.id || req.body?.product || req.body;
+    const productId = typeof product === 'string' ? product : product?.id || product?.productId;
+    if (!productId) {
       throw new AppError('Favorite product is required', 400);
     }
 

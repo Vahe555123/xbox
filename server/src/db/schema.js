@@ -64,11 +64,18 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS favorites (
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       product_id TEXT NOT NULL,
-      snapshot JSONB NOT NULL,
+      snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (user_id, product_id)
     );
+
+    ALTER TABLE favorites
+      ALTER COLUMN snapshot SET DEFAULT '{}'::jsonb;
+
+    UPDATE favorites
+    SET snapshot = '{}'::jsonb
+    WHERE snapshot <> '{}'::jsonb;
 
     CREATE TABLE IF NOT EXISTS deal_notifications (
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
