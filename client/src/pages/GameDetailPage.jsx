@@ -975,12 +975,14 @@ function getDetailSubscriptionLabel(label) {
 }
 
 function getLanguageDisplayLabel(mode, hasRussian) {
+  if (mode === 'unknown') return 'Язык не указан';
   if (mode === 'full_ru') return 'Полностью на русском';
   if (mode === 'ru_subtitles' || hasRussian) return 'Русские субтитры';
   return 'Без русского';
 }
 
 function getLanguageClassSuffix(mode, hasRussian) {
+  if (mode === 'unknown') return 'unknown';
   if (mode === 'full_ru') return 'full-ru';
   if (mode === 'ru_subtitles' || hasRussian) return 'ru-subtitles';
   return 'no-ru';

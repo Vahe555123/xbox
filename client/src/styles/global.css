@@ -1257,6 +1257,11 @@ img {
   color: #d8dde7;
 }
 
+.product-language-badge--unknown {
+  background: rgba(92, 98, 110, 0.92);
+  color: #f2f4f7;
+}
+
 .badge-in-game-pass {
   background: var(--accent);
   color: #fff;
@@ -3661,6 +3666,12 @@ img {
   color: var(--text-muted);
 }
 
+.ps-chip-language--unknown {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(130, 138, 150, 0.18);
+  color: #d6dbe5;
+}
+
 .ps-chip-subscription--ea-play {
   border-color: rgba(255, 255, 255, 0.82);
   background: #fff;
@@ -5415,6 +5426,34 @@ code {
 
 .admin-input-group input:focus {
   border-color: rgba(138, 100, 240, 0.5);
+}
+
+.admin-override-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.admin-override-form input,
+.admin-override-form select,
+.admin-override-form textarea {
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.admin-override-form textarea {
+  resize: vertical;
+  min-height: 84px;
+}
+
+.admin-override-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 .admin-scheduler-action {

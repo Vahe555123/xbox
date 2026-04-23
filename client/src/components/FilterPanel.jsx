@@ -66,6 +66,7 @@ const LANGUAGE_CHOICES = [
   { id: 'full_ru', title: 'Полностью на русском' },
   { id: 'ru_subtitles', title: 'Русские субтитры' },
   { id: 'no_ru', title: 'Без русского' },
+  { id: 'unknown', title: 'Язык не указан' },
 ];
 
 function cloneFilters(filters) {

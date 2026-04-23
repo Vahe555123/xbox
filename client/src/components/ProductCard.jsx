@@ -237,6 +237,7 @@ function isGamePassSubscriptionLabel(label) {
 }
 
 function getLanguageBadge(mode, hasRussian) {
+  if (mode === 'unknown') return { mode: 'unknown', label: 'Язык не указан' };
   if (mode === 'full_ru') return { mode: 'full-ru', label: 'Полностью на русском' };
   if (mode === 'ru_subtitles' || hasRussian) return { mode: 'ru-subtitles', label: 'Русские субтитры' };
   return { mode: 'no-ru', label: 'Без русского' };

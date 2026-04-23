@@ -333,6 +333,16 @@ function extractLanguageInfo(displaySkuAvailabilities) {
 
   const supportedLanguages = [...supportedCodes].sort();
   const packageLanguages = [...packageCodes].sort();
+  if (supportedLanguages.length === 0 && packageLanguages.length === 0) {
+    return {
+      supportedLanguages,
+      packageLanguages,
+      hasRussianLanguage: false,
+      russianLanguageMode: 'unknown',
+      languageSource: 'catalog-missing',
+    };
+  }
+
   const hasRussian = hasRussianLanguage(supportedLanguages) || hasRussianLanguage(packageLanguages);
   const hasRussianPackage = hasRussianLanguage(packageLanguages);
 

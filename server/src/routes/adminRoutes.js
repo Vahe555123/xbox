@@ -5,6 +5,16 @@ const config = require('../config');
 const dealScheduler = require('../services/dealScheduler');
 const digisellerService = require('../services/digisellerService');
 const topupCardService = require('../services/topupCardService');
+const { search } = require('../services/searchService');
+const { getProductById } = require('../services/displayCatalogService');
+const { mapProductDetail } = require('../mappers/productDetailMapper');
+const {
+  applyProductOverrides,
+  deleteProductOverride,
+  getProductOverride,
+  listProductOverrides,
+  upsertProductOverride,
+} = require('../services/productOverrideService');
 const logger = require('../utils/logger');
 
 const router = Router();
@@ -190,6 +200,85 @@ router.get('/notifications', requireAdmin, async (req, res, next) => {
       page,
       limit,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Product search for manual overrides
+router.get('/products/search', requireAdmin, async (req, res, next) => {
+  try {
+    const query = String(req.query.q || '').trim();
+    if (!query) return res.json({ products: [] });
+
+    const productIdLike = /^[A-Z0-9]{8,16}$/i.test(query);
+    if (productIdLike) {
+      try {
+        const raw = await getProductById(query.toUpperCase());
+        const product = mapProductDetail(raw);
+        await applyProductOverrides(product);
+        return res.json({ products: [product] });
+      } catch (err) {
+        if (err.response?.status !== 404 && err.statusCode !== 404) throw err;
+      }
+    }
+
+    const result = await search({
+      query,
+      page: 1,
+      sort: '',
+      filters: {},
+      priceRange: {},
+      languageMode: '',
+      freeOnly: false,
+      encodedCT: '',
+      channelId: '',
+    });
+
+    res.json({ products: result.products || [] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/product-overrides', requireAdmin, async (req, res, next) => {
+  try {
+    const result = await listProductOverrides({
+      search: req.query.search || '',
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/product-overrides/:productId', requireAdmin, async (req, res, next) => {
+  try {
+    const override = await getProductOverride(req.params.productId);
+    res.json({ override });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/product-overrides/:productId', requireAdmin, async (req, res, next) => {
+  try {
+    const override = await upsertProductOverride(req.params.productId, req.body || {});
+    res.json({ success: true, override });
+  } catch (err) {
+    if (err.message === 'Invalid russianLanguageMode' || err.message === 'Product ID is required') {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next(err);
+  }
+});
+
+router.delete('/product-overrides/:productId', requireAdmin, async (req, res, next) => {
+  try {
+    const result = await deleteProductOverride(req.params.productId);
+    res.json({ success: true, ...result });
   } catch (err) {
     next(err);
   }

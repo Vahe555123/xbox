@@ -43,6 +43,7 @@ const RUSSIAN_LANGUAGE_MODE = {
   FULL: 'full_ru',
   SUBTITLES: 'ru_subtitles',
   NONE: 'no_ru',
+  UNKNOWN: 'unknown',
 };
 
 function mapProduct({ summary, availability }) {
@@ -341,6 +342,16 @@ function extractLanguageInfo(product) {
 
   const supportedLanguages = [...supportedCodes].sort();
   const packageLanguages = [...packageCodes].sort();
+  if (supportedLanguages.length === 0 && packageLanguages.length === 0) {
+    return {
+      supportedLanguages,
+      packageLanguages,
+      hasRussianLanguage: false,
+      russianLanguageMode: RUSSIAN_LANGUAGE_MODE.UNKNOWN,
+      languageSource: 'catalog-missing',
+    };
+  }
+
   const hasRussian = hasRussianLanguage(supportedLanguages) || hasRussianLanguage(packageLanguages);
   const hasRussianPackage = hasRussianLanguage(packageLanguages);
 
@@ -358,13 +369,13 @@ function extractLanguageInfo(product) {
 
 function extractStoreLanguageInfo(summary) {
   const languagesSupported = summary?.languagesSupported;
-  if (!languagesSupported || typeof languagesSupported !== 'object') {
+  if (!languagesSupported || typeof languagesSupported !== 'object' || Object.keys(languagesSupported).length === 0) {
     return {
       supportedLanguages: [],
       packageLanguages: [],
       hasRussianLanguage: false,
-      russianLanguageMode: RUSSIAN_LANGUAGE_MODE.NONE,
-      languageSource: null,
+      russianLanguageMode: RUSSIAN_LANGUAGE_MODE.UNKNOWN,
+      languageSource: 'xbox-store-summary-missing',
     };
   }
 
@@ -428,7 +439,7 @@ function enrichProductsWithCatalogDetails(products, catalogProducts) {
     const catalogProduct = byId.get(product.id);
     if (!catalogProduct) return product;
 
-    const languageInfo = product.languageSource === 'xbox-store-summary'
+    const languageInfo = String(product.languageSource || '').startsWith('xbox-store-summary')
       ? getExistingLanguageInfo(product)
       : extractLanguageInfo(catalogProduct);
     const catalogPriceInfo = getCatalogProductPriceInfo(catalogProduct);

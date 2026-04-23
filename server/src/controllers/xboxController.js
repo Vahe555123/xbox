@@ -20,6 +20,7 @@ const {
   notifyPurchaseCreated,
   resolvePurchaseDeliveryTarget,
 } = require('../services/purchaseDeliveryService');
+const { applyProductOverrides } = require('../services/productOverrideService');
 
 function assignKeyActivationUrl(product) {
   if (!product) return product;
@@ -268,6 +269,7 @@ async function getProductDetail(req, res, next) {
     if (storePageProductData.relatedProducts.length) {
       product.relatedProducts = storePageProductData.relatedProducts;
     }
+    await applyProductOverrides(product);
 
     res.json({
       success: true,
@@ -459,6 +461,7 @@ async function getRelatedProducts(req, res, next) {
     const rawProducts = await getProductsByIds(productIds);
     const products = mapRelatedProducts(rawProducts, relationMap);
     sortProductsByRequestedIds(products, productIds);
+    await applyProductOverrides(products);
 
     await enrichProductsWithRub(products).catch((e) =>
       logger.warn('RUB enrichment failed', { message: e.message }));

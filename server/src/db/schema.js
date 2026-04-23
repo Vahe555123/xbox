@@ -92,6 +92,19 @@ async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_favorites_user_updated_at
       ON favorites (user_id, updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS product_overrides (
+      product_id TEXT PRIMARY KEY,
+      title TEXT,
+      russian_language_mode TEXT,
+      language_note TEXT,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_product_overrides_updated_at
+      ON product_overrides (updated_at DESC);
+
     CREATE TABLE IF NOT EXISTS digiseller_products (
       product_id TEXT PRIMARY KEY,
       digiseller_id BIGINT NOT NULL,

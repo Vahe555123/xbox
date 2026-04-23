@@ -6,6 +6,10 @@ import {
   fetchAdminUsers,
   fetchAdminUserDetail,
   fetchAdminNotifications,
+  searchAdminProducts,
+  fetchProductOverrides,
+  updateProductOverride,
+  deleteProductOverride,
   fetchSchedulerState,
   updateSchedulerInterval,
   triggerDealCheck,
@@ -58,6 +62,18 @@ function dealRunChannelLabel(channel) {
 
 const EMPTY_DIG_RATE_STATE = { lastRun: null, samples: [] };
 
+const PRODUCT_LANGUAGE_MODES = [
+  { value: 'auto', label: 'Авто с Xbox' },
+  { value: 'full_ru', label: 'Полностью на русском' },
+  { value: 'ru_subtitles', label: 'Русские субтитры' },
+  { value: 'no_ru', label: 'Без русского' },
+  { value: 'unknown', label: 'Язык не указан' },
+];
+
+function productLanguageLabel(mode) {
+  return PRODUCT_LANGUAGE_MODES.find((item) => item.value === (mode || 'auto'))?.label || mode || 'Авто';
+}
+
 const DIG_RATE_MODES = [
   {
     id: 'oplata',
@@ -94,6 +110,21 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [notifications, setNotifications] = useState([]);
   const [notifsTotal, setNotifsTotal] = useState(0);
   const [notifsPage, setNotifsPage] = useState(1);
+
+  // Product overrides
+  const [productSearch, setProductSearch] = useState('');
+  const [productSearchLoading, setProductSearchLoading] = useState(false);
+  const [productSearchResults, setProductSearchResults] = useState([]);
+  const [productOverrides, setProductOverrides] = useState([]);
+  const [productOverridesTotal, setProductOverridesTotal] = useState(0);
+  const [selectedProductOverride, setSelectedProductOverride] = useState(null);
+  const [overrideForm, setOverrideForm] = useState({
+    productId: '',
+    title: '',
+    russianLanguageMode: 'auto',
+    languageNote: '',
+  });
+  const [overrideMessage, setOverrideMessage] = useState('');
 
   // Scheduler
   const [scheduler, setScheduler] = useState(null);
@@ -154,6 +185,14 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadProductOverrides = useCallback(async () => {
+    try {
+      const data = await fetchProductOverrides({ page: 1, limit: 50 });
+      setProductOverrides(data.overrides || []);
+      setProductOverridesTotal(data.total || 0);
+    } catch { /* ignore */ }
+  }, []);
+
   const loadDigiseller = useCallback(async () => {
     try {
       const entries = await Promise.all(
@@ -175,13 +214,85 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     if (tab === 'dashboard') loadDashboard();
     else if (tab === 'users') loadUsers(1, usersSearch);
     else if (tab === 'notifications') loadNotifications(1);
+    else if (tab === 'products') loadProductOverrides();
     else if (tab === 'digiseller') loadDigiseller();
     else if (tab === 'topup') loadTopupCards();
-  }, [tab, authorized, loadDashboard, loadUsers, loadNotifications, loadDigiseller, loadTopupCards]);
+  }, [tab, authorized, loadDashboard, loadUsers, loadNotifications, loadProductOverrides, loadDigiseller, loadTopupCards]);
 
   const handleUserSearch = (e) => {
     e.preventDefault();
     loadUsers(1, usersSearch);
+  };
+
+  const handleProductSearch = async (e) => {
+    e.preventDefault();
+    const query = productSearch.trim();
+    if (!query) return;
+    setProductSearchLoading(true);
+    setOverrideMessage('');
+    try {
+      const products = await searchAdminProducts(query);
+      setProductSearchResults(products);
+    } catch (err) {
+      setOverrideMessage('Ошибка поиска: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setProductSearchLoading(false);
+    }
+  };
+
+  const selectProductForOverride = (product, override = null) => {
+    const currentOverride = override || product.adminOverride || {};
+    setSelectedProductOverride(product || null);
+    setOverrideForm({
+      productId: product?.id || currentOverride.productId || '',
+      title: product?.title || currentOverride.title || '',
+      russianLanguageMode: currentOverride.russianLanguageMode || product?.russianLanguageMode || 'auto',
+      languageNote: currentOverride.languageNote || product?.languageNote || '',
+    });
+    setOverrideMessage('');
+  };
+
+  const selectSavedOverride = (override) => {
+    setSelectedProductOverride(null);
+    setOverrideForm({
+      productId: override.productId,
+      title: override.title || '',
+      russianLanguageMode: override.russianLanguageMode || 'auto',
+      languageNote: override.languageNote || '',
+    });
+    setOverrideMessage('');
+  };
+
+  const saveProductOverride = async (e) => {
+    e.preventDefault();
+    if (!overrideForm.productId) return;
+    setOverrideMessage('');
+    try {
+      const override = await updateProductOverride(overrideForm.productId, overrideForm);
+      setOverrideMessage('Сохранено');
+      setOverrideForm((current) => ({
+        ...current,
+        productId: override.productId,
+        russianLanguageMode: override.russianLanguageMode || 'auto',
+        languageNote: override.languageNote || '',
+      }));
+      await loadProductOverrides();
+    } catch (err) {
+      setOverrideMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const removeProductOverride = async () => {
+    if (!overrideForm.productId) return;
+    setOverrideMessage('');
+    try {
+      await deleteProductOverride(overrideForm.productId);
+      setOverrideMessage('Ручная правка удалена');
+      setOverrideForm((current) => ({ ...current, russianLanguageMode: 'auto', languageNote: '' }));
+      await loadProductOverrides();
+    } catch (err) {
+      setOverrideMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
   };
 
   const openUserDetail = async (userId) => {
@@ -331,6 +442,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
           ['dashboard', 'Обзор'],
           ['users', 'Пользователи'],
           ['notifications', 'Уведомления'],
+          ['products', 'Игры'],
           ['scheduler', 'Планировщик'],
           ['digiseller', 'Digiseller'],
           ['topup', 'Карты пополнения'],
@@ -612,6 +724,148 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <button className="admin-btn admin-btn-sm" disabled={notifsPage >= Math.ceil(notifsTotal / 30)} onClick={() => loadNotifications(notifsPage + 1)}>Вперёд</button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ==================== Products ==================== */}
+      {tab === 'products' && (
+        <div className="admin-panel">
+          <div className="admin-grid-2col admin-products-grid">
+            <div className="admin-card">
+              <h3>Поиск игры</h3>
+              <p className="admin-card-desc">
+                Найдите товар по названию или Product ID, выберите его и задайте ручной язык. Эта правка будет применяться в каталоге и карточке товара.
+              </p>
+              <form className="admin-search-bar" onSubmit={handleProductSearch}>
+                <input
+                  type="text"
+                  placeholder="Название или Product ID..."
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                />
+                <button type="submit" className="admin-btn admin-btn-primary" disabled={productSearchLoading}>
+                  {productSearchLoading ? 'Ищем...' : 'Найти'}
+                </button>
+              </form>
+
+              <div className="admin-table-wrap">
+                <table className="admin-table admin-table-compact">
+                  <thead>
+                    <tr><th>Игра</th><th>ID</th><th>Язык сейчас</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {productSearchResults.map((product) => (
+                      <tr key={product.id}>
+                        <td>{product.title}</td>
+                        <td className="admin-mono">{product.id}</td>
+                        <td>{productLanguageLabel(product.russianLanguageMode)}</td>
+                        <td>
+                          <button className="admin-btn admin-btn-sm" type="button" onClick={() => selectProductForOverride(product)}>
+                            Редактировать
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {productSearchResults.length === 0 && (
+                      <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Введите название и нажмите «Найти»</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="admin-card">
+              <h3>Ручная правка товара</h3>
+              <form className="admin-override-form" onSubmit={saveProductOverride}>
+                <label className="admin-field">
+                  <span>Product ID</span>
+                  <input
+                    type="text"
+                    value={overrideForm.productId}
+                    onChange={(e) => setOverrideForm((current) => ({ ...current, productId: e.target.value.toUpperCase() }))}
+                    placeholder="9MX6D30J0ZS6"
+                    required
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Название</span>
+                  <input
+                    type="text"
+                    value={overrideForm.title}
+                    onChange={(e) => setOverrideForm((current) => ({ ...current, title: e.target.value }))}
+                    placeholder={selectedProductOverride?.title || 'Можно оставить пустым'}
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Русский язык</span>
+                  <select
+                    value={overrideForm.russianLanguageMode}
+                    onChange={(e) => setOverrideForm((current) => ({ ...current, russianLanguageMode: e.target.value }))}
+                  >
+                    {PRODUCT_LANGUAGE_MODES.map((mode) => (
+                      <option key={mode.value} value={mode.value}>{mode.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="admin-field">
+                  <span>Заметка</span>
+                  <textarea
+                    value={overrideForm.languageNote}
+                    onChange={(e) => setOverrideForm((current) => ({ ...current, languageNote: e.target.value }))}
+                    placeholder="Например: проверено вручную, есть русские субтитры"
+                    rows={3}
+                  />
+                </label>
+
+                <div className="admin-override-actions">
+                  <button className="admin-btn admin-btn-primary" type="submit">Сохранить</button>
+                  <button className="admin-btn admin-btn-secondary" type="button" onClick={removeProductOverride} disabled={!overrideForm.productId}>
+                    Удалить правку
+                  </button>
+                </div>
+                {overrideMessage && <p className="admin-scheduler-result">{overrideMessage}</p>}
+              </form>
+            </div>
+          </div>
+
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <div>
+                <h3>Сохраненные правки</h3>
+                <p className="admin-card-desc">Всего: {productOverridesTotal}</p>
+              </div>
+              <button className="admin-btn admin-btn-sm" type="button" onClick={loadProductOverrides}>Обновить</button>
+            </div>
+            <div className="admin-table-wrap">
+              <table className="admin-table admin-table-compact">
+                <thead>
+                  <tr><th>Игра</th><th>ID</th><th>Язык</th><th>Заметка</th><th>Дата</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {productOverrides.map((override) => (
+                    <tr key={override.productId}>
+                      <td>{override.title || '—'}</td>
+                      <td className="admin-mono">{override.productId}</td>
+                      <td>{productLanguageLabel(override.russianLanguageMode)}</td>
+                      <td>{override.languageNote || '—'}</td>
+                      <td>{formatDate(override.updatedAt)}</td>
+                      <td>
+                        <button className="admin-btn admin-btn-sm" type="button" onClick={() => selectSavedOverride(override)}>
+                          Изменить
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {productOverrides.length === 0 && (
+                    <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Ручных правок пока нет</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 

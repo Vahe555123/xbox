@@ -3,6 +3,7 @@ const catalogService = require('./xboxCatalogService');
 const { getProductsByIds } = require('./displayCatalogService');
 const { mapProducts, enrichProductsWithCatalogDetails } = require('../mappers/productMapper');
 const { mapFilters, encodeFilters } = require('../mappers/filtersMapper');
+const { applyProductOverrides } = require('./productOverrideService');
 const config = require('../config');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
@@ -104,7 +105,7 @@ async function search({ query, page, sort, filters, priceRange, languageMode, fr
   const products = priceFilterActive
     ? applyPriceRange(mappedProducts, normalizePriceRange(priceRange))
     : mappedProducts;
-  const enrichedProducts = applyPostFilters(await enrichProducts(products), { languageMode, freeOnly });
+  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), { languageMode, freeOnly });
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)
     : null;
@@ -162,7 +163,7 @@ async function searchWithRelevanceRerank({
   const products = priceFilterActive
     ? applyPriceRange(mappedProducts, normalizePriceRange(priceRange))
     : mappedProducts;
-  const enrichedProducts = applyPostFilters(await enrichProducts(products), { languageMode, freeOnly });
+  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), { languageMode, freeOnly });
   const rankedProducts = rankProductsBySearchRelevance(enrichedProducts, query);
   const pageProducts = rankedProducts.slice(0, config.xbox.pageSize);
   const remainingProducts = rankedProducts.slice(config.xbox.pageSize);

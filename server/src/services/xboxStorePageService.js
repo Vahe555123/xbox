@@ -92,7 +92,9 @@ function getCaseInsensitiveValue(source, key) {
 
 function extractStoreLanguageInfo(productSummary) {
   const languagesSupported = productSummary?.languagesSupported;
-  if (!languagesSupported || typeof languagesSupported !== 'object') return null;
+  if (!languagesSupported || typeof languagesSupported !== 'object' || Object.keys(languagesSupported).length === 0) {
+    return buildStoreLanguageInfo('unknown', []);
+  }
 
   const russianEntry = Object.entries(languagesSupported).find(([code, language]) => (
     isRussianLanguageCode(code)
@@ -116,7 +118,7 @@ function buildStoreLanguageInfo(mode, supportedLanguages) {
   return {
     supportedLanguages,
     packageLanguages: [],
-    hasRussianLanguage: mode !== 'no_ru',
+    hasRussianLanguage: mode !== 'no_ru' && mode !== 'unknown',
     russianLanguageMode: mode,
     languageSource: 'xbox-store-page',
   };

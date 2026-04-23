@@ -170,6 +170,26 @@ export async function fetchAdminNotifications({ page = 1, limit = 30 } = {}) {
   return data;
 }
 
+export async function searchAdminProducts(q) {
+  const { data } = await api.get('/admin/products/search', { params: { q } });
+  return data.products || [];
+}
+
+export async function fetchProductOverrides({ page = 1, limit = 50, search = '' } = {}) {
+  const { data } = await api.get('/admin/product-overrides', { params: { page, limit, search } });
+  return data;
+}
+
+export async function updateProductOverride(productId, payload) {
+  const { data } = await api.put(`/admin/product-overrides/${encodeURIComponent(productId)}`, payload);
+  return data.override;
+}
+
+export async function deleteProductOverride(productId) {
+  const { data } = await api.delete(`/admin/product-overrides/${encodeURIComponent(productId)}`);
+  return data;
+}
+
 export async function fetchSchedulerState() {
   const { data } = await api.get('/admin/scheduler');
   return data;
