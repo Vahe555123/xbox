@@ -105,13 +105,16 @@ async function search({ query, page, sort, filters, priceRange, languageMode, fr
     ? applyPriceRange(mappedProducts, normalizePriceRange(priceRange))
     : mappedProducts;
   const enrichedProducts = applyPostFilters(await enrichProducts(products), { languageMode, freeOnly });
+  const orderedProducts = query && query.trim()
+    ? rankProductsBySearchRelevance(enrichedProducts, query)
+    : enrichedProducts;
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)
     : null;
 
   return {
-    products: enrichedProducts,
-    totalItems: (priceFilterActive || postFilterActive) ? enrichedProducts.length : raw.totalItems,
+    products: orderedProducts,
+    totalItems: (priceFilterActive || postFilterActive) ? orderedProducts.length : raw.totalItems,
     totalIsApproximate: priceFilterActive || postFilterActive,
     encodedCT: nextEncodedCT,
     filters: mappedFilters,
@@ -336,18 +339,39 @@ function bestRawSearchScore(rawProducts, query) {
   );
 }
 
+/**
+ * Order search results so that titles which actually contain the user's
+ * search term come first, regardless of what extra "related" products the
+ * upstream API mixed in. Within each bucket we preserve the existing
+ * relevance score ordering so exact matches still beat partial matches.
+ */
 function rankProductsBySearchRelevance(products, query) {
+  const queryTokens = getMeaningfulSearchTokens(query);
+  const normalizedQuery = normalizeSearchText(query);
+
   return [...products]
     .map((product, index) => ({
       product,
-      score: scoreSearchTitle(product.title, query, index),
       index,
+      matchesTitle: titleContainsQuery(product.title, queryTokens, normalizedQuery),
+      score: scoreSearchTitle(product.title, query, index),
     }))
     .sort((a, b) => {
+      if (a.matchesTitle !== b.matchesTitle) return a.matchesTitle ? -1 : 1;
       if (b.score !== a.score) return b.score - a.score;
       return a.index - b.index;
     })
     .map(({ product }) => product);
+}
+
+function titleContainsQuery(title, queryTokens, normalizedQuery) {
+  if (!normalizedQuery) return true;
+  const normalizedTitle = normalizeSearchText(title);
+  if (!normalizedTitle) return false;
+  if (normalizedTitle.includes(normalizedQuery)) return true;
+  if (!queryTokens || queryTokens.length === 0) return false;
+  const titleTokens = getComparableTokenSet(title);
+  return queryTokens.some((token) => titleTokens.has(toComparableToken(token)));
 }
 
 function scoreSearchTitle(title, query, originalIndex = 0) {
