@@ -7,6 +7,7 @@ import ProfilePage from './pages/ProfilePage';
 import AdminPage from './pages/AdminPage';
 import AuthModal from './components/AuthModal';
 import FilterPanel from './components/FilterPanel';
+import SupportWidget from './components/SupportWidget';
 import { useFavorites } from './context/FavoritesContext';
 import { useSearch } from './hooks/useSearch';
 import { consumeOAuthSession, checkAdmin } from './services/api';
@@ -246,6 +247,7 @@ export default function App() {
         onAuth={handleAuth}
         externalError={authNotice}
       />
+      <SupportWidget />
     </div>
   );
 }

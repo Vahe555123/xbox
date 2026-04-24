@@ -15,9 +15,11 @@ const {
   listProductOverrides,
   upsertProductOverride,
 } = require('../services/productOverrideService');
+const { getSupportLinks, updateSupportLinks } = require('../services/supportLinksService');
 const logger = require('../utils/logger');
 
 const router = Router();
+const ADMIN_PRODUCT_LANGUAGE_MODES = new Set(['unknown', 'no_ru', 'full_ru', 'ru_subtitles']);
 
 // Check if current user is admin (used by client to show/hide admin button)
 router.get('/check', requireAuth, async (req, res) => {
@@ -217,33 +219,55 @@ router.get('/notifications', requireAdmin, async (req, res, next) => {
 router.get('/products/search', requireAdmin, async (req, res, next) => {
   try {
     const query = String(req.query.q || '').trim();
-    if (!query) return res.json({ products: [] });
+    const requestedLanguageMode = String(req.query.languageMode || '').trim();
+    const languageMode = ADMIN_PRODUCT_LANGUAGE_MODES.has(requestedLanguageMode)
+      ? requestedLanguageMode
+      : '';
 
-    const productIdLike = /^[A-Z0-9]{8,16}$/i.test(query);
+    const productIdLike = query && /^[A-Z0-9]{8,16}$/i.test(query);
     if (productIdLike) {
       try {
         const raw = await getProductById(query.toUpperCase());
         const product = mapProductDetail(raw);
         await applyProductOverrides(product);
+        if (languageMode && product.russianLanguageMode !== languageMode) {
+          return res.json({ products: [] });
+        }
         return res.json({ products: [product] });
       } catch (err) {
         if (err.response?.status !== 404 && err.statusCode !== 404) throw err;
       }
     }
 
-    const result = await search({
-      query,
-      page: 1,
-      sort: '',
-      filters: {},
-      priceRange: {},
-      languageMode: '',
-      freeOnly: false,
-      encodedCT: '',
-      channelId: '',
-    });
+    const productsById = new Map();
+    let encodedCT = '';
+    let attempts = 0;
+    const maxPages = languageMode ? 6 : 1;
 
-    res.json({ products: result.products || [] });
+    do {
+      const result = await search({
+        query,
+        page: 1,
+        sort: '',
+        filters: {},
+        priceRange: {},
+        languageMode,
+        freeOnly: false,
+        encodedCT,
+        channelId: '',
+      });
+
+      for (const product of result.products || []) {
+        if (product?.id && !productsById.has(product.id)) {
+          productsById.set(product.id, product);
+        }
+      }
+
+      encodedCT = result.encodedCT || '';
+      attempts += 1;
+    } while (languageMode && productsById.size < 25 && encodedCT && attempts < maxPages);
+
+    res.json({ products: [...productsById.values()] });
   } catch (err) {
     next(err);
   }
@@ -287,6 +311,24 @@ router.delete('/product-overrides/:productId', requireAdmin, async (req, res, ne
   try {
     const result = await deleteProductOverride(req.params.productId);
     res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/support-links', requireAdmin, async (_req, res, next) => {
+  try {
+    const links = await getSupportLinks();
+    res.json({ links });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/support-links', requireAdmin, async (req, res, next) => {
+  try {
+    const links = await updateSupportLinks(req.body || {});
+    res.json({ success: true, links });
   } catch (err) {
     next(err);
   }

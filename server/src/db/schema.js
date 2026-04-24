@@ -112,6 +112,15 @@ async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_product_overrides_updated_at
       ON product_overrides (updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS support_links (
+      id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      vk_url TEXT NOT NULL DEFAULT '',
+      telegram_url TEXT NOT NULL DEFAULT '',
+      max_url TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS digiseller_products (
       product_id TEXT PRIMARY KEY,
       digiseller_id BIGINT NOT NULL,

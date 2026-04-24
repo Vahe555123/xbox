@@ -73,6 +73,11 @@ export async function fetchRelatedProducts(productIds, relationMap) {
   return data;
 }
 
+export async function fetchSupportLinks() {
+  const { data } = await api.get('/support-links');
+  return data.links || {};
+}
+
 export async function registerUser(email, password) {
   const { data } = await api.post('/auth/register', { email, password });
   return data;
@@ -170,14 +175,27 @@ export async function fetchAdminNotifications({ page = 1, limit = 30 } = {}) {
   return data;
 }
 
-export async function searchAdminProducts(q) {
-  const { data } = await api.get('/admin/products/search', { params: { q } });
+export async function searchAdminProducts(options = {}) {
+  const params = typeof options === 'string' ? { q: options } : { ...options };
+  if (!params.q) delete params.q;
+  if (!params.languageMode || params.languageMode === 'all') delete params.languageMode;
+  const { data } = await api.get('/admin/products/search', { params });
   return data.products || [];
 }
 
 export async function fetchProductOverrides({ page = 1, limit = 50, search = '' } = {}) {
   const { data } = await api.get('/admin/product-overrides', { params: { page, limit, search } });
   return data;
+}
+
+export async function fetchAdminSupportLinks() {
+  const { data } = await api.get('/admin/support-links');
+  return data.links || {};
+}
+
+export async function updateAdminSupportLinks(payload) {
+  const { data } = await api.put('/admin/support-links', payload);
+  return data.links || {};
 }
 
 export async function updateProductOverride(productId, payload) {

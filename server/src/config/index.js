@@ -86,6 +86,11 @@ const config = {
       .split(',').map((id) => id.trim()).filter(Boolean),
     dealCheckIntervalHours: parseFloat(process.env.DEAL_CHECK_INTERVAL_HOURS) || 24,
   },
+  supportLinks: {
+    vkUrl: process.env.SUPPORT_VK_URL || '',
+    telegramUrl: process.env.SUPPORT_TELEGRAM_URL || '',
+    maxUrl: process.env.SUPPORT_MAX_URL || '',
+  },
 
   digiseller: {
     sellerId: process.env.DIGISELLER_SELLER_ID || '1279033',

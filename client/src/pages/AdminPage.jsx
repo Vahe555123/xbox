@@ -6,9 +6,11 @@ import {
   fetchAdminUsers,
   fetchAdminUserDetail,
   fetchAdminNotifications,
+  fetchAdminSupportLinks,
   searchAdminProducts,
   fetchProductOverrides,
   updateProductOverride,
+  updateAdminSupportLinks,
   deleteProductOverride,
   fetchSchedulerState,
   updateSchedulerInterval,
@@ -64,10 +66,18 @@ const EMPTY_DIG_RATE_STATE = { lastRun: null, samples: [] };
 
 const PRODUCT_LANGUAGE_MODES = [
   { value: 'auto', label: 'Авто с Xbox' },
-  { value: 'full_ru', label: 'Полностью на русском' },
+  { value: 'full_ru', label: 'Русский' },
   { value: 'ru_subtitles', label: 'Русские субтитры' },
-  { value: 'no_ru', label: 'Без русского' },
+  { value: 'no_ru', label: 'Оригинал' },
   { value: 'unknown', label: 'Язык не указан' },
+];
+
+const PRODUCT_LANGUAGE_FILTERS = [
+  { value: 'all', label: 'Все языки' },
+  { value: 'unknown', label: 'Язык не указан' },
+  { value: 'no_ru', label: 'Оригинал' },
+  { value: 'full_ru', label: 'Русский' },
+  { value: 'ru_subtitles', label: 'Русские субтитры' },
 ];
 
 function productLanguageLabel(mode) {
@@ -96,6 +106,13 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
   // Dashboard
   const [stats, setStats] = useState(null);
+  const [supportLinksForm, setSupportLinksForm] = useState({
+    vkUrl: '',
+    telegramUrl: '',
+    maxUrl: '',
+  });
+  const [supportLinksMessage, setSupportLinksMessage] = useState('');
+  const [supportLinksSaving, setSupportLinksSaving] = useState(false);
 
   // Users
   const [users, setUsers] = useState([]);
@@ -113,6 +130,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
   // Product overrides
   const [productSearch, setProductSearch] = useState('');
+  const [productLanguageFilter, setProductLanguageFilter] = useState('all');
   const [productSearchLoading, setProductSearchLoading] = useState(false);
   const [productSearchResults, setProductSearchResults] = useState([]);
   const [productOverrides, setProductOverrides] = useState([]);
@@ -167,6 +185,17 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadSupportLinks = useCallback(async () => {
+    try {
+      const links = await fetchAdminSupportLinks();
+      setSupportLinksForm({
+        vkUrl: links.vkUrl || '',
+        telegramUrl: links.telegramUrl || '',
+        maxUrl: links.maxUrl || '',
+      });
+    } catch { /* ignore */ }
+  }, []);
+
   const loadUsers = useCallback(async (page = 1, search = '') => {
     try {
       const data = await fetchAdminUsers({ page, limit: 20, search });
@@ -193,6 +222,19 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadAdminProducts = useCallback(async ({ q = '', languageMode = 'all' } = {}) => {
+    setProductSearchLoading(true);
+    setOverrideMessage('');
+    try {
+      const products = await searchAdminProducts({ q: q.trim(), languageMode });
+      setProductSearchResults(products);
+    } catch (err) {
+      setOverrideMessage('Ошибка поиска: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setProductSearchLoading(false);
+    }
+  }, []);
+
   const loadDigiseller = useCallback(async () => {
     try {
       const entries = await Promise.all(
@@ -211,13 +253,19 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
   useEffect(() => {
     if (!authorized) return;
-    if (tab === 'dashboard') loadDashboard();
+    if (tab === 'dashboard') {
+      loadDashboard();
+      loadSupportLinks();
+    }
     else if (tab === 'users') loadUsers(1, usersSearch);
     else if (tab === 'notifications') loadNotifications(1);
-    else if (tab === 'products') loadProductOverrides();
+    else if (tab === 'products') {
+      loadProductOverrides();
+      loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter });
+    }
     else if (tab === 'digiseller') loadDigiseller();
     else if (tab === 'topup') loadTopupCards();
-  }, [tab, authorized, loadDashboard, loadUsers, loadNotifications, loadProductOverrides, loadDigiseller, loadTopupCards]);
+  }, [tab, authorized, loadDashboard, loadSupportLinks, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadDigiseller, loadTopupCards]);
 
   const handleUserSearch = (e) => {
     e.preventDefault();
@@ -227,16 +275,32 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const handleProductSearch = async (e) => {
     e.preventDefault();
     const query = productSearch.trim();
-    if (!query) return;
-    setProductSearchLoading(true);
-    setOverrideMessage('');
+    await loadAdminProducts({ q: query, languageMode: productLanguageFilter });
+  };
+
+  const handleProductLanguageFilterChange = async (event) => {
+    const languageMode = event.target.value;
+    setProductLanguageFilter(languageMode);
+    await loadAdminProducts({ q: productSearch, languageMode });
+  };
+
+  const handleSupportLinksSave = async (event) => {
+    event.preventDefault();
+    setSupportLinksSaving(true);
+    setSupportLinksMessage('');
     try {
-      const products = await searchAdminProducts(query);
-      setProductSearchResults(products);
+      const links = await updateAdminSupportLinks(supportLinksForm);
+      setSupportLinksForm({
+        vkUrl: links.vkUrl || '',
+        telegramUrl: links.telegramUrl || '',
+        maxUrl: links.maxUrl || '',
+      });
+      setSupportLinksMessage('Контакты поддержки сохранены');
+      window.dispatchEvent(new Event('support-links-changed'));
     } catch (err) {
-      setOverrideMessage('Ошибка поиска: ' + (err.response?.data?.error || err.message));
+      setSupportLinksMessage('Ошибка: ' + (err.response?.data?.error || err.message));
     } finally {
-      setProductSearchLoading(false);
+      setSupportLinksSaving(false);
     }
   };
 
@@ -277,6 +341,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
         languageNote: override.languageNote || '',
       }));
       await loadProductOverrides();
+      await loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter });
     } catch (err) {
       setOverrideMessage('Ошибка: ' + (err.response?.data?.error || err.message));
     }
@@ -290,6 +355,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setOverrideMessage('Ручная правка удалена');
       setOverrideForm((current) => ({ ...current, russianLanguageMode: 'auto', languageNote: '' }));
       await loadProductOverrides();
+      await loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter });
     } catch (err) {
       setOverrideMessage('Ошибка: ' + (err.response?.data?.error || err.message));
     }
@@ -535,6 +601,55 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <dd>{scheduler?.isRunning ? 'Да' : 'Нет'}</dd>
             </dl>
           </div>
+
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <div>
+                <h3>Контакты поддержки</h3>
+                <p className="admin-card-desc">
+                  Эти ссылки используются в кнопке помощи в правом нижнем углу сайта.
+                </p>
+              </div>
+            </div>
+            <form className="admin-override-form" onSubmit={handleSupportLinksSave}>
+              <label className="admin-field">
+                <span>ВКонтакте</span>
+                <input
+                  type="text"
+                  value={supportLinksForm.vkUrl}
+                  onChange={(e) => setSupportLinksForm((current) => ({ ...current, vkUrl: e.target.value }))}
+                  placeholder="https://vk.com/im?sel=..."
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>Telegram</span>
+                <input
+                  type="text"
+                  value={supportLinksForm.telegramUrl}
+                  onChange={(e) => setSupportLinksForm((current) => ({ ...current, telegramUrl: e.target.value }))}
+                  placeholder="https://t.me/..."
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>MAX</span>
+                <input
+                  type="text"
+                  value={supportLinksForm.maxUrl}
+                  onChange={(e) => setSupportLinksForm((current) => ({ ...current, maxUrl: e.target.value }))}
+                  placeholder="https://max.ru/... или max://..."
+                />
+              </label>
+
+              <div className="admin-override-actions">
+                <button className="admin-btn admin-btn-primary" type="submit" disabled={supportLinksSaving}>
+                  {supportLinksSaving ? 'Сохраняем...' : 'Сохранить контакты'}
+                </button>
+              </div>
+              {supportLinksMessage && <p className="admin-scheduler-result">{supportLinksMessage}</p>}
+            </form>
+          </div>
         </div>
       )}
 
@@ -743,8 +858,18 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
                 />
+                <select
+                  className="admin-search-select"
+                  value={productLanguageFilter}
+                  onChange={handleProductLanguageFilterChange}
+                  aria-label="Фильтр языка"
+                >
+                  {PRODUCT_LANGUAGE_FILTERS.map((filter) => (
+                    <option key={filter.value} value={filter.value}>{filter.label}</option>
+                  ))}
+                </select>
                 <button type="submit" className="admin-btn admin-btn-primary" disabled={productSearchLoading}>
-                  {productSearchLoading ? 'Ищем...' : 'Найти'}
+                  {productSearchLoading ? 'Загрузка...' : 'Показать'}
                 </button>
               </form>
 
@@ -767,7 +892,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                       </tr>
                     ))}
                     {productSearchResults.length === 0 && (
-                      <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Введите название и нажмите «Найти»</td></tr>
+                      <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Игры не найдены</td></tr>
                     )}
                   </tbody>
                 </table>
