@@ -12,10 +12,20 @@ import { useFavorites } from './context/FavoritesContext';
 import { useSearch } from './hooks/useSearch';
 import { consumeOAuthSession, checkAdmin } from './services/api';
 
-function HeaderFavoritesLink({ active = false }) {
+function isMobileNavigationViewport() {
+  return typeof window !== 'undefined' && window.innerWidth <= 900;
+}
+
+function HeaderFavoritesLink({ active = false, onClick }) {
   const { count } = useFavorites();
+
   return (
-    <Link to="/favorites" className={`header-favorites-link ${active ? 'active' : ''}`} title="Избранное">
+    <Link
+      to="/favorites"
+      className={`header-favorites-link ${active ? 'active' : ''}`}
+      title="Избранное"
+      onClick={onClick}
+    >
       <span className="header-favorites-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="20" height="20">
           <path
@@ -43,12 +53,17 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(readStoredUser);
   const [authNotice, setAuthNotice] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const isDealsActive = location.pathname === '/' && new URLSearchParams(location.search).get('deals') === 'true';
   const isHomeActive = location.pathname === '/' && !isDealsActive;
   const searchState = useSearch({ dealsMode: isDealsActive });
   const sortFilter = searchState.filterOptions?.orderby || null;
+
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
+  };
 
   const goToCatalog = () => {
     if (location.pathname !== '/') {
@@ -84,12 +99,28 @@ export default function App() {
     window.dispatchEvent(new Event('auth-changed'));
   };
 
-  // Check admin status whenever user changes
+  const handleProfileAction = () => {
+    closeMobileMenu();
+    if (currentUser) {
+      window.location.assign('/profile');
+      return;
+    }
+    setAuthModalOpen(true);
+  };
+
+  const handleMobileNavClickCapture = (event) => {
+    if (!isMobileNavigationViewport()) return;
+    if (event.target.closest('a, button')) {
+      closeMobileMenu();
+    }
+  };
+
   useEffect(() => {
     if (!currentUser) {
       setIsAdmin(false);
       return;
     }
+
     checkAdmin().then(setIsAdmin).catch(() => setIsAdmin(false));
   }, [currentUser]);
 
@@ -125,62 +156,143 @@ export default function App() {
       .finally(clearAuthParams);
   }, []);
 
+  useEffect(() => {
+    closeMobileMenu();
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    document.body.classList.toggle('mobile-menu-open', mobileMenuOpen);
+
+    return () => {
+      document.body.classList.remove('mobile-menu-open');
+    };
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeMobileMenu();
+      }
+    };
+
+    const handleResize = () => {
+      if (!isMobileNavigationViewport()) {
+        closeMobileMenu();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [mobileMenuOpen]);
+
   return (
-    <div className="app">
+    <div className={`app ${mobileMenuOpen ? 'app-mobile-menu-open' : ''}`}>
       <header className="app-header">
         <div className="header-inner">
           <h1 className="logo">
-            <Link to="/" className="logo-link">
+            <Link to="/" className="logo-link" onClick={closeMobileMenu}>
               <span className="logo-icon">&#127918;</span>
               <span className="logo-text">Xbox Game Search</span>
             </Link>
           </h1>
-          <nav className="top-nav" aria-label="Верхнее меню">
+
+          <button
+            type="button"
+            className={`mobile-menu-toggle ${mobileMenuOpen ? 'active' : ''}`}
+            aria-label={mobileMenuOpen ? 'Close navigation' : 'Open navigation'}
+            aria-controls="site-navigation"
+            aria-expanded={mobileMenuOpen}
+            onClick={() => setMobileMenuOpen((value) => !value)}
+          >
+            <span className="mobile-menu-toggle-bar" />
+            <span className="mobile-menu-toggle-bar" />
+            <span className="mobile-menu-toggle-bar" />
+          </button>
+
+          {mobileMenuOpen && (
+            <button
+              type="button"
+              className="top-nav-backdrop"
+              aria-label="Close menu"
+              onClick={closeMobileMenu}
+            />
+          )}
+
+          <nav
+            id="site-navigation"
+            className={`top-nav ${mobileMenuOpen ? 'top-nav-open' : ''}`}
+            aria-label="Основная навигация"
+            onClickCapture={handleMobileNavClickCapture}
+          >
+            <div className="top-nav-mobile-header">
+              <div className="top-nav-mobile-title">Menu</div>
+              <button
+                type="button"
+                className="top-nav-mobile-close"
+                aria-label="Close menu"
+                onClick={closeMobileMenu}
+              >
+                x
+              </button>
+            </div>
+
             <Link to="/" className={`top-nav-link top-nav-home ${isHomeActive ? 'active' : ''}`}>
               Каталог игр
             </Link>
+
             <Link
               to={isDealsActive ? '/' : '/?deals=true'}
               className={`top-nav-link top-nav-sale ${isDealsActive ? 'active' : ''}`}
             >
               Скидки
             </Link>
+
             <a className="top-nav-link top-nav-gamepass" href="https://xboxportal.ru/product/4687274">
               Game Pass
             </a>
+
             <a className="top-nav-link" href="https://xboxportal.ru/category/152018">
               Игровая валюта
             </a>
+
             <a className="top-nav-link" href="https://xboxportal.ru/category/149289">
               Подписки
             </a>
+
             <a className="top-nav-link" href="https://xboxportal.ru/category/149293">
               Аккаунт
             </a>
+
             <a className="top-nav-link top-nav-link--wide" href="https://xboxportal.ru/category/154890">
               Коды пополнения баланса
             </a>
+
             <a className="top-nav-link" href="https://xboxportal.ru/rules">
               Помощь
             </a>
+
             {isAdmin && (
               <Link to="/admin" className="top-nav-link header-admin-btn" title="Админ-панель">
-                <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+                <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
                   <path d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" />
                 </svg>
                 Админ
               </Link>
             )}
-            <HeaderFavoritesLink active={location.pathname === '/favorites'} />
+
+            <HeaderFavoritesLink active={location.pathname === '/favorites'} onClick={closeMobileMenu} />
+
             <button
+              type="button"
               className={`top-nav-button auth-button ${currentUser ? 'profile-button' : ''}`}
-              onClick={() => {
-                if (currentUser) {
-                  window.location.assign('/profile');
-                } else {
-                  setAuthModalOpen(true);
-                }
-              }}
+              onClick={handleProfileAction}
             >
               {currentUser ? (
                 <>
@@ -241,6 +353,7 @@ export default function App() {
           Not affiliated with Microsoft or Xbox.
         </p>
       </footer>
+
       <AuthModal
         open={authModalOpen}
         onClose={() => setAuthModalOpen(false)}

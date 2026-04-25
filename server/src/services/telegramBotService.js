@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+const { Blob } = require('buffer');
 const axios = require('axios');
 const config = require('../config');
 const pool = require('../db/pool');
@@ -24,6 +27,44 @@ async function callTelegram(method, payload = {}, options = {}) {
   try {
     const response = await axios.post(apiUrl(method), payload, {
       timeout: options.timeout || config.auth.telegram.requestTimeoutMs,
+    });
+    data = response.data;
+  } catch (err) {
+    const description = err.response?.data?.description || err.message;
+    const wrapped = new Error(description);
+    wrapped.status = err.response?.status;
+    wrapped.telegramDescription = description;
+    throw wrapped;
+  }
+
+  if (!data?.ok) {
+    const description = data?.description || `Telegram ${method} failed`;
+    const err = new Error(description);
+    err.telegramDescription = description;
+    throw err;
+  }
+
+  return data.result;
+}
+
+function guessContentType(filename) {
+  const ext = String(path.extname(filename || '')).toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  return 'image/png';
+}
+
+async function callTelegramMultipart(method, formData, options = {}) {
+  if (!hasBotToken()) {
+    throw new Error('Telegram bot token is not configured');
+  }
+
+  let data;
+  try {
+    const response = await axios.post(apiUrl(method), formData, {
+      timeout: options.timeout || config.auth.telegram.requestTimeoutMs,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
     });
     data = response.data;
   } catch (err) {
@@ -77,6 +118,37 @@ async function sendTelegramMessage(chatId, text, options = {}) {
     }
     throw err;
   }
+}
+
+async function sendTelegramPhoto(chatId, photoPath, options = {}) {
+  if (!chatId) {
+    throw new Error('Telegram chat_id is missing. Ask the user to press /start in the bot.');
+  }
+
+  if (!photoPath) {
+    throw new Error('Telegram photo path is missing');
+  }
+
+  if (typeof FormData !== 'function') {
+    throw new Error('FormData is not available in this Node runtime');
+  }
+
+  const resolvedPath = path.resolve(String(photoPath));
+  const fileBuffer = await fs.promises.readFile(resolvedPath);
+  const filename = options.filename || path.basename(resolvedPath);
+  const contentType = options.contentType || guessContentType(filename);
+
+  const formData = new FormData();
+  formData.append('chat_id', String(chatId));
+  formData.append('photo', new Blob([fileBuffer], { type: contentType }), filename);
+
+  if (options.caption) formData.append('caption', options.caption);
+  if (options.parseMode) formData.append('parse_mode', options.parseMode);
+  if (options.disableNotification !== undefined) {
+    formData.append('disable_notification', String(Boolean(options.disableNotification)));
+  }
+
+  return callTelegramMultipart('sendPhoto', formData, options);
 }
 
 async function findLinkedUserId(telegramUserId) {
@@ -258,6 +330,7 @@ module.exports = {
   getChatIdForUser,
   linkTelegramChatToUser,
   sendTelegramMessage,
+  sendTelegramPhoto,
   startPolling,
   stopPolling,
 };

@@ -10,12 +10,18 @@ const {
   isGameCurrencyProduct,
 } = require('./digisellerService');
 const topupCardService = require('./topupCardService');
-const { getChatIdForUser, sendTelegramMessage: sendBotMessage } = require('./telegramBotService');
+const {
+  getChatIdForUser,
+  sendTelegramMessage: sendBotMessage,
+  sendTelegramPhoto: sendBotPhoto,
+} = require('./telegramBotService');
 const { createSmtpTransport, getFromAddress } = require('./mailTransport');
 const logger = require('../utils/logger');
 
 const FAVORITE_DEALS_BANNER_CID = 'favorite-deals-banner@xbox-store';
 const FAVORITE_DEALS_BANNER_PATH = path.resolve(__dirname, '../assets/favorite-deals-banner.png');
+const FAVORITE_DEALS_TELEGRAM_BANNER_PATH = path.resolve(__dirname, '../assets/favorite-deals-telegram-banner.png');
+const TELEGRAM_PHOTO_CAPTION_LIMIT = 1024;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -515,6 +521,60 @@ async function sendTelegramMessage(chatId, text) {
   return true;
 }
 
+function buildFavoriteDealsTelegramPhotoCaption(deals) {
+  return [
+    `Подешевели ${deals.length} игр из Избранного`,
+    favoritesUrl(),
+  ].join('\n');
+}
+
+function canUseTelegramPhotoCaption(text) {
+  return String(text || '').length <= TELEGRAM_PHOTO_CAPTION_LIMIT;
+}
+
+async function sendFavoriteDealsTelegramNotification(chatId, userName, deals) {
+  const text = buildFavoriteDealsTelegramMessage(userName, deals);
+  const bannerPath = getFavoriteDealsTelegramBannerPath();
+
+  if (!bannerPath) {
+    await sendTelegramMessage(chatId, text);
+    return true;
+  }
+
+  if (canUseTelegramPhotoCaption(text)) {
+    try {
+      await sendBotPhoto(chatId, bannerPath, {
+        caption: text,
+        filename: 'favorite-deals-telegram-banner.png',
+      });
+      return true;
+    } catch (err) {
+      logger.warn('[DealNotifier] Telegram banner send failed, retrying as text only', {
+        chatId,
+        message: err.message,
+      });
+      await sendTelegramMessage(chatId, text);
+      return true;
+    }
+  }
+
+  try {
+    await sendBotPhoto(chatId, bannerPath, {
+      caption: buildFavoriteDealsTelegramPhotoCaption(deals),
+      filename: 'favorite-deals-telegram-banner.png',
+      disableNotification: true,
+    });
+  } catch (err) {
+    logger.warn('[DealNotifier] Telegram banner send failed, continuing with text', {
+      chatId,
+      message: err.message,
+    });
+  }
+
+  await sendTelegramMessage(chatId, text);
+  return true;
+}
+
 function escapeHtml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -546,6 +606,11 @@ function getFavoriteDealsEmailAttachments() {
     cid: FAVORITE_DEALS_BANNER_CID,
     contentDisposition: 'inline',
   }];
+}
+
+function getFavoriteDealsTelegramBannerPath() {
+  if (!fs.existsSync(FAVORITE_DEALS_TELEGRAM_BANNER_PATH)) return null;
+  return FAVORITE_DEALS_TELEGRAM_BANNER_PATH;
 }
 
 function visibleDeals(deals) {
@@ -821,8 +886,7 @@ async function runDealNotifications() {
         const chatId = await getTelegramChatId(user.user_id);
         if (chatId) {
           try {
-            const msg = buildFavoriteDealsTelegramMessage(user.name, newDeals);
-            const telegramSent = await sendTelegramMessage(chatId, msg);
+            const telegramSent = await sendFavoriteDealsTelegramNotification(chatId, user.name, newDeals);
             if (!telegramSent) {
               throw new Error('Telegram bot token not configured');
             }
