@@ -227,6 +227,7 @@ async function searchXbox(req, res, next) {
       priceRange: params.priceRange,
       languageMode: params.languageMode,
       freeOnly: params.freeOnly,
+      dealsOnly: params.deals,
       encodedCT: params.encodedCT,
       channelId,
     });

@@ -44,10 +44,10 @@ const SEARCH_EXPANSION_NOISE_TOKENS = new Set([
   'games',
 ]);
 
-async function search({ query, page, sort, filters, priceRange, languageMode, freeOnly = false, encodedCT, channelId = '' }) {
+async function search({ query, page, sort, filters, priceRange, languageMode, freeOnly = false, dealsOnly = false, encodedCT, channelId = '' }) {
   const encodedFilters = buildEncodedFilters(filters, sort);
   const priceFilterActive = isPriceRangeActive(priceRange);
-  const postFilterActive = Boolean(freeOnly || (languageMode && languageMode !== 'all'));
+  const postFilterActive = Boolean(freeOnly || dealsOnly || (languageMode && languageMode !== 'all'));
 
   if (isRankedSearchToken(encodedCT)) {
     const buffered = await readRankedSearchBuffer(encodedCT);
@@ -64,6 +64,7 @@ async function search({ query, page, sort, filters, priceRange, languageMode, fr
         priceFilterActive,
         languageMode,
         freeOnly,
+        dealsOnly,
         postFilterActive,
         channelId,
       });
@@ -106,7 +107,7 @@ async function search({ query, page, sort, filters, priceRange, languageMode, fr
   const products = priceFilterActive
     ? applyPriceRange(mappedProducts, normalizePriceRange(priceRange))
     : mappedProducts;
-  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), { languageMode, freeOnly });
+  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), { languageMode, freeOnly, dealsOnly });
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)
     : null;
@@ -128,6 +129,7 @@ async function searchWithRelevanceRerank({
   priceFilterActive,
   languageMode,
   freeOnly,
+  dealsOnly,
   postFilterActive,
   channelId,
 }) {
@@ -164,7 +166,7 @@ async function searchWithRelevanceRerank({
   const products = priceFilterActive
     ? applyPriceRange(mappedProducts, normalizePriceRange(priceRange))
     : mappedProducts;
-  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), { languageMode, freeOnly });
+  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), { languageMode, freeOnly, dealsOnly });
   const rankedProducts = rankProductsBySearchRelevance(enrichedProducts, query);
   const pageProducts = rankedProducts.slice(0, config.xbox.pageSize);
   const remainingProducts = rankedProducts.slice(config.xbox.pageSize);
@@ -467,11 +469,12 @@ function normalizePriceRange(priceRange) {
   };
 }
 
-function applyPostFilters(products, { languageMode, freeOnly }) {
+function applyPostFilters(products, { languageMode, freeOnly, dealsOnly }) {
   return products.filter((product) => {
     if (product.notAvailableSeparately) return false;
     if (freeOnly && product.price?.value !== 0) return false;
     if (!freeOnly && product.price?.value === 0) return false;
+    if (dealsOnly && !(product.price?.discountPercent > 0)) return false;
     if (languageMode && languageMode !== 'all' && product.russianLanguageMode !== languageMode) return false;
     return true;
   });

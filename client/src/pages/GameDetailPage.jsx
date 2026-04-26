@@ -52,9 +52,9 @@ const CAPABILITY_ICONS = {
 
 const PAYMENT_MODES = [
   { id: 'special_offer', title: 'СПЕЦПРЕДЛОЖЕНИЕ', description: 'Специальное предложение', enabled: true },
-  { id: 'oplata', title: 'Oplata.info', description: 'Оплата на ваш Xbox-аккаунт', enabled: true },
-  { id: 'key_activation', title: 'Ключ активации', description: 'Получить ключ и открыть чат с продавцом', enabled: true },
-  { id: 'topup_cards', title: 'Карты пополнения', description: 'Пополнить Xbox-баланс комбинацией карт', enabled: true },
+  { id: 'oplata', title: 'ПОКУПКА НА АККАУНТ', description: 'Оплата на ваш Xbox-аккаунт', enabled: true },
+  { id: 'key_activation', title: 'КЛЮЧ НА ИГРУ', description: 'Получить ключ и открыть чат с продавцом', enabled: true },
+  { id: 'topup_cards', title: 'КАРТЫ ПОПОЛНЕНИЯ', description: 'Пополнить Xbox-баланс комбинацией карт', enabled: true },
 ];
 
 const EMPTY_PURCHASE_FORM = {
