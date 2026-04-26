@@ -3,6 +3,7 @@ const {
   searchXbox,
   getProductDetail,
   createProductPurchase,
+  createCartPurchase,
   getRelatedProducts,
 } = require('../controllers/xboxController');
 const { validateSearch } = require('../validators/searchValidator');
@@ -14,6 +15,7 @@ const router = Router();
 router.get('/search', validateSearch, searchXbox);
 router.get('/products/batch', getRelatedProducts);
 router.post('/product/:productId/purchase', optionalAuth, validateProductId, createProductPurchase);
+router.post('/cart/purchase', optionalAuth, createCartPurchase);
 router.get('/product/:productId', validateProductId, getProductDetail);
 
 module.exports = router;

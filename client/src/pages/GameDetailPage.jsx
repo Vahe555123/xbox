@@ -6,6 +6,7 @@ import ErrorMessage from '../components/ErrorMessage';
 import ProductCard from '../components/ProductCard';
 import FavoriteHeartButton from '../components/FavoriteHeartButton';
 import { useFavorites } from '../context/FavoritesContext';
+import { useCart } from '../context/CartContext';
 import {
   PAYMENT_PRICE_ORDER,
   getPaymentOriginalPriceText,
@@ -225,6 +226,8 @@ function normalizeRelatedGroup(type) {
 export default function GameDetailPage() {
   const { productId } = useParams();
   const { isFavorite, toggle } = useFavorites();
+  const { inCart, toggle: toggleCart } = useCart();
+  const [cartToast, setCartToast] = useState('');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -369,6 +372,12 @@ export default function GameDetailPage() {
     const timer = setTimeout(() => setFavoriteToast(''), 3200);
     return () => clearTimeout(timer);
   }, [favoriteToast]);
+
+  useEffect(() => {
+    if (!cartToast) return undefined;
+    const timer = setTimeout(() => setCartToast(''), 3200);
+    return () => clearTimeout(timer);
+  }, [cartToast]);
 
   const groupedRelated = useMemo(() => groupRelatedProducts(relatedProducts), [relatedProducts]);
   const capabilitiesById = useMemo(
@@ -612,6 +621,13 @@ export default function GameDetailPage() {
     );
   };
 
+  const isInCart = inCart(data.id);
+  const canAddToCart = Boolean(data.digisellerId || data.keyActivationPayUrl || data.topupCombo?.available);
+  const handleToggleCart = () => {
+    toggleCart(favoriteProduct);
+    setCartToast(isInCart ? 'Игра удалена из корзины' : 'Игра добавлена в корзину');
+  };
+
   return (
     <div className="detail-page detail-store-page">
       <nav className="detail-breadcrumb">
@@ -685,6 +701,14 @@ export default function GameDetailPage() {
                 {purchaseLoading ? 'Готовим ссылку...' : 'Купить'}
               </button>
               <button
+                className={`ps-cart-button ${isInCart ? 'ps-cart-button--active' : ''}`}
+                type="button"
+                onClick={handleToggleCart}
+                disabled={!canAddToCart}
+              >
+                {isInCart ? 'В корзине' : 'Добавить в корзину'}
+              </button>
+              <button
                 className={`ps-follow-button ${inFavorites ? 'ps-follow-button--active' : ''}`}
                 type="button"
                 onClick={handleToggleFavorite}
@@ -701,6 +725,20 @@ export default function GameDetailPage() {
                 className="detail-toast-close"
                 aria-label="Закрыть уведомление"
                 onClick={() => setFavoriteToast('')}
+              >
+                ×
+              </button>
+            </div>
+          )}
+          {cartToast && (
+            <div className="detail-toast detail-toast--success" role="status" aria-live="polite">
+              <span>{cartToast}</span>
+              <Link to="/cart" className="detail-toast-link">Открыть корзину</Link>
+              <button
+                type="button"
+                className="detail-toast-close"
+                aria-label="Закрыть уведомление"
+                onClick={() => setCartToast('')}
               >
                 ×
               </button>

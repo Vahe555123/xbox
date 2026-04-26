@@ -9,6 +9,8 @@ import AuthModal from './components/AuthModal';
 import FilterPanel from './components/FilterPanel';
 import SupportWidget from './components/SupportWidget';
 import { useFavorites } from './context/FavoritesContext';
+import { useCart } from './context/CartContext';
+import CartPage from './pages/CartPage';
 import { useSearch } from './hooks/useSearch';
 import { consumeOAuthSession, checkAdmin } from './services/api';
 
@@ -35,6 +37,30 @@ function HeaderFavoritesLink({ active = false, onClick }) {
         </svg>
       </span>
       <span className="header-favorites-label">Избранное</span>
+      {count > 0 && <span className="header-favorites-badge">{count}</span>}
+    </Link>
+  );
+}
+
+function HeaderCartLink({ active = false, onClick }) {
+  const { count } = useCart();
+
+  return (
+    <Link
+      to="/cart"
+      className={`header-favorites-link header-cart-link ${active ? 'active' : ''}`}
+      title="Корзина"
+      onClick={onClick}
+    >
+      <span className="header-favorites-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path
+            fill="currentColor"
+            d="M7 4h-2l-1 2v2h2l3.6 7.59-1.35 2.45C8.16 18.37 8.79 19.5 10 19.5h12v-2H10.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1 1 0 0 0 23 6.5H7.21l-.94-2zM7 20a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"
+          />
+        </svg>
+      </span>
+      <span className="header-favorites-label">Корзина</span>
       {count > 0 && <span className="header-favorites-badge">{count}</span>}
     </Link>
   );
@@ -288,6 +314,7 @@ export default function App() {
             )}
 
             <HeaderFavoritesLink active={location.pathname === '/favorites'} onClick={closeMobileMenu} />
+            <HeaderCartLink active={location.pathname === '/cart'} onClick={closeMobileMenu} />
 
             <button
               type="button"
@@ -324,6 +351,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<SearchPage searchState={searchState} dealsMode={isDealsActive} />} />
           <Route path="/favorites" element={<FavoritesPage />} />
+          <Route path="/cart" element={<CartPage currentUser={currentUser} onLoginClick={() => setAuthModalOpen(true)} />} />
           <Route
             path="/profile"
             element={(

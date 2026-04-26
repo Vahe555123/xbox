@@ -63,6 +63,11 @@ export async function createProductPurchase(productId, payload) {
   return data;
 }
 
+export async function createCartPurchase(payload) {
+  const { data } = await api.post('/xbox/cart/purchase', payload);
+  return data;
+}
+
 export async function fetchRelatedProducts(productIds, relationMap) {
   if (!productIds || productIds.length === 0) return { products: [] };
   const params = { ids: productIds.join(',') };

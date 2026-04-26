@@ -16,6 +16,7 @@ const {
   isGameCurrencyProduct,
 } = require('../services/digisellerService');
 const topupCardService = require('../services/topupCardService');
+const { buildCartPayment } = require('../services/cartPurchaseService');
 const {
   buildBuyerEmailForPayment,
   notifyPurchaseCreated,
@@ -539,8 +540,117 @@ function sortProductsByRequestedIds(products, requestedIds) {
   });
 }
 
+async function createCartPurchase(req, res, next) {
+  try {
+    const {
+      productIds,
+      paymentMode,
+      accountEmail,
+      accountPassword,
+      purchaseEmail,
+    } = req.body || {};
+
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      throw new AppError('Корзина пуста', 400);
+    }
+    if (productIds.length > 30) {
+      throw new AppError('Слишком много товаров в корзине (максимум 30)', 400);
+    }
+
+    const savedSettings = req.user ? await getPurchaseSettingsForCheckout(req.user.id) : null;
+    const finalAccountEmail = String(accountEmail || savedSettings?.xboxAccountEmail || '').trim();
+    const finalAccountPassword = String(accountPassword || savedSettings?.xboxAccountPassword || '').trim();
+    const finalPurchaseEmail = String(purchaseEmail || savedSettings?.purchaseEmail || '').trim();
+    const deliveryTarget = await resolvePurchaseDeliveryTarget({
+      user: req.user,
+      purchaseEmail: finalPurchaseEmail,
+      registrationEmail: req.user?.email,
+    });
+    const buyerEmailForPayment = buildBuyerEmailForPayment(deliveryTarget);
+    const finalPaymentMode = paymentMode || savedSettings?.paymentMode || 'oplata';
+
+    if (finalPaymentMode !== 'oplata' && finalPaymentMode !== 'key_activation') {
+      throw new AppError('Этот способ оплаты не поддерживает покупку корзиной', 400);
+    }
+
+    const rawProducts = await getProductsByIds(productIds);
+    const products = mapRelatedProducts(rawProducts, {});
+    if (products.length !== productIds.length) {
+      logger.warn('Cart purchase: some products not found', {
+        requested: productIds.length,
+        found: products.length,
+      });
+    }
+    if (products.length === 0) {
+      throw new AppError('Не удалось загрузить товары корзины', 404);
+    }
+    await applyProductOverrides(products);
+    await enrichProductsWithRub(products).catch((e) =>
+      logger.warn('Cart RUB enrichment failed', { message: e.message }));
+
+    if (finalPaymentMode === 'oplata' && (!finalAccountEmail || !finalAccountPassword)) {
+      throw new AppError('Email и пароль аккаунта Xbox обязательны', 400);
+    }
+
+    for (const product of products) {
+      if (!isPaidReleasedProduct(product)) {
+        throw new AppError(`Товар "${product.title || product.id}" недоступен для покупки`, 400);
+      }
+      if (finalPaymentMode === 'key_activation' && isGameCurrencyProduct(product)) {
+        throw new AppError(`Ключ активации недоступен для "${product.title || product.id}"`, 400);
+      }
+    }
+
+    const cart = await buildCartPayment({
+      paymentMode: finalPaymentMode,
+      products,
+      gameNames: products.map((p) => p.title || p.name),
+      accountEmail: finalAccountEmail,
+      accountPassword: finalAccountPassword,
+      purchaseEmail: buyerEmailForPayment,
+      buyerIp: getRequestIp(req),
+    });
+
+    const payment = {
+      paymentUrl: cart.paymentUrl,
+      provider: 'oplata',
+      paymentMode: cart.paymentMode,
+      paymentType: 'cart_batch',
+      currency: 'RUB',
+      cartUid: cart.cartUid,
+      items: cart.items,
+      purchaseEmail: finalPurchaseEmail || null,
+    };
+
+    const delivery = await notifyPurchaseCreated({
+      target: deliveryTarget,
+      product: { id: 'cart', title: `Корзина (${products.length} товаров)` },
+      payment,
+    }).catch((e) => {
+      logger.warn('Cart purchase delivery notification failed', {
+        cartUid: cart.cartUid,
+        message: e.message,
+      });
+      return { sent: false, channel: deliveryTarget.type, error: e.message };
+    });
+
+    res.json({
+      success: true,
+      paymentUrl: cart.paymentUrl,
+      payment,
+      delivery,
+      products: products.map((p) => ({ id: p.id, title: p.title })),
+    });
+  } catch (err) {
+    if (err.statusCode) {
+      return next(new AppError(err.message, err.statusCode));
+    }
+    next(err);
+  }
+}
+
 function getHealth(_req, res) {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 }
 
-module.exports = { searchXbox, getProductDetail, createProductPurchase, getRelatedProducts, getHealth };
+module.exports = { searchXbox, getProductDetail, createProductPurchase, createCartPurchase, getRelatedProducts, getHealth };
