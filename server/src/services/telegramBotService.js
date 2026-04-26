@@ -219,7 +219,18 @@ async function getChatIdForUser(userId) {
      LIMIT 1`,
     [userId],
   );
-  return rows[0]?.chat_id || null;
+  if (rows[0]?.chat_id) return rows[0].chat_id;
+
+  // Fallback: Telegram login provides provider_user_id even before /start.
+  // In that case we can try sending directly to this user chat.
+  const { rows: oauthRows } = await pool.query(
+    `SELECT provider_user_id
+     FROM oauth_accounts
+     WHERE user_id = $1 AND provider = 'telegram'
+     LIMIT 1`,
+    [userId],
+  );
+  return oauthRows[0]?.provider_user_id || null;
 }
 
 async function handleTelegramUpdate(update) {
