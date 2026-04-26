@@ -4,7 +4,7 @@ const { getProductsByIds } = require('./displayCatalogService');
 const { mapProducts, enrichProductsWithCatalogDetails } = require('../mappers/productMapper');
 const { mapFilters, encodeFilters } = require('../mappers/filtersMapper');
 const { applyProductOverrides } = require('./productOverrideService');
-const { getCachedLanguageInfo } = require('./xboxStorePageService');
+const { getCachedLanguageInfo, getStorePageProductData } = require('./xboxStorePageService');
 const config = require('../config');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
@@ -477,26 +477,45 @@ function applyPostFilters(products, { languageMode, freeOnly }) {
   });
 }
 
-function applyStoredLanguageOverrides(products) {
-  return products.map((product) => {
-    const storedLang = getCachedLanguageInfo(product.id);
-    if (!storedLang) return product;
-    return { ...product, ...storedLang };
-  });
+async function fetchStorePageLanguageMap(products) {
+  const map = new Map();
+  await Promise.allSettled(products.map(async (product) => {
+    const id = String(product.id || '').toUpperCase();
+    if (!id) return;
+    const cached = getCachedLanguageInfo(id);
+    if (cached) {
+      map.set(id, cached);
+      return;
+    }
+    if (!product.storeUrl) return;
+    try {
+      const data = await getStorePageProductData({ productId: id, storeUrl: product.storeUrl });
+      if (data.languageInfo) map.set(id, data.languageInfo);
+    } catch (err) {
+      logger.debug('Store page language fetch failed for catalog product', { productId: id, message: err.message });
+    }
+  }));
+  return map;
 }
 
 async function enrichProducts(products) {
   const productIds = products.map((product) => product.id).filter(Boolean);
   if (!productIds.length) return products;
 
-  let enriched = products;
-  try {
-    const catalogProducts = await getProductsByIds(productIds);
-    enriched = enrichProductsWithCatalogDetails(products, catalogProducts);
-  } catch (err) {
-    logger.warn('Failed to enrich products with display catalog data', { message: err.message });
-  }
-  return applyStoredLanguageOverrides(enriched);
+  const [catalogProducts, storePageLangMap] = await Promise.all([
+    getProductsByIds(productIds).catch((err) => {
+      logger.warn('Failed to enrich products with display catalog data', { message: err.message });
+      return [];
+    }),
+    fetchStorePageLanguageMap(products),
+  ]);
+
+  const enriched = enrichProductsWithCatalogDetails(products, catalogProducts);
+  return enriched.map((product) => {
+    const storeLang = storePageLangMap.get(String(product.id || '').toUpperCase());
+    if (!storeLang) return product;
+    return { ...product, ...storeLang };
+  });
 }
 
 function fetchCatalogPage({ query, encodedFilters, encodedCT, returnFilters, channelId = '' }) {
