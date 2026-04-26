@@ -269,76 +269,162 @@ async function buildItemsForOplata(products, { gameNames, accountEmail, accountP
   if (!accountEmail) throw createCartError('Email аккаунта Xbox обязателен');
   if (!accountPassword) throw createCartError('Пароль аккаунта Xbox обязателен');
 
-  const items = [];
+  const cartLines = [];
+  let totalUsd = 0;
+  let totalRub = 0;
+
   for (let index = 0; index < products.length; index += 1) {
     const product = products[index];
     const usd = getUsdPriceValue(product);
+
     if (!usd) {
       throw createCartError(`Не удалось определить цену для "${product.title || product.id}"`, 400);
     }
+
     const gameName = normalizeText(gameNames?.[index] || product.title || product.name || product.id);
-    const rubQuote = await fetchRubPrice(digisellerId, usd, { cacheResult: true });
-    const amountRub = Math.round(Number(rubQuote?.amount || rubQuote?.value || product.priceRub?.amount || product.priceRub?.value || 0));
+
+    const rubQuote = await fetchRubPrice(digisellerId, usd, {
+      cacheResult: true,
+    });
+
+    const amountRub = Math.round(
+      Number(rubQuote?.amount || rubQuote?.value || product.priceRub?.amount || product.priceRub?.value || 0)
+    );
+
     if (!amountRub || !Number.isFinite(amountRub)) {
       throw createCartError(`Не удалось получить цену в рублях для "${gameName}"`, 502);
     }
-  items.push({
-  digisellerId,
-  typeCurrency: config.digiseller.typeCurrency,
-  unitCount: usd,
-  amountRub,
-  productCnt: 1,
-  productTitle: gameName,
-  purchaseEmail: purchaseEmail || '',
-  optionFields: {
-    [`Option_text_${XBOX_GAME_NAME_OPTION}`]: gameName,
-    [`Option_text_${XBOX_ACCOUNT_EMAIL_OPTION}`]: accountEmail,
-    [`Option_text_${XBOX_ACCOUNT_PASSWORD_OPTION}`]: accountPassword,
-  },
-});
+
+    totalUsd += usd;
+    totalRub += amountRub;
+
+    cartLines.push(`${index + 1}. ${gameName} — ${usd}$ / ${amountRub}₽`);
   }
-  return items;
+
+  totalUsd = Math.round(totalUsd * 100) / 100;
+
+  const combinedGameName = [
+    `Корзина Xbox игр`,
+    ``,
+    ...cartLines,
+    ``,
+    `Итого: ${totalUsd}$ / ${totalRub}₽`,
+  ].join('\n');
+
+  logger.info('Oplata cart combined item built', {
+    digisellerId,
+    productsCount: products.length,
+    totalUsd,
+    totalRub,
+    games: cartLines,
+  });
+
+  return [
+    {
+      digisellerId,
+      typeCurrency: config.digiseller.typeCurrency,
+      unitCount: totalUsd,
+      amountRub: totalRub,
+      productCnt: 1,
+      productTitle: `Корзина Xbox (${products.length} товаров)`,
+      purchaseEmail: purchaseEmail || '',
+      optionFields: {
+        [`Option_text_${XBOX_GAME_NAME_OPTION}`]: combinedGameName,
+        [`Option_text_${XBOX_ACCOUNT_EMAIL_OPTION}`]: accountEmail,
+        [`Option_text_${XBOX_ACCOUNT_PASSWORD_OPTION}`]: accountPassword,
+      },
+      metaItems: products.map((product, index) => ({
+        id: product.id,
+        title: normalizeText(gameNames?.[index] || product.title || product.name || product.id),
+        usd: getUsdPriceValue(product),
+      })),
+    },
+  ];
 }
 
 async function buildItemsForKeyActivation(products, { gameNames, purchaseEmail }) {
   const digisellerId = config.digiseller.keyActivationProductId;
   if (!digisellerId) throw createCartError('Key activation product id is not configured', 500);
+
   const optionCategoryId = config.digiseller.keyActivationOptionCategoryId;
   const optionValueId = config.digiseller.keyActivationOptionValueId;
   const gameNameOptionId = config.digiseller.keyActivationGameNameOptionId;
+
   if (!optionCategoryId || !optionValueId || !gameNameOptionId) {
     throw createCartError('Key activation options are not configured', 500);
   }
 
   const optionXml = `<response><option O="${optionCategoryId}" V="${optionValueId}"/></response>`;
-  const items = [];
+
+  const cartLines = [];
+  let totalUsd = 0;
+  let totalRub = 0;
+
   for (let index = 0; index < products.length; index += 1) {
     const product = products[index];
     const usd = getUsdPriceValue(product);
+
     if (!usd) {
       throw createCartError(`Не удалось определить цену для "${product.title || product.id}"`, 400);
     }
+
     const gameName = normalizeText(gameNames?.[index] || product.title || product.name || product.id);
-    const rubQuote = await fetchRubPrice(digisellerId, usd, { cacheResult: true, optionXml });
+
+    const rubQuote = await fetchRubPrice(digisellerId, usd, {
+      cacheResult: true,
+      optionXml,
+    });
+
     const amountRub = Math.round(Number(rubQuote?.amount || rubQuote?.value || 0));
+
     if (!amountRub || !Number.isFinite(amountRub)) {
       throw createCartError(`Не удалось получить цену в рублях для "${gameName}"`, 502);
     }
-    items.push({
+
+    totalUsd += usd;
+    totalRub += amountRub;
+
+    cartLines.push(`${index + 1}. ${gameName} — ${usd}$ / ${amountRub}₽`);
+  }
+
+  totalUsd = Math.round(totalUsd * 100) / 100;
+
+  const combinedGameName = [
+    `Корзина ключей активации Xbox USA`,
+    ``,
+    ...cartLines,
+    ``,
+    `Итого: ${totalUsd}$ / ${totalRub}₽`,
+  ].join('\n');
+
+  logger.info('Key activation cart combined item built', {
+    digisellerId,
+    productsCount: products.length,
+    totalUsd,
+    totalRub,
+    games: cartLines,
+  });
+
+  return [
+    {
       digisellerId,
       typeCurrency: config.digiseller.keyActivationTypeCurrency || config.digiseller.typeCurrency,
-      unitCount: usd,
-      amountRub,
-productCnt: 1,
-      productTitle: gameName,
+      unitCount: totalUsd,
+      amountRub: totalRub,
+      productCnt: 1,
+      productTitle: `Корзина ключей активации (${products.length} товаров)`,
       purchaseEmail: purchaseEmail || '',
       optionFields: {
         [`Option_radio_${optionCategoryId}`]: String(optionValueId),
-        [`Option_text_${gameNameOptionId}`]: gameName,
+        [`Option_text_${gameNameOptionId}`]: combinedGameName,
       },
-    });
-  }
-  return items;
+      metaItems: products.map((product, index) => ({
+        id: product.id,
+        title: normalizeText(gameNames?.[index] || product.title || product.name || product.id),
+        usd: getUsdPriceValue(product),
+      })),
+    },
+  ];
 }
 
 async function buildCartPayment({
@@ -401,8 +487,14 @@ const result = await postCartAdd({
       );
     }
     cartUid = result.cartUid;
-    addedItems.push({ title: item.productTitle, digisellerId: item.digisellerId, idPo });
-  }
+addedItems.push({
+  title: item.productTitle,
+  digisellerId: item.digisellerId,
+  idPo,
+  items: item.metaItems || [],
+  amountRub: item.amountRub,
+  totalUsd: item.unitCount,
+});  }
 
   if (!cartUid) throw createCartError('Не удалось создать корзину', 502);
 
