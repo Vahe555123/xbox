@@ -3,6 +3,7 @@ const { createAxiosClient, withRetry } = require('../utils/axiosClient');
 const cache = require('../utils/cache');
 
 const client = createAxiosClient('https://www.xbox.com');
+const LANGUAGE_CACHE_TTL = 3600;
 
 const RELATED_CHANNELS = [
   { prefix: 'PRODUCTADDONS', relationshipType: 'ProductAddOns', limit: 24 },
@@ -60,6 +61,9 @@ async function getStorePageProductData({ productId, storeUrl }) {
     categories: extractStoreCategories(productSummary),
   };
   cache.set(cacheKey, data);
+  if (data.languageInfo) {
+    cache.set(`xbox-store-language:${normalizedProductId}`, data.languageInfo, LANGUAGE_CACHE_TTL);
+  }
   return data;
 }
 
@@ -186,9 +190,16 @@ function readBalancedJsonObject(source, startIndex) {
   return null;
 }
 
+function getCachedLanguageInfo(productId) {
+  const normalizedProductId = String(productId || '').toUpperCase();
+  if (!normalizedProductId) return null;
+  return cache.get(`xbox-store-language:${normalizedProductId}`) || null;
+}
+
 module.exports = {
   getStorePageProductData,
   getStorePageRelatedProducts,
   extractPreloadedState,
   extractStoreLanguageInfo,
+  getCachedLanguageInfo,
 };

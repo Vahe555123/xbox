@@ -4,6 +4,7 @@ const { getProductsByIds } = require('./displayCatalogService');
 const { mapProducts, enrichProductsWithCatalogDetails } = require('../mappers/productMapper');
 const { mapFilters, encodeFilters } = require('../mappers/filtersMapper');
 const { applyProductOverrides } = require('./productOverrideService');
+const { getCachedLanguageInfo } = require('./xboxStorePageService');
 const config = require('../config');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
@@ -476,17 +477,26 @@ function applyPostFilters(products, { languageMode, freeOnly }) {
   });
 }
 
+function applyStoredLanguageOverrides(products) {
+  return products.map((product) => {
+    const storedLang = getCachedLanguageInfo(product.id);
+    if (!storedLang) return product;
+    return { ...product, ...storedLang };
+  });
+}
+
 async function enrichProducts(products) {
   const productIds = products.map((product) => product.id).filter(Boolean);
   if (!productIds.length) return products;
 
+  let enriched = products;
   try {
     const catalogProducts = await getProductsByIds(productIds);
-    return enrichProductsWithCatalogDetails(products, catalogProducts);
+    enriched = enrichProductsWithCatalogDetails(products, catalogProducts);
   } catch (err) {
     logger.warn('Failed to enrich products with display catalog data', { message: err.message });
-    return products;
   }
+  return applyStoredLanguageOverrides(enriched);
 }
 
 function fetchCatalogPage({ query, encodedFilters, encodedCT, returnFilters, channelId = '' }) {

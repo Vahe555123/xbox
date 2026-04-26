@@ -353,17 +353,14 @@ function extractLanguageInfo(product) {
   }
 
   const hasRussian = hasRussianLanguage(supportedLanguages) || hasRussianLanguage(packageLanguages);
-  const hasRussianPackage = hasRussianLanguage(packageLanguages);
 
   return {
     supportedLanguages,
     packageLanguages,
     hasRussianLanguage: hasRussian,
-    russianLanguageMode: hasRussianPackage
-      ? RUSSIAN_LANGUAGE_MODE.FULL
-      : hasRussian
-        ? RUSSIAN_LANGUAGE_MODE.SUBTITLES
-        : RUSSIAN_LANGUAGE_MODE.NONE,
+    russianLanguageMode: hasRussian
+      ? RUSSIAN_LANGUAGE_MODE.SUBTITLES
+      : RUSSIAN_LANGUAGE_MODE.NONE,
     languageSource: 'catalog',
   };
 }

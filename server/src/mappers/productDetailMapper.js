@@ -344,13 +344,12 @@ function extractLanguageInfo(displaySkuAvailabilities) {
   }
 
   const hasRussian = hasRussianLanguage(supportedLanguages) || hasRussianLanguage(packageLanguages);
-  const hasRussianPackage = hasRussianLanguage(packageLanguages);
 
   return {
     supportedLanguages,
     packageLanguages,
     hasRussianLanguage: hasRussian,
-    russianLanguageMode: hasRussianPackage ? 'full_ru' : hasRussian ? 'ru_subtitles' : 'no_ru',
+    russianLanguageMode: hasRussian ? 'ru_subtitles' : 'no_ru',
   };
 }
 
