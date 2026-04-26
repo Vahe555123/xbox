@@ -22,6 +22,7 @@ function rowToOverride(row) {
     title: row.title || '',
     russianLanguageMode: row.russian_language_mode || 'auto',
     languageNote: row.language_note || '',
+    specialOfferUrl: row.special_offer_url || null,
     data: row.data || {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -58,12 +59,16 @@ function applyOverrideToProduct(product, override) {
   if (override.languageNote) {
     product.languageNote = override.languageNote;
   }
+  if (override.specialOfferUrl) {
+    product.specialOfferUrl = override.specialOfferUrl;
+  }
 
   applyLanguageMode(product, override.russianLanguageMode);
   product.adminOverride = {
     productId: override.productId,
     russianLanguageMode: override.russianLanguageMode || 'auto',
     languageNote: override.languageNote || '',
+    specialOfferUrl: override.specialOfferUrl || null,
     updatedAt: override.updatedAt,
   };
 
@@ -142,22 +147,24 @@ async function upsertProductOverride(productId, payload = {}) {
   const mode = normalizeLanguageMode(payload.russianLanguageMode);
   const title = String(payload.title || '').trim() || null;
   const languageNote = String(payload.languageNote || '').trim() || null;
+  const specialOfferUrl = String(payload.specialOfferUrl || '').trim() || null;
   const data = payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
     ? payload.data
     : {};
 
   const { rows } = await pool.query(
-    `INSERT INTO product_overrides (product_id, title, russian_language_mode, language_note, data, updated_at)
-     VALUES ($1, $2, $3, $4, $5, NOW())
+    `INSERT INTO product_overrides (product_id, title, russian_language_mode, language_note, special_offer_url, data, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())
      ON CONFLICT (product_id)
      DO UPDATE SET
        title = EXCLUDED.title,
        russian_language_mode = EXCLUDED.russian_language_mode,
        language_note = EXCLUDED.language_note,
+       special_offer_url = EXCLUDED.special_offer_url,
        data = EXCLUDED.data,
        updated_at = NOW()
      RETURNING *`,
-    [id, title, mode, languageNote, data],
+    [id, title, mode, languageNote, specialOfferUrl, data],
   );
 
   return rowToOverride(rows[0]);

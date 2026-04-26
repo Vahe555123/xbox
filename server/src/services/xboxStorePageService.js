@@ -57,6 +57,7 @@ async function getStorePageProductData({ productId, storeUrl }) {
   const data = {
     relatedProducts: products,
     languageInfo: extractStoreLanguageInfo(productSummary),
+    categories: extractStoreCategories(productSummary),
   };
   cache.set(cacheKey, data);
   return data;
@@ -88,6 +89,13 @@ function getCaseInsensitiveValue(source, key) {
   const normalizedKey = String(key).toUpperCase();
   const actualKey = Object.keys(source).find((itemKey) => itemKey.toUpperCase() === normalizedKey);
   return actualKey ? source[actualKey] : null;
+}
+
+function extractStoreCategories(productSummary) {
+  if (!productSummary) return [];
+  const cats = productSummary.categories;
+  if (Array.isArray(cats)) return cats.filter(Boolean);
+  return [];
 }
 
 function extractStoreLanguageInfo(productSummary) {

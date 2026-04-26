@@ -109,6 +109,9 @@ async function initDb() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    ALTER TABLE product_overrides
+      ADD COLUMN IF NOT EXISTS special_offer_url TEXT;
+
     CREATE INDEX IF NOT EXISTS idx_product_overrides_updated_at
       ON product_overrides (updated_at DESC);
 

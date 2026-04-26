@@ -876,6 +876,30 @@ async function deleteMapping(productId) {
   return rowCount > 0;
 }
 
+function extractSpecialOfferProductId(url) {
+  try {
+    return new URL(String(url || '')).searchParams.get('id_d') || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getSpecialOfferInfo(url) {
+  if (!url) return null;
+  const productId = extractSpecialOfferProductId(url);
+  if (!productId) return null;
+
+  const price = await fetchRubPrice(productId, 1);
+  if (!price || !price.value) return null;
+
+  return {
+    available: true,
+    value: price.value,
+    formatted: price.formatted,
+    url,
+  };
+}
+
 module.exports = {
   buildPayUrl,
   buildKeyActivationPayUrl,
@@ -895,4 +919,5 @@ module.exports = {
   listMappings,
   upsertMapping,
   deleteMapping,
+  getSpecialOfferInfo,
 };

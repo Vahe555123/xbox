@@ -12,6 +12,7 @@ const {
   createKeyActivationPayment,
   buildKeyActivationPayUrl,
   getKeyActivationRubPriceForProduct,
+  getSpecialOfferInfo,
   isGameCurrencyProduct,
 } = require('../services/digisellerService');
 const topupCardService = require('../services/topupCardService');
@@ -144,7 +145,26 @@ async function assignPaymentPrices(product) {
     });
   }
 
+  let specialOfferInfo = null;
+  if (product.specialOfferUrl) {
+    specialOfferInfo = await getSpecialOfferInfo(product.specialOfferUrl).catch((e) => {
+      logger.warn('Special offer info fetch failed', {
+        productId: product.id,
+        message: e.message,
+      });
+      return null;
+    });
+    if (!specialOfferInfo) {
+      product.specialOfferUrl = null;
+    }
+  }
+
   product.paymentPrices = {
+    ...(specialOfferInfo && {
+      special_offer: buildRubPaymentPrice('special_offer', 'Спецпредложение', specialOfferInfo, {
+        enabled: true,
+      }),
+    }),
     oplata: buildRubPaymentPrice('oplata', 'Oplata.info', product.priceRub, {
       enabled: Boolean(product.digisellerId || product.digisellerPayUrl),
       originalPrice: estimateOriginalRubPrice(product.priceRub, product),
@@ -251,6 +271,7 @@ async function getProductDetail(req, res, next) {
     product.digisellerId = product.digisellerId || null;
     product.digisellerPayUrl = product.digisellerPayUrl || null;
     product.priceRub = product.priceRub || null;
+    await applyProductOverrides(product);
     const storePageProductDataPromise = getStorePageProductData({
       productId: product.id,
       storeUrl: product.officialStoreUrl,
@@ -269,7 +290,9 @@ async function getProductDetail(req, res, next) {
     if (storePageProductData.relatedProducts.length) {
       product.relatedProducts = storePageProductData.relatedProducts;
     }
-    await applyProductOverrides(product);
+    if (!product.categories?.length && storePageProductData.categories?.length) {
+      product.categories = storePageProductData.categories;
+    }
 
     res.json({
       success: true,
