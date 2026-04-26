@@ -537,7 +537,7 @@ async function sendFavoriteDealsTelegramNotification(chatId, userName, deals) {
   const bannerPath = getFavoriteDealsTelegramBannerPath();
 
   if (!bannerPath) {
-    await sendTelegramMessage(chatId, text);
+    await sendTelegramMessage(chatId, text, { parseMode: 'HTML' });
     return true;
   }
 
@@ -546,6 +546,7 @@ async function sendFavoriteDealsTelegramNotification(chatId, userName, deals) {
       await sendBotPhoto(chatId, bannerPath, {
         caption: text,
         filename: 'favorite-deals-telegram-banner.png',
+        parseMode: 'HTML',
       });
       return true;
     } catch (err) {
@@ -553,7 +554,7 @@ async function sendFavoriteDealsTelegramNotification(chatId, userName, deals) {
         chatId,
         message: err.message,
       });
-      await sendTelegramMessage(chatId, text);
+      await sendTelegramMessage(chatId, text, { parseMode: 'HTML' });
       return true;
     }
   }
@@ -563,6 +564,7 @@ async function sendFavoriteDealsTelegramNotification(chatId, userName, deals) {
       caption: buildFavoriteDealsTelegramPhotoCaption(deals),
       filename: 'favorite-deals-telegram-banner.png',
       disableNotification: true,
+      parseMode: 'HTML',
     });
   } catch (err) {
     logger.warn('[DealNotifier] Telegram banner send failed, continuing with text', {
@@ -571,7 +573,7 @@ async function sendFavoriteDealsTelegramNotification(chatId, userName, deals) {
     });
   }
 
-  await sendTelegramMessage(chatId, text);
+  await sendTelegramMessage(chatId, text, { parseMode: 'HTML' });
   return true;
 }
 
@@ -621,29 +623,40 @@ function buildFavoriteDealsTelegramMessage(_userName, deals) {
   const shownDeals = visibleDeals(deals);
   const hiddenCount = Math.max(0, deals.length - shownDeals.length);
   const lines = [
-    `🗣 Подешевели ${deals.length} игр из Избранного`,
-    favoritesUrl(),
+    `<b>🗣 Подешевели ${deals.length} игр из Избранного</b>`,
+    `<a href="${favoritesUrl()}">Открыть избранное</a>`,
     '',
   ];
 
   for (const deal of shownDeals) {
-    const paymentLine = formatDealPaymentLine(deal);
+    const paymentLine = buildTelegramPaymentLine(deal);
     const endText = formatDealEndDate(deal.endDate);
-    lines.push(`➬ ${deal.title} (-${deal.discountPercent}%)`);
-    lines.push(deal.siteUrl);
+    lines.push(`➬ <a href="${deal.siteUrl}"><b>${escapeHtml(deal.title)}</b></a> <b>(-${deal.discountPercent}%)</b>`);
     if (paymentLine) lines.push(paymentLine);
-    if (endText) lines.push(endText);
+    if (endText) lines.push(`<i>${escapeHtml(endText)}</i>`);
     lines.push('');
   }
 
   if (hiddenCount > 0) {
-    lines.push(`Еще ${hiddenCount} игр со скидкой в избранном`);
+    lines.push(`<i>Еще ${hiddenCount} игр со скидкой в избранном</i>`);
     lines.push('');
   }
 
-  lines.push('·••• Открыть мое ИЗБРАННОЕ •••·');
-  lines.push(favoritesUrl());
+  lines.push('<b>·••• Открыть мое ИЗБРАННОЕ •••·</b>');
+  lines.push(`<a href="${favoritesUrl()}">${favoritesUrl()}</a>`);
   return lines.join('\n');
+}
+
+function buildTelegramPaymentLine(deal) {
+  const pairs = getDealPaymentPairs(deal);
+  if (!pairs.length) return '';
+  return pairs
+    .map((pair) => (
+      pair.original
+        ? `<b>${escapeHtml(pair.current)}</b> <s>${escapeHtml(pair.original)}</s>`
+        : `<b>${escapeHtml(pair.current)}</b>`
+    ))
+    .join(' • ');
 }
 
 function buildFavoriteDealsEmailHtml(userName, deals) {
