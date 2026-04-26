@@ -51,6 +51,7 @@ const CAPABILITY_ICONS = {
 };
 
 const PAYMENT_MODES = [
+  { id: 'special_offer', title: 'СПЕЦПРЕДЛОЖЕНИЕ', description: 'Специальное предложение', enabled: true },
   { id: 'oplata', title: 'Oplata.info', description: 'Оплата на ваш Xbox-аккаунт', enabled: true },
   { id: 'key_activation', title: 'Ключ активации', description: 'Получить ключ и открыть чат с продавцом', enabled: true },
   { id: 'topup_cards', title: 'Карты пополнения', description: 'Пополнить Xbox-баланс комбинацией карт', enabled: true },
@@ -284,7 +285,8 @@ export default function GameDetailPage() {
   const hasSavedAccountPassword = Boolean(purchaseSettings.hasXboxAccountPassword);
   const isKeyActivationMode = purchaseForm.paymentMode === 'key_activation';
   const isTopupMode = purchaseForm.paymentMode === 'topup_cards';
-  const skipAccountFields = isKeyActivationMode || isTopupMode;
+  const isSpecialOfferMode = purchaseForm.paymentMode === 'special_offer';
+  const skipAccountFields = isKeyActivationMode || isTopupMode || isSpecialOfferMode;
   const needsPurchaseEmail = !hasSavedPurchaseEmail && !registrationEmail && !canUseTelegramDelivery;
   const needsAccountEmail = !skipAccountFields && !hasSavedAccountEmail;
   const needsAccountPassword = !skipAccountFields && !hasSavedAccountPassword;
@@ -349,6 +351,15 @@ export default function GameDetailPage() {
     }
     if (needsAccountPassword && !accountPassword) {
       setPurchaseError('Введите пароль аккаунта Xbox.');
+      return;
+    }
+
+    if (isSpecialOfferMode) {
+      if (!data.specialOfferUrl) {
+        setPurchaseError('Ссылка спецпредложения недоступна.');
+        return;
+      }
+      setPurchaseResult({ paymentUrl: data.specialOfferUrl });
       return;
     }
 
@@ -430,7 +441,9 @@ export default function GameDetailPage() {
                 <div className="payment-price-list payment-price-list--detail">
                   {paymentPriceEntries.map((paymentPrice) => (
                     <div className="payment-price-row" key={paymentPrice.id}>
-                      <span>{paymentPrice.title}</span>
+                      <span style={paymentPrice.id === 'special_offer' ? { color: '#ac84f1' } : undefined}>
+                        {paymentPrice.title}
+                      </span>
                       <PaymentPriceAmount price={paymentPrice} />
                     </div>
                   ))}
@@ -447,7 +460,7 @@ export default function GameDetailPage() {
               className="ps-buy-button"
               type="button"
               onClick={handleBuyClick}
-              disabled={purchaseLoading || (!data.digisellerId && !data.officialStoreUrl && !data.keyActivationPayUrl)}
+              disabled={purchaseLoading || (!data.digisellerId && !data.officialStoreUrl && !data.keyActivationPayUrl && !data.specialOfferUrl)}
             >
               {purchaseLoading ? 'Готовим ссылку...' : 'Купить'}
             </button>
@@ -507,9 +520,11 @@ export default function GameDetailPage() {
                 <div className="purchase-mode-grid">
                   {PAYMENT_MODES
                     .slice()
+                    .filter((mode) => mode.id !== 'special_offer' || Boolean(data.specialOfferUrl))
                     .sort((a, b) => PAYMENT_PRICE_ORDER.indexOf(a.id) - PAYMENT_PRICE_ORDER.indexOf(b.id))
                     .map((mode) => {
                     let modeEnabled = mode.enabled;
+                    if (mode.id === 'special_offer') modeEnabled = modeEnabled && Boolean(data.specialOfferUrl);
                     if (mode.id === 'key_activation') modeEnabled = modeEnabled && Boolean(data.keyActivationPayUrl);
                     if (mode.id === 'topup_cards') modeEnabled = modeEnabled && Boolean(data.topupCombo?.available);
                     const modePrice = getPaymentPrice(data, mode.id);
@@ -527,7 +542,7 @@ export default function GameDetailPage() {
                           disabled={!modeEnabled || purchaseLoading}
                         />
                         <span>
-                          <strong>{mode.title}</strong>
+                          <strong style={mode.id === 'special_offer' ? { color: '#ac84f1' } : undefined}>{mode.title}</strong>
                           <small>{subtitle}</small>
                         </span>
                       </label>
@@ -741,7 +756,7 @@ export default function GameDetailPage() {
                   type="submit"
                   disabled={purchaseLoading || purchaseProfileLoading}
                 >
-                  {purchaseLoading ? 'Генерируем ссылку...' : 'Сгенерировать ссылку'}
+                  {purchaseLoading ? 'Генерируем ссылку...' : isSpecialOfferMode ? 'Перейти к оплате' : 'Сгенерировать ссылку'}
                 </button>
               )}
             </form>

@@ -141,6 +141,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     title: '',
     russianLanguageMode: 'auto',
     languageNote: '',
+    specialOfferUrl: '',
   });
   const [overrideMessage, setOverrideMessage] = useState('');
 
@@ -312,6 +313,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       title: product?.title || currentOverride.title || '',
       russianLanguageMode: currentOverride.russianLanguageMode || product?.russianLanguageMode || 'auto',
       languageNote: currentOverride.languageNote || product?.languageNote || '',
+      specialOfferUrl: currentOverride.specialOfferUrl || '',
     });
     setOverrideMessage('');
   };
@@ -323,6 +325,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       title: override.title || '',
       russianLanguageMode: override.russianLanguageMode || 'auto',
       languageNote: override.languageNote || '',
+      specialOfferUrl: override.specialOfferUrl || '',
     });
     setOverrideMessage('');
   };
@@ -339,6 +342,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
         productId: override.productId,
         russianLanguageMode: override.russianLanguageMode || 'auto',
         languageNote: override.languageNote || '',
+        specialOfferUrl: override.specialOfferUrl || '',
       }));
       await loadProductOverrides();
       await loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter });
@@ -353,7 +357,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     try {
       await deleteProductOverride(overrideForm.productId);
       setOverrideMessage('Ручная правка удалена');
-      setOverrideForm((current) => ({ ...current, russianLanguageMode: 'auto', languageNote: '' }));
+      setOverrideForm((current) => ({ ...current, russianLanguageMode: 'auto', languageNote: '', specialOfferUrl: '' }));
       await loadProductOverrides();
       await loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter });
     } catch (err) {
@@ -942,6 +946,16 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                     onChange={(e) => setOverrideForm((current) => ({ ...current, languageNote: e.target.value }))}
                     placeholder="Например: проверено вручную, есть русские субтитры"
                     rows={3}
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span style={{ color: '#ac84f1' }}>Спецпредложение (ссылка oplata.info)</span>
+                  <input
+                    type="url"
+                    value={overrideForm.specialOfferUrl}
+                    onChange={(e) => setOverrideForm((current) => ({ ...current, specialOfferUrl: e.target.value }))}
+                    placeholder="https://www.oplata.info/asp2/pay_wm.asp?id_d=..."
                   />
                 </label>
 

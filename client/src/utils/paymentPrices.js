@@ -1,12 +1,14 @@
-export const PAYMENT_PRICE_ORDER = ['topup_cards', 'key_activation', 'oplata'];
+export const PAYMENT_PRICE_ORDER = ['special_offer', 'topup_cards', 'key_activation', 'oplata'];
 
 const PAYMENT_PRICE_TITLES = {
+  special_offer: 'Спецпредложение',
   oplata: 'Oplata.info',
   key_activation: 'Ключ активации',
   topup_cards: 'Карты пополнения',
 };
 
 const PAYMENT_PRICE_SHORT_TITLES = {
+  special_offer: 'Спецпредложение',
   oplata: 'Oplata',
   key_activation: 'Ключ',
   topup_cards: 'Карты',

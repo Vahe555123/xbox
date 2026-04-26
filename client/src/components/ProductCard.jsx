@@ -9,6 +9,7 @@ import {
 } from '../utils/paymentPrices';
 
 const CATALOG_PAYMENT_TITLES = {
+  special_offer: 'СПЕЦПРЕДЛОЖЕНИЕ',
   oplata: 'ПОКУПКА НА АККАУНТ',
   key_activation: 'КЛЮЧ НА ИГРУ',
   topup_cards: 'КОДОМ ПОПОЛНЕНИЯ БАЛАНСА',
@@ -127,7 +128,12 @@ export default function ProductCard({ product }) {
               <div className="payment-price-list payment-price-list--card">
                 {paymentPriceEntries.map((paymentPrice) => (
                   <div className="payment-price-row payment-price-row--card" key={paymentPrice.id}>
-                    <span className="payment-price-title">{getCatalogPaymentTitle(paymentPrice)}</span>
+                    <span
+                      className="payment-price-title"
+                      style={paymentPrice.id === 'special_offer' ? { color: '#ac84f1' } : undefined}
+                    >
+                      {getCatalogPaymentTitle(paymentPrice)}
+                    </span>
                     <PaymentPriceAmount price={paymentPrice} variant="catalog" />
                   </div>
                 ))}
