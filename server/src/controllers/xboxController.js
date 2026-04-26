@@ -540,7 +540,39 @@ function sortProductsByRequestedIds(products, requestedIds) {
   });
 }
 
+function safeProductForLog(product) {
+  return {
+    id: product?.id,
+    title: product?.title || product?.name,
+    price: product?.price,
+    rubPrice: product?.rubPrice || product?.priceRub,
+    productType: product?.productType,
+    releaseDate: product?.releaseDate,
+    isAvailable: product?.isAvailable,
+    isPreorder: product?.isPreorder,
+    isBundle: product?.isBundle,
+    url: product?.url,
+    skuId: product?.skuId,
+    productId: product?.productId,
+  };
+}
+
+function safeErrorForLog(err) {
+  return {
+    message: err?.message,
+    statusCode: err?.statusCode,
+    name: err?.name,
+    stack: err?.stack,
+    responseStatus: err?.response?.status,
+    responseData: err?.response?.data,
+  };
+}
+
+
+
 async function createCartPurchase(req, res, next) {
+  const cartLogId = `cart_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
   try {
     const {
       productIds,
@@ -551,26 +583,81 @@ async function createCartPurchase(req, res, next) {
       saveToProfile,
     } = req.body || {};
 
+    logger.info('Cart purchase started', {
+      cartLogId,
+      userId: req.user?.id || null,
+      productIdsCount: Array.isArray(productIds) ? productIds.length : null,
+      productIds,
+      paymentMode,
+      hasAccountEmail: Boolean(accountEmail),
+      hasAccountPassword: Boolean(accountPassword),
+      hasPurchaseEmail: Boolean(purchaseEmail),
+      saveToProfile: Boolean(saveToProfile),
+      ip: getRequestIp(req),
+    });
+
     if (!Array.isArray(productIds) || productIds.length === 0) {
+      logger.warn('Cart purchase rejected: empty cart', {
+        cartLogId,
+        productIds,
+      });
+
       throw new AppError('Корзина пуста', 400);
     }
+
     if (productIds.length > 30) {
+      logger.warn('Cart purchase rejected: too many products', {
+        cartLogId,
+        count: productIds.length,
+      });
+
       throw new AppError('Слишком много товаров в корзине (максимум 30)', 400);
     }
 
-    const savedSettings = req.user ? await getPurchaseSettingsForCheckout(req.user.id) : null;
+    const savedSettings = req.user
+      ? await getPurchaseSettingsForCheckout(req.user.id)
+      : null;
+
+    logger.info('Cart purchase settings loaded', {
+      cartLogId,
+      userId: req.user?.id || null,
+      hasSavedSettings: Boolean(savedSettings),
+      savedPaymentMode: savedSettings?.paymentMode || null,
+      hasSavedXboxEmail: Boolean(savedSettings?.xboxAccountEmail),
+      hasSavedXboxPassword: Boolean(savedSettings?.xboxAccountPassword),
+      hasSavedPurchaseEmail: Boolean(savedSettings?.purchaseEmail),
+    });
+
     const finalAccountEmail = String(accountEmail || savedSettings?.xboxAccountEmail || '').trim();
     const finalAccountPassword = String(accountPassword || savedSettings?.xboxAccountPassword || '').trim();
     const finalPurchaseEmail = String(purchaseEmail || savedSettings?.purchaseEmail || '').trim();
+
     const deliveryTarget = await resolvePurchaseDeliveryTarget({
       user: req.user,
       purchaseEmail: finalPurchaseEmail,
       registrationEmail: req.user?.email,
     });
+
     const buyerEmailForPayment = buildBuyerEmailForPayment(deliveryTarget);
     const finalPaymentMode = paymentMode || savedSettings?.paymentMode || 'oplata';
 
+    logger.info('Cart purchase final checkout params resolved', {
+      cartLogId,
+      userId: req.user?.id || null,
+      finalPaymentMode,
+      hasFinalAccountEmail: Boolean(finalAccountEmail),
+      hasFinalAccountPassword: Boolean(finalAccountPassword),
+      hasFinalPurchaseEmail: Boolean(finalPurchaseEmail),
+      deliveryTargetType: deliveryTarget?.type,
+      buyerEmailForPayment,
+    });
+
     if (finalPaymentMode !== 'oplata' && finalPaymentMode !== 'key_activation') {
+      logger.warn('Cart purchase rejected: unsupported payment mode', {
+        cartLogId,
+        finalPaymentMode,
+      });
+
       throw new AppError('Этот способ оплаты не поддерживает покупку корзиной', 400);
     }
 
@@ -579,54 +666,195 @@ async function createCartPurchase(req, res, next) {
         purchaseEmail: finalPurchaseEmail,
         paymentMode: finalPaymentMode,
       };
+
       if (finalPaymentMode !== 'key_activation') {
         saveFields.xboxAccountEmail = finalAccountEmail;
         saveFields.xboxAccountPassword = accountPassword || undefined;
       }
+
+      logger.info('Cart purchase saving settings to profile', {
+        cartLogId,
+        userId: req.user.id,
+        fields: {
+          purchaseEmail: Boolean(saveFields.purchaseEmail),
+          paymentMode: saveFields.paymentMode,
+          xboxAccountEmail: Boolean(saveFields.xboxAccountEmail),
+          xboxAccountPassword: Boolean(saveFields.xboxAccountPassword),
+        },
+      });
+
       await updatePurchaseSettings(req.user.id, saveFields).catch((e) =>
         logger.warn('Cart purchase settings save failed during checkout', {
+          cartLogId,
           userId: req.user.id,
-          message: e.message,
-        }));
+          error: safeErrorForLog(e),
+        })
+      );
     }
+
+    logger.info('Cart purchase loading products by ids', {
+      cartLogId,
+      productIds,
+    });
 
     const rawProducts = await getProductsByIds(productIds);
+
+    logger.info('Cart purchase raw products loaded', {
+      cartLogId,
+      requestedCount: productIds.length,
+      rawProductsCount: rawProducts?.length || 0,
+      rawProducts: Array.isArray(rawProducts)
+        ? rawProducts.map(safeProductForLog)
+        : null,
+    });
+
     const products = mapRelatedProducts(rawProducts, {});
+
+    logger.info('Cart purchase products mapped', {
+      cartLogId,
+      mappedCount: products.length,
+      products: products.map(safeProductForLog),
+    });
+
     if (products.length !== productIds.length) {
+      const foundIds = new Set(products.map((p) => String(p.id)));
+      const missingIds = productIds.filter((id) => !foundIds.has(String(id)));
+
       logger.warn('Cart purchase: some products not found', {
+        cartLogId,
         requested: productIds.length,
         found: products.length,
+        missingIds,
       });
     }
+
     if (products.length === 0) {
+      logger.error('Cart purchase failed: products not loaded', {
+        cartLogId,
+        productIds,
+      });
+
       throw new AppError('Не удалось загрузить товары корзины', 404);
     }
+
+    logger.info('Cart purchase applying product overrides', {
+      cartLogId,
+      count: products.length,
+    });
+
     await applyProductOverrides(products);
-    await enrichProductsWithRub(products).catch((e) =>
-      logger.warn('Cart RUB enrichment failed', { message: e.message }));
+
+    logger.info('Cart purchase overrides applied', {
+      cartLogId,
+      products: products.map(safeProductForLog),
+    });
+
+    logger.info('Cart purchase enriching products with RUB', {
+      cartLogId,
+      count: products.length,
+    });
+
+    await enrichProductsWithRub(products).catch((e) => {
+      logger.warn('Cart RUB enrichment failed', {
+        cartLogId,
+        error: safeErrorForLog(e),
+      });
+    });
+
+    logger.info('Cart purchase RUB enrichment finished', {
+      cartLogId,
+      products: products.map(safeProductForLog),
+    });
 
     if (finalPaymentMode === 'oplata' && (!finalAccountEmail || !finalAccountPassword)) {
+      logger.warn('Cart purchase rejected: missing Xbox credentials', {
+        cartLogId,
+        finalPaymentMode,
+        hasFinalAccountEmail: Boolean(finalAccountEmail),
+        hasFinalAccountPassword: Boolean(finalAccountPassword),
+      });
+
       throw new AppError('Email и пароль аккаунта Xbox обязательны', 400);
     }
 
+    logger.info('Cart purchase validating products before payment build', {
+      cartLogId,
+      count: products.length,
+    });
+
     for (const product of products) {
+      const safeProduct = safeProductForLog(product);
+
+      logger.info('Cart purchase validating product', {
+        cartLogId,
+        product: safeProduct,
+        isPaidReleasedProduct: isPaidReleasedProduct(product),
+        isGameCurrencyProduct: isGameCurrencyProduct(product),
+      });
+
       if (!isPaidReleasedProduct(product)) {
+        logger.warn('Cart purchase product rejected: not paid released product', {
+          cartLogId,
+          product: safeProduct,
+        });
+
         throw new AppError(`Товар "${product.title || product.id}" недоступен для покупки`, 400);
       }
+
       if (finalPaymentMode === 'key_activation' && isGameCurrencyProduct(product)) {
+        logger.warn('Cart purchase product rejected: key activation unavailable for currency product', {
+          cartLogId,
+          product: safeProduct,
+        });
+
         throw new AppError(`Ключ активации недоступен для "${product.title || product.id}"`, 400);
       }
     }
 
-    const cart = await buildCartPayment({
+    logger.info('Cart purchase buildCartPayment started', {
+      cartLogId,
       paymentMode: finalPaymentMode,
-      products,
+      productsCount: products.length,
+      products: products.map(safeProductForLog),
       gameNames: products.map((p) => p.title || p.name),
-      accountEmail: finalAccountEmail,
-      accountPassword: finalAccountPassword,
+      hasAccountEmail: Boolean(finalAccountEmail),
+      hasAccountPassword: Boolean(finalAccountPassword),
       purchaseEmail: buyerEmailForPayment,
       buyerIp: getRequestIp(req),
     });
+
+    let cart;
+
+    try {
+      cart = await buildCartPayment({
+        paymentMode: finalPaymentMode,
+        products,
+        gameNames: products.map((p) => p.title || p.name),
+        accountEmail: finalAccountEmail,
+        accountPassword: finalAccountPassword,
+        purchaseEmail: buyerEmailForPayment,
+        buyerIp: getRequestIp(req),
+      });
+
+      logger.info('Cart purchase buildCartPayment success', {
+        cartLogId,
+        cartUid: cart?.cartUid,
+        paymentUrl: cart?.paymentUrl,
+        paymentMode: cart?.paymentMode,
+        itemsCount: cart?.items?.length || 0,
+        items: cart?.items,
+      });
+    } catch (e) {
+      logger.error('Cart purchase buildCartPayment failed', {
+        cartLogId,
+        paymentMode: finalPaymentMode,
+        productsCount: products.length,
+        products: products.map(safeProductForLog),
+        error: safeErrorForLog(e),
+      });
+
+      throw e;
+    }
 
     const payment = {
       paymentUrl: cart.paymentUrl,
@@ -639,16 +867,35 @@ async function createCartPurchase(req, res, next) {
       purchaseEmail: finalPurchaseEmail || null,
     };
 
+    logger.info('Cart purchase payment object created', {
+      cartLogId,
+      cartUid: cart.cartUid,
+      payment,
+    });
+
     const delivery = await notifyPurchaseCreated({
       target: deliveryTarget,
       product: { id: 'cart', title: `Корзина (${products.length} товаров)` },
       payment,
     }).catch((e) => {
       logger.warn('Cart purchase delivery notification failed', {
+        cartLogId,
         cartUid: cart.cartUid,
-        message: e.message,
+        error: safeErrorForLog(e),
       });
-      return { sent: false, channel: deliveryTarget.type, error: e.message };
+
+      return {
+        sent: false,
+        channel: deliveryTarget.type,
+        error: e.message,
+      };
+    });
+
+    logger.info('Cart purchase finished successfully', {
+      cartLogId,
+      cartUid: cart.cartUid,
+      productsCount: products.length,
+      delivery,
     });
 
     res.json({
@@ -659,9 +906,16 @@ async function createCartPurchase(req, res, next) {
       products: products.map((p) => ({ id: p.id, title: p.title })),
     });
   } catch (err) {
+    logger.error('Cart purchase failed', {
+      cartLogId,
+      userId: req.user?.id || null,
+      error: safeErrorForLog(err),
+    });
+
     if (err.statusCode) {
       return next(new AppError(err.message, err.statusCode));
     }
+
     next(err);
   }
 }
