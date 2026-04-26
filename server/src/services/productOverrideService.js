@@ -17,13 +17,15 @@ function normalizeLanguageMode(mode) {
 
 function rowToOverride(row) {
   if (!row) return null;
+  const data = row.data || {};
   return {
     productId: row.product_id,
     title: row.title || '',
     russianLanguageMode: row.russian_language_mode || 'auto',
     languageNote: row.language_note || '',
     specialOfferUrl: row.special_offer_url || null,
-    data: row.data || {},
+    customDescription: data.customDescription || '',
+    data,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -62,6 +64,11 @@ function applyOverrideToProduct(product, override) {
   if (override.specialOfferUrl) {
     product.specialOfferUrl = override.specialOfferUrl;
   }
+  if (override.customDescription) {
+    product.fullDescription = override.customDescription;
+    product.descriptionSource = 'admin-override';
+    product.descriptionOverride = true;
+  }
 
   applyLanguageMode(product, override.russianLanguageMode);
   product.adminOverride = {
@@ -69,6 +76,7 @@ function applyOverrideToProduct(product, override) {
     russianLanguageMode: override.russianLanguageMode || 'auto',
     languageNote: override.languageNote || '',
     specialOfferUrl: override.specialOfferUrl || null,
+    customDescription: override.customDescription || '',
     updatedAt: override.updatedAt,
   };
 
@@ -148,9 +156,14 @@ async function upsertProductOverride(productId, payload = {}) {
   const title = String(payload.title || '').trim() || null;
   const languageNote = String(payload.languageNote || '').trim() || null;
   const specialOfferUrl = String(payload.specialOfferUrl || '').trim() || null;
-  const data = payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
+  const payloadData = payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
     ? payload.data
     : {};
+  const customDescription = String(payload.customDescription || '').trim();
+  const data = {
+    ...payloadData,
+    ...(customDescription ? { customDescription } : {}),
+  };
 
   const { rows } = await pool.query(
     `INSERT INTO product_overrides (product_id, title, russian_language_mode, language_note, special_offer_url, data, updated_at)

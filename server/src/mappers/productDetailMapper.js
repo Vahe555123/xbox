@@ -121,9 +121,27 @@ function mapPriceFromOrder(price) {
     currency,
     formattedList: formatMoney(list, currency),
     formattedMsrp: msrp != null ? formatMoney(msrp, currency) : null,
+    dealEndDate: extractDealEndDateFromPrice(price),
     taxType: price.TaxType || null,
     isPIRequired: price.IsPIRequired ?? null,
   };
+}
+
+function extractDealEndDateFromPrice(price) {
+  if (!price || typeof price !== 'object') return null;
+
+  const conditions = price.Conditions || price.conditions;
+  if (Array.isArray(conditions)) {
+    for (const item of conditions) {
+      const endDate = item?.EndDate || item?.endDate || null;
+      if (endDate) return endDate;
+    }
+  } else if (conditions && typeof conditions === 'object') {
+    const endDate = conditions.EndDate || conditions.endDate || null;
+    if (endDate) return endDate;
+  }
+
+  return price.EndDate || price.endDate || null;
 }
 
 function isKnownSubscriptionId(id) {
@@ -192,7 +210,7 @@ function pickBestPriceCandidate(candidates) {
   }, pool[0]);
 }
 
-function buildPrimaryPrice(price) {
+function buildPrimaryPrice(price, dealEndDate = null) {
   const hasDiscount = price.msrp != null && Number(price.listPrice) < Number(price.msrp);
 
   return {
@@ -205,6 +223,7 @@ function buildPrimaryPrice(price) {
     discountPercent: hasDiscount ? Math.round(((Number(price.msrp) - Number(price.listPrice)) / Number(price.msrp)) * 100) : null,
     msrp: price.msrp,
     formattedMsrp: price.formattedMsrp,
+    dealEndDate: dealEndDate || price.dealEndDate || null,
     status: 'available',
   };
 }
@@ -216,7 +235,7 @@ function pickPrimaryPrice(skus) {
 
   const publicCandidates = candidates.filter(({ availability }) => !isSubscriptionOfferAvailability(availability));
   const best = pickBestPriceCandidate(publicCandidates.length ? publicCandidates : candidates);
-  return best ? buildPrimaryPrice(best.price) : null;
+  return best ? buildPrimaryPrice(best.price, best.availability?.dealEndDate) : null;
 }
 
 function extractGamePassSavings(skus) {
@@ -279,6 +298,7 @@ function mapPricingSkus(displaySkuAvailabilities) {
           actions: av.Actions || [],
           displayRank: av.DisplayRank ?? null,
           price: mapPriceFromOrder(av.OrderManagementData?.Price),
+          dealEndDate: extractDealEndDateFromAvailability(av),
           passProductIds,
           isSubscriptionOffer: passProductIds.some((id) => isKnownSubscriptionId(id)),
           isGamePassOffer: passProductIds.some((id) => GAME_PASS_IDS.has(id)),
@@ -286,6 +306,23 @@ function mapPricingSkus(displaySkuAvailabilities) {
       }),
     };
   });
+}
+
+function extractDealEndDateFromAvailability(availability) {
+  if (!availability || typeof availability !== 'object') return null;
+
+  const conditions = availability.Conditions || availability.conditions;
+  if (Array.isArray(conditions)) {
+    for (const item of conditions) {
+      const endDate = item?.EndDate || item?.endDate || null;
+      if (endDate) return endDate;
+    }
+  } else if (conditions && typeof conditions === 'object') {
+    const endDate = conditions.EndDate || conditions.endDate || null;
+    if (endDate) return endDate;
+  }
+
+  return availability.EndDate || availability.endDate || null;
 }
 
 function getCatalogProductPriceInfo(raw) {

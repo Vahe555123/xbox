@@ -25,7 +25,7 @@ const GAME_PASS_LABELS = new Set([
   'standard',
 ]);
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, unavailablePriceLabel = 'Цена недоступна' }) {
   const [imgError, setImgError] = useState(false);
   const {
     title,
@@ -51,7 +51,7 @@ export default function ProductCard({ product }) {
   const isUnavailablePrice = priceStatus === 'unavailable' || price?.formatted === 'Price not available';
   const storePriceLabel = getStorePriceLabel(price, releaseInfo, isUnavailablePrice);
   const shouldShowStorePrice = Boolean(storePriceLabel);
-  const fallbackPriceLabel = hasRubPrice ? null : 'Цена недоступна';
+  const fallbackPriceLabel = hasRubPrice ? null : unavailablePriceLabel;
   const paymentPriceEntries = getPaymentPriceEntries(product, { includeUnavailable: true });
   const catalogSubscriptionLabels = getCatalogSubscriptionLabels(subscriptionLabels);
   const languageBadge = getLanguageBadge(russianLanguageMode, hasRussianLanguage);

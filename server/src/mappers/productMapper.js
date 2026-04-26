@@ -138,8 +138,30 @@ function extractPrice(summary, availability, subscriptions = extractSubscription
     original: isOnSale ? original : null,
     originalFormatted: isOnSale && original ? formatCurrency(original, currency) : null,
     discountPercent: priceData.discountPercentage || computedDiscountPercent,
+    dealEndDate: extractDealEndDate(priceData, availability),
     status: 'available',
   };
+}
+
+function extractDealEndDate(priceData, availability) {
+  const availabilityConditions = availability?.Conditions || availability?.conditions;
+
+  if (Array.isArray(availabilityConditions)) {
+    for (const item of availabilityConditions) {
+      const endDate = item?.EndDate || item?.endDate || null;
+      if (endDate) return endDate;
+    }
+  }
+
+  return priceData?.conditions?.endDate
+    || priceData?.Conditions?.EndDate
+    || priceData?.endDate
+    || priceData?.EndDate
+    || availability?.conditions?.endDate
+    || availability?.Conditions?.EndDate
+    || availability?.endDate
+    || availability?.EndDate
+    || null;
 }
 
 function pickAvailabilityPrice(availability) {

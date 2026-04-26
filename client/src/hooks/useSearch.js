@@ -47,15 +47,10 @@ export function useSearch({ dealsMode = false } = {}) {
 
       if (append) {
         setProducts((prev) => [...prev, ...result.products]);
-        if (result.totalIsApproximate) {
-          setTotal((prev) => prev + result.products.length);
-        } else {
-          setTotal(result.total || 0);
-        }
       } else {
         setProducts(result.products);
-        setTotal(result.totalIsApproximate ? result.products.length : result.total || 0);
       }
+      setTotal(result.total || 0);
 
       setEncodedCT(result.encodedCT || null);
       setHasMorePages(result.hasMorePages || false);
@@ -77,7 +72,7 @@ export function useSearch({ dealsMode = false } = {}) {
         setLoadingMore(false);
       }
     }
-  }, []);
+  }, [dealsMode]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

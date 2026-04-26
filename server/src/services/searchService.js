@@ -47,7 +47,9 @@ const SEARCH_EXPANSION_NOISE_TOKENS = new Set([
 async function search({ query, page, sort, filters, priceRange, languageMode, freeOnly = false, dealsOnly = false, encodedCT, channelId = '' }) {
   const encodedFilters = buildEncodedFilters(filters, sort);
   const priceFilterActive = isPriceRangeActive(priceRange);
-  const postFilterActive = Boolean(freeOnly || dealsOnly || (languageMode && languageMode !== 'all'));
+  const dealsHandledByChannel = Boolean(dealsOnly && !query && channelId);
+  const effectiveDealsOnly = dealsHandledByChannel ? false : dealsOnly;
+  const postFilterActive = Boolean(freeOnly || effectiveDealsOnly || (languageMode && languageMode !== 'all'));
 
   if (isRankedSearchToken(encodedCT)) {
     const buffered = await readRankedSearchBuffer(encodedCT);
@@ -64,7 +66,7 @@ async function search({ query, page, sort, filters, priceRange, languageMode, fr
         priceFilterActive,
         languageMode,
         freeOnly,
-        dealsOnly,
+        dealsOnly: effectiveDealsOnly,
         postFilterActive,
         channelId,
       });
@@ -107,7 +109,11 @@ async function search({ query, page, sort, filters, priceRange, languageMode, fr
   const products = priceFilterActive
     ? applyPriceRange(mappedProducts, normalizePriceRange(priceRange))
     : mappedProducts;
-  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), { languageMode, freeOnly, dealsOnly });
+  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), {
+    languageMode,
+    freeOnly,
+    dealsOnly: effectiveDealsOnly,
+  });
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)
     : null;

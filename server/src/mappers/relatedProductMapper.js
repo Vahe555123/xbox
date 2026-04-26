@@ -78,14 +78,14 @@ function mapRelatedProductCard(raw, relationshipType) {
   const catalogPassInfo = extractCatalogPassInfo(raw);
   const languageInfo = extractLanguageInfo(raw.DisplaySkuAvailabilities);
 
-  // Pick best image: Poster > BoxArt > BrandedKeyArt > SuperHeroArt > first available
+  // Prefer square artwork outside main catalog views.
   const image =
-    findImage(images, 'Poster') ||
+    findImage(images, 'FeaturePromotionalSquareArt') ||
     findImage(images, 'BoxArt') ||
+    findImage(images, 'Poster') ||
     findImage(images, 'BrandedKeyArt') ||
     findImage(images, 'SuperHeroArt') ||
     findImage(images, 'TitledHeroArt') ||
-    findImage(images, 'FeaturePromotionalSquareArt') ||
     (images[0] ? absUri(images[0].Uri) : null);
 
   // Hero image for wider cards

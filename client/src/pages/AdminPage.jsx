@@ -142,6 +142,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     russianLanguageMode: 'auto',
     languageNote: '',
     specialOfferUrl: '',
+    customDescription: '',
   });
   const [overrideMessage, setOverrideMessage] = useState('');
 
@@ -314,6 +315,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       russianLanguageMode: currentOverride.russianLanguageMode || product?.russianLanguageMode || 'auto',
       languageNote: currentOverride.languageNote || product?.languageNote || '',
       specialOfferUrl: currentOverride.specialOfferUrl || '',
+      customDescription: currentOverride.customDescription || '',
     });
     setOverrideMessage('');
   };
@@ -326,6 +328,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       russianLanguageMode: override.russianLanguageMode || 'auto',
       languageNote: override.languageNote || '',
       specialOfferUrl: override.specialOfferUrl || '',
+      customDescription: override.customDescription || '',
     });
     setOverrideMessage('');
   };
@@ -343,6 +346,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
         russianLanguageMode: override.russianLanguageMode || 'auto',
         languageNote: override.languageNote || '',
         specialOfferUrl: override.specialOfferUrl || '',
+        customDescription: override.customDescription || '',
       }));
       await loadProductOverrides();
       await loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter });
@@ -357,7 +361,13 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     try {
       await deleteProductOverride(overrideForm.productId);
       setOverrideMessage('Ручная правка удалена');
-      setOverrideForm((current) => ({ ...current, russianLanguageMode: 'auto', languageNote: '', specialOfferUrl: '' }));
+      setOverrideForm((current) => ({
+        ...current,
+        russianLanguageMode: 'auto',
+        languageNote: '',
+        specialOfferUrl: '',
+        customDescription: '',
+      }));
       await loadProductOverrides();
       await loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter });
     } catch (err) {
@@ -956,6 +966,16 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                     value={overrideForm.specialOfferUrl}
                     onChange={(e) => setOverrideForm((current) => ({ ...current, specialOfferUrl: e.target.value }))}
                     placeholder="https://www.oplata.info/asp2/pay_wm.asp?id_d=..."
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Описание игры (ручная замена)</span>
+                  <textarea
+                    value={overrideForm.customDescription}
+                    onChange={(e) => setOverrideForm((current) => ({ ...current, customDescription: e.target.value }))}
+                    placeholder="Если оставить пустым — используется описание из Xbox Store (ru-RU, затем en-US)"
+                    rows={6}
                   />
                 </label>
 

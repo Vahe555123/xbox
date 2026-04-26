@@ -5,6 +5,7 @@ import Spinner from '../components/Spinner';
 import ErrorMessage from '../components/ErrorMessage';
 import ProductCard from '../components/ProductCard';
 import FavoriteHeartButton from '../components/FavoriteHeartButton';
+import { useFavorites } from '../context/FavoritesContext';
 import {
   PAYMENT_PRICE_ORDER,
   getPaymentOriginalPriceText,
@@ -50,12 +51,46 @@ const CAPABILITY_ICONS = {
   XPA: 'XPA',
 };
 
+const PLAYER_CAPABILITIES = [
+  { id: 'SinglePlayer', badge: '1P', label: '1 игрок' },
+  { id: 'XblLocalCoop', badge: '2P', label: 'Локальный кооператив (2-4)' },
+  { id: 'XblLocalMultiPlayer', badge: 'MP', label: 'Локальный мультиплеер (2-4)' },
+  { id: 'XblCrossPlatformCoop', badge: 'CROSS', label: 'Поддерживает кроссплатформу' },
+  { id: 'XblOnlineCoop', badge: null, label: 'Онлайн кооператив (2-2)' },
+  { id: 'XblOnlineMultiPlayer', badge: 'ONLINE', label: 'Онлайн мультиплеер (2-22)' },
+  { id: 'XblCrossPlatformMultiPlayer', badge: 'CROSS', label: 'Поддерживает кроссплатформенный мультиплеер' },
+  { id: 'XboxLive', badge: null, label: 'Xbox Live' },
+];
+
+const FEATURE_CAPABILITIES = [
+  { ids: ['SharedSplitScreen'], badge: null, label: 'Режим разделенного экрана' },
+  { ids: ['ConsoleKeyboardMouse'], badge: null, label: 'Поддерживает клавиатуру и мышку' },
+  { ids: ['ConsoleGen9Optimized'], badge: 'XS', label: 'Оптимизировано для Xbox Series X|S' },
+  { ids: ['CapabilityXboxEnhanced'], badge: null, label: 'Улучшения для Xbox One X' },
+  { ids: ['ConsoleCrossGen'], badge: 'SD', label: 'Smart Delivery' },
+  { ids: ['60fps', 'Capability60fps'], badge: null, label: '60 fps' },
+  { ids: ['120fps'], badge: null, label: '120 fps' },
+  { ids: ['Capability4k'], badge: null, label: '4K Ultra HD' },
+  { ids: ['CapabilityHDR'], badge: null, label: 'HDR10' },
+  { ids: ['RayTracing'], badge: null, label: 'Ray Tracing' },
+  { ids: ['DolbyAtmos'], badge: null, label: 'Dolby Atmos' },
+  { ids: ['DTSX'], badge: null, label: 'DTS:X' },
+  { ids: ['SpatialSound'], badge: null, label: 'Пространственный звук' },
+];
+
 const PAYMENT_MODES = [
   { id: 'special_offer', title: 'СПЕЦПРЕДЛОЖЕНИЕ', description: 'Специальное предложение', enabled: true },
   { id: 'oplata', title: 'ПОКУПКА НА АККАУНТ', description: 'Оплата на ваш Xbox-аккаунт', enabled: true },
   { id: 'key_activation', title: 'КЛЮЧ НА ИГРУ', description: 'Получить ключ и открыть чат с продавцом', enabled: true },
-  { id: 'topup_cards', title: 'КАРТЫ ПОПОЛНЕНИЯ', description: 'Пополнить Xbox-баланс комбинацией карт', enabled: true },
+  { id: 'topup_cards', title: 'КОДОМ ПОПОЛНЕНИЯ БАЛАНСА', description: 'Пополнить Xbox-баланс комбинацией карт', enabled: true },
 ];
+
+const CATALOG_PAYMENT_TITLES = {
+  special_offer: 'СПЕЦПРЕДЛОЖЕНИЕ',
+  oplata: 'ПОКУПКА НА АККАУНТ',
+  key_activation: 'КЛЮЧ НА ИГРУ',
+  topup_cards: 'КОДОМ ПОПОЛНЕНИЯ БАЛАНСА',
+};
 
 const EMPTY_PURCHASE_FORM = {
   purchaseEmail: '',
@@ -88,11 +123,50 @@ function getImage(images, pattern) {
 }
 
 function getCardImage(images) {
-  return getImage(images, /BoxArt|Tile|Poster/i) || images?.[0] || null;
+  return getPreferredSquareImage(images) || images?.[0] || null;
 }
 
 function getHeroImage(images) {
   return getImage(images, /SuperHero|Hero|Titled/i) || getCardImage(images);
+}
+
+function getPreferredSquareImage(images) {
+  return getImage(images, /FeaturePromotionalSquareArt/i)
+    || getImage(images, /BoxArt|Tile/i)
+    || getImage(images, /Poster|BrandedKeyArt/i)
+    || null;
+}
+
+function collectEditionProductIds(product) {
+  const currentId = String(product?.id || '').toUpperCase();
+  const ids = new Set();
+
+  (product?.compareEditionItems || []).forEach((item) => {
+    const id = normalizePossibleProductId(item?.productId);
+    if (id && id !== currentId) ids.add(id);
+  });
+
+  (product?.skus || []).forEach((sku) => {
+    (sku?.availabilities || []).forEach((availability) => {
+      (availability?.alternateIds || []).forEach((alt) => {
+        const id = normalizePossibleProductId(
+          typeof alt === 'string'
+            ? alt
+            : alt?.value || alt?.Value || alt?.id || alt?.Id || alt?.productId || alt?.ProductId,
+        );
+        if (id && id !== currentId) ids.add(id);
+      });
+    });
+  });
+
+  return [...ids];
+}
+
+function normalizePossibleProductId(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) return null;
+  if (!/^[A-Z0-9]{8,16}$/.test(normalized)) return null;
+  return normalized;
 }
 
 function getPrimaryRating(ratings) {
@@ -150,11 +224,16 @@ function normalizeRelatedGroup(type) {
 
 export default function GameDetailPage() {
   const { productId } = useParams();
+  const { isFavorite, toggle } = useFavorites();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [relatedProducts, setRelatedProducts] = useState(null);
   const [relatedLoading, setRelatedLoading] = useState(false);
+  const [bundleProducts, setBundleProducts] = useState([]);
+  const [bundleLoading, setBundleLoading] = useState(false);
+  const [editionProducts, setEditionProducts] = useState([]);
+  const [editionLoading, setEditionLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('description');
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [purchaseForm, setPurchaseForm] = useState(EMPTY_PURCHASE_FORM);
@@ -165,6 +244,7 @@ export default function GameDetailPage() {
   const [purchaseError, setPurchaseError] = useState(null);
   const [purchaseResult, setPurchaseResult] = useState(null);
   const [copyMessage, setCopyMessage] = useState('');
+  const [favoriteToast, setFavoriteToast] = useState('');
   const scrollRefs = useRef({});
 
   useEffect(() => {
@@ -173,6 +253,10 @@ export default function GameDetailPage() {
     setLoading(true);
     setError(null);
     setRelatedProducts(null);
+    setBundleProducts([]);
+    setBundleLoading(false);
+    setEditionProducts([]);
+    setEditionLoading(false);
     setPurchaseOpen(false);
     setPurchaseForm(EMPTY_PURCHASE_FORM);
     setPurchaseProfile(null);
@@ -182,6 +266,7 @@ export default function GameDetailPage() {
     setPurchaseError(null);
     setPurchaseResult(null);
     setCopyMessage('');
+    setFavoriteToast('');
 
     let cancelled = false;
     fetchProductDetail(productId)
@@ -209,7 +294,119 @@ export default function GameDetailPage() {
     return () => { cancelled = true; };
   }, [data]);
 
+  useEffect(() => {
+    const bundleItems = data?.bundleItems || [];
+    if (!bundleItems.length) {
+      setBundleProducts([]);
+      setBundleLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const ids = bundleItems.map((item) => item.productId).filter(Boolean);
+    if (!ids.length) {
+      setBundleProducts([]);
+      setBundleLoading(false);
+      return undefined;
+    }
+
+    setBundleLoading(true);
+    fetchRelatedProducts(ids)
+      .then((res) => {
+        if (cancelled) return;
+        const fetched = res.products || [];
+        const byId = new Map(fetched.map((product) => [String(product.id || '').toUpperCase(), product]));
+        const ordered = ids
+          .map((id) => byId.get(String(id).toUpperCase()))
+          .filter(Boolean);
+        setBundleProducts(ordered);
+      })
+      .catch(() => {
+        if (!cancelled) setBundleProducts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setBundleLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [data?.bundleItems]);
+
+  const editionProductIds = useMemo(() => collectEditionProductIds(data), [data]);
+
+  useEffect(() => {
+    if (!editionProductIds.length) {
+      setEditionProducts([]);
+      setEditionLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const ids = editionProductIds;
+
+    setEditionLoading(true);
+    fetchRelatedProducts(ids)
+      .then((res) => {
+        if (cancelled) return;
+        const fetched = res.products || [];
+        const byId = new Map(fetched.map((product) => [String(product.id || '').toUpperCase(), product]));
+        const ordered = ids
+          .map((id) => byId.get(String(id).toUpperCase()))
+          .filter(Boolean);
+        setEditionProducts(ordered);
+      })
+      .catch(() => {
+        if (!cancelled) setEditionProducts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setEditionLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [editionProductIds]);
+
+  useEffect(() => {
+    if (!favoriteToast) return undefined;
+    const timer = setTimeout(() => setFavoriteToast(''), 3200);
+    return () => clearTimeout(timer);
+  }, [favoriteToast]);
+
   const groupedRelated = useMemo(() => groupRelatedProducts(relatedProducts), [relatedProducts]);
+  const capabilitiesById = useMemo(
+    () => new Map((data?.capabilities || []).map((capability) => [capability.id, capability])),
+    [data?.capabilities],
+  );
+  const playerCapabilities = useMemo(
+    () => PLAYER_CAPABILITIES.filter((item) => capabilitiesById.has(item.id)),
+    [capabilitiesById],
+  );
+  const featureCapabilities = useMemo(
+    () => FEATURE_CAPABILITIES.filter((item) => item.ids.some((id) => capabilitiesById.has(id))),
+    [capabilitiesById],
+  );
+  const hasXpaCapability = useMemo(
+    () => capabilitiesById.has('XPA') || Boolean(data?.xbox?.xpa),
+    [capabilitiesById, data?.xbox?.xpa],
+  );
+
+  useEffect(() => {
+    if (!data?.id) return;
+    const currentPrice = data.releaseInfo?.status === 'unreleased' ? null : data.price;
+    const currentDiscountPercent = currentPrice?.discountPercent ? Math.round(currentPrice.discountPercent) : null;
+    const currentDealEndDateText = currentDiscountPercent && currentPrice?.dealEndDate
+      ? formatDealEndDateShort(currentPrice.dealEndDate)
+      : null;
+    // Debug log for missing discount end date on product page.
+    console.log('[GameDetailPage] deal date debug', {
+      productId: data.id,
+      title: data.title,
+      priceValue: currentPrice?.value ?? null,
+      priceOriginal: currentPrice?.original ?? null,
+      discountPercent: currentDiscountPercent ?? null,
+      dealEndDate: currentPrice?.dealEndDate ?? null,
+      dealEndDateText: currentDealEndDateText ?? null,
+      releaseStatus: data.releaseInfo?.status ?? null,
+    });
+  }, [data]);
 
   const scrollRow = (key, dir) => {
     const el = scrollRefs.current[key];
@@ -244,6 +441,9 @@ export default function GameDetailPage() {
     ? Math.round(Number(data.gamePassSavingsPercent))
     : null;
   const paymentPriceEntries = getPaymentPriceEntries(data, { includeUnavailable: true });
+  const dealEndDateText = discountPercent && price?.dealEndDate
+    ? formatDealEndDateShort(price.dealEndDate)
+    : null;
   const reviewSummary = getRatingSummary(data.usage);
   const esrbRating = getPrimaryRating(data.contentRatings);
   const esrbLabel = ESRB_LABELS[esrbRating?.ratingId] || cleanText(esrbRating?.ratingId);
@@ -269,6 +469,7 @@ export default function GameDetailPage() {
     russianLanguageMode: data.russianLanguageMode,
     gamePassSavingsPercent: data.gamePassSavingsPercent || null,
   };
+  const inFavorites = isFavorite(data.id);
 
   const tabs = [
     { id: 'description', label: 'Описание' },
@@ -402,6 +603,15 @@ export default function GameDetailPage() {
     }
   };
 
+  const handleToggleFavorite = () => {
+    toggle(favoriteProduct);
+    setFavoriteToast(
+      inFavorites
+        ? 'Игра удалена из избранного'
+        : 'Игра добавлена в избранное',
+    );
+  };
+
   return (
     <div className="detail-page detail-store-page">
       <nav className="detail-breadcrumb">
@@ -415,6 +625,12 @@ export default function GameDetailPage() {
             <img src={`${cardImage.uri}?w=720&h=720`} alt={data.title} />
           ) : (
             <div className="product-image-placeholder"><span>No Image</span></div>
+          )}
+          {reviewSummary && (
+            <div className="ps-image-rating-badge" aria-label={`Рейтинг ${reviewSummary.avg.toFixed(1)} из 5`}>
+              <strong>{reviewSummary.avg.toFixed(1)} ★</strong>
+              <span>{reviewSummary.total.toLocaleString('ru-RU')} оценок</span>
+            </div>
           )}
           <span className={`product-language-badge product-language-badge--${getLanguageClassSuffix(data.russianLanguageMode, data.hasRussianLanguage)}`}>
             {getLanguageDisplayLabel(data.russianLanguageMode, data.hasRussianLanguage)}
@@ -442,7 +658,7 @@ export default function GameDetailPage() {
                   {paymentPriceEntries.map((paymentPrice) => (
                     <div className="payment-price-row" key={paymentPrice.id}>
                       <span style={paymentPrice.id === 'special_offer' ? { color: '#ac84f1' } : undefined}>
-                        {paymentPrice.title}
+                        {getCatalogPaymentTitle(paymentPrice)}
                       </span>
                       <PaymentPriceAmount price={paymentPrice} />
                     </div>
@@ -455,19 +671,47 @@ export default function GameDetailPage() {
               {!storePriceLabel && fallbackPriceLabel && (
                 <strong className="ps-price-unavailable">{fallbackPriceLabel}</strong>
               )}
+              {dealEndDateText && (
+                <span className="ps-discount-end-date">{dealEndDateText}</span>
+              )}
             </div>
-            <button
-              className="ps-buy-button"
-              type="button"
-              onClick={handleBuyClick}
-              disabled={purchaseLoading || (!data.digisellerId && !data.officialStoreUrl && !data.keyActivationPayUrl && !data.specialOfferUrl)}
-            >
-              {purchaseLoading ? 'Готовим ссылку...' : 'Купить'}
-            </button>
+            <div className="ps-buy-actions">
+              <button
+                className="ps-buy-button"
+                type="button"
+                onClick={handleBuyClick}
+                disabled={purchaseLoading || (!data.digisellerId && !data.officialStoreUrl && !data.keyActivationPayUrl && !data.specialOfferUrl)}
+              >
+                {purchaseLoading ? 'Готовим ссылку...' : 'Купить'}
+              </button>
+              <button
+                className={`ps-follow-button ${inFavorites ? 'ps-follow-button--active' : ''}`}
+                type="button"
+                onClick={handleToggleFavorite}
+              >
+                {inFavorites ? 'Игра в избранном' : 'Следить за скидкой'}
+              </button>
+            </div>
           </div>
+          {favoriteToast && (
+            <div className="detail-toast detail-toast--success" role="status" aria-live="polite">
+              <span>{favoriteToast}</span>
+              <button
+                type="button"
+                className="detail-toast-close"
+                aria-label="Закрыть уведомление"
+                onClick={() => setFavoriteToast('')}
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           <div className="ps-chip-row">
             {(data.playWith || []).map((platform) => <span key={platform} className="ps-chip">{platform}</span>)}
+            {hasXpaCapability && (
+              <span className="ps-chip">Xbox Play Anywhere</span>
+            )}
             <span className={`ps-chip ps-chip-language ps-chip-language--${getLanguageClassSuffix(data.russianLanguageMode, data.hasRussianLanguage)}`}>
               {getLanguageDisplayLabel(data.russianLanguageMode, data.hasRussianLanguage)}
             </span>
@@ -476,22 +720,7 @@ export default function GameDetailPage() {
             ))}
           </div>
 
-          <dl className="ps-product-facts">
-            <div>
-              <dt>Дата релиза</dt>
-              <dd>{formatDate(data.originalReleaseDate || data.releaseInfo?.releaseDate)}</dd>
-            </div>
-            <div>
-              <dt>Жанр</dt>
-              <dd>{data.categories?.join(', ') || 'Не указан'}</dd>
-            </div>
-            {esrbLabel && (
-              <div>
-                <dt>Рейтинг</dt>
-                <dd>{esrbLabel}</dd>
-              </div>
-            )}
-          </dl>
+        
         </div>
       </section>
 
@@ -764,29 +993,18 @@ export default function GameDetailPage() {
         </div>
       )}
 
-      <nav className="store-tabs" aria-label="Разделы товара">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={activeTab === tab.id ? 'active' : ''}
-            onClick={() => setActiveTab(tab.id)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
+     
 
       {activeTab === 'description' && (
         <div className="tab-panel tab-details">
-          {data.capabilities?.length > 0 && (
+          {playerCapabilities.length > 0 && (
             <section className="detail-section">
-              <h2>Capabilities</h2>
+              <h2>Количество игроков</h2>
               <div className="caps-grid">
-                {data.capabilities.map((capability) => (
+                {playerCapabilities.map((capability) => (
                   <div key={capability.id} className="cap-chip">
-                    {CAPABILITY_ICONS[capability.id] && <span className="cap-icon">{CAPABILITY_ICONS[capability.id]}</span>}
-                    <span>{capability.label}{capability.detail ? ` (${capability.detail})` : ''}</span>
+                    {capability.badge && <span className="cap-icon"></span>}
+                    <span>{capability.label}</span>
                   </div>
                 ))}
               </div>
@@ -794,26 +1012,88 @@ export default function GameDetailPage() {
           )}
 
           <section className="detail-section">
-            <h2>Accessibility features</h2>
-            {data.capabilities?.length > 0 ? (
+            <h2>Особенности и фишки</h2>
+            {featureCapabilities.length > 0 ? (
               <div className="accessibility-chips">
-                {data.capabilities.map((capability) => (
-                  <span key={capability.id} className="accessibility-chip">
-                    {capability.label}{capability.detail ? ` (${capability.detail})` : ''}
+                {featureCapabilities.map((capability) => (
+                  <span key={capability.label} className="accessibility-chip">
+                    {capability.badge ? `${capability.badge} ` : ''}{capability.label}
                   </span>
                 ))}
               </div>
             ) : (
-              <p className="detail-muted">Данных по accessibility features нет.</p>
+              <p className="detail-muted">Нет данных по особенностям.</p>
             )}
           </section>
 
           <section className="detail-section">
             <h2>Описание игры</h2>
+            <dl className="detail-description-meta">
+              <div>
+                <dt>Дата релиза</dt>
+                <dd>{formatDate(data.originalReleaseDate || data.releaseInfo?.releaseDate)}</dd>
+              </div>
+              <div>
+                <dt>Жанр</dt>
+                <dd>{data.categories?.join(', ') || 'Не указан'}</dd>
+              </div>
+            </dl>
             <div className="detail-body-text">
               {data.fullDescription || data.shortDescription || 'Описание недоступно.'}
             </div>
           </section>
+
+          {data.bundleItems?.length > 0 && (
+            <section className="detail-section detail-section-wide rp-section">
+              <div className="rp-section-header">
+                <h2>Состав издания</h2>
+                {bundleProducts.length > 4 && (
+                  <div className="rp-scroll-controls">
+                    <button className="rp-scroll-btn" onClick={() => scrollRow('bundleItems', -1)} aria-label="Прокрутить влево">‹</button>
+                    <button className="rp-scroll-btn" onClick={() => scrollRow('bundleItems', 1)} aria-label="Прокрутить вправо">›</button>
+                  </div>
+                )}
+              </div>
+              {bundleLoading ? (
+                <p className="detail-muted">Загружаем состав издания...</p>
+              ) : bundleProducts.length > 0 ? (
+                <div className="rp-carousel rp-catalog-carousel" ref={(el) => { scrollRefs.current.bundleItems = el; }}>
+                  {bundleProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      unavailablePriceLabel="Смотреть игру"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="detail-muted">Не удалось загрузить состав издания.</p>
+              )}
+            </section>
+          )}
+
+          {editionProductIds.length > 0 && (
+            <section className="detail-section detail-section-wide rp-section">
+              <div className="rp-section-header">
+                <h2>Другие издания</h2>
+                {editionProducts.length > 4 && (
+                  <div className="rp-scroll-controls">
+                    <button className="rp-scroll-btn" onClick={() => scrollRow('compareEditionItems', -1)} aria-label="Прокрутить влево">‹</button>
+                    <button className="rp-scroll-btn" onClick={() => scrollRow('compareEditionItems', 1)} aria-label="Прокрутить вправо">›</button>
+                  </div>
+                )}
+              </div>
+              {editionLoading ? (
+                <p className="detail-muted">Загружаем издания...</p>
+              ) : editionProducts.length > 0 ? (
+                <div className="rp-carousel rp-catalog-carousel" ref={(el) => { scrollRefs.current.compareEditionItems = el; }}>
+                  {editionProducts.map((product) => <ProductCard key={product.id} product={product} />)}
+                </div>
+              ) : (
+                <p className="detail-muted">Не удалось загрузить издания.</p>
+              )}
+            </section>
+          )}
         </div>
       )}
 
@@ -829,12 +1109,6 @@ export default function GameDetailPage() {
                     : 'Оценок пока нет.'}
                 </p>
               </div>
-              {reviewSummary && (
-                <div className="store-review-score">
-                  <strong>{reviewSummary.avg.toFixed(1)}</strong>
-                  <span>{'★'.repeat(Math.max(1, Math.round(reviewSummary.avg)))}</span>
-                </div>
-              )}
             </div>
 
             {reviewSummary ? (
@@ -911,38 +1185,6 @@ export default function GameDetailPage() {
         </section>
       )}
 
-      {data.skus?.length > 1 && (
-        <section className="detail-section detail-section-wide">
-          <h2>Другие издания</h2>
-          <div className="detail-editions-grid">
-            {data.skus.map((sku) => {
-              const priced = (sku.availabilities || [])
-                .filter((availability) => Array.isArray(availability.actions) && availability.actions.includes('Purchase'))
-                .map((availability) => availability.price?.listPrice != null ? availability.price : null)
-                .filter(Boolean);
-              const best = priced.length
-                ? priced.reduce((min, item) => (item.listPrice < min.listPrice ? item : min), priced[0])
-                : null;
-              const img = sku.images?.[0];
-              return (
-                <div key={sku.skuId} className="edition-card">
-                  {img?.uri && (
-                    <div className="edition-card-image">
-                      <img src={`${img.uri}?w=600`} alt={sku.title || data.title} />
-                    </div>
-                  )}
-                  <div className="edition-card-body">
-                    <h3 className="edition-title">{sku.title || data.title}</h3>
-                    <p className="edition-price">{best ? best.formattedList : 'Входит в набор'}</p>
-                    {sku.description && <p className="edition-description">{sku.description}</p>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
       {Object.entries(groupedRelated).map(([type, products]) => {
         if (!products.length) return null;
         const key = type === 'Consumable' ? 'AddOn' : type;
@@ -979,6 +1221,10 @@ function PaymentPriceAmount({ price, fallback }) {
 
 function getGamePassSavingsText(percent) {
   return `Сэкономь ${Math.round(Number(percent) || 0)}% с Game Pass`;
+}
+
+function getCatalogPaymentTitle(price) {
+  return CATALOG_PAYMENT_TITLES[price?.id] || String(price?.shortTitle || price?.title || '').toUpperCase();
 }
 
 function getSubscriptionChipClass(label) {
@@ -1033,4 +1279,11 @@ function getStorePriceLabel(price, releaseInfo, isUnavailablePrice) {
   if (price?.value === 0) return 'Бесплатно';
   if (price?.status === 'unreleased' || releaseInfo?.status === 'unreleased') return 'Еще не вышла';
   return price?.formatted || releaseInfo?.label || null;
+}
+
+function formatDealEndDateShort(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return `до ${date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`;
 }

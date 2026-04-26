@@ -294,6 +294,28 @@ async function getProductDetail(req, res, next) {
     if (!product.categories?.length && storePageProductData.categories?.length) {
       product.categories = storePageProductData.categories;
     }
+    if (Array.isArray(storePageProductData.bundleItems) && storePageProductData.bundleItems.length > 0) {
+      product.bundleItems = storePageProductData.bundleItems;
+    }
+    if (Array.isArray(storePageProductData.compareEditionItems) && storePageProductData.compareEditionItems.length > 0) {
+      product.compareEditionItems = storePageProductData.compareEditionItems;
+    }
+    if (!product.fullDescription && storePageProductData.description?.fullDescription) {
+      product.fullDescription = storePageProductData.description.fullDescription;
+      product.descriptionSource = storePageProductData.description.source || null;
+    }
+    if (!product.shortDescription && storePageProductData.description?.shortDescription) {
+      product.shortDescription = storePageProductData.description.shortDescription;
+    }
+
+    logger.info('Product deal date debug', {
+      productId: product.id,
+      priceValue: product.price?.value ?? null,
+      priceOriginal: product.price?.original ?? null,
+      discountPercent: product.price?.discountPercent ?? null,
+      dealEndDate: product.price?.dealEndDate ?? null,
+      releaseStatus: product.releaseInfo?.status ?? null,
+    });
 
     res.json({
       success: true,

@@ -22,19 +22,12 @@ async function getStorePageProductData({ productId, storeUrl }) {
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
-  const response = await withRetry(() =>
-    client.get(toXboxRequestPath(storeUrl), {
-      headers: {
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': config.xbox.language,
-      },
-    }),
-  );
-
-  const state = extractPreloadedState(String(response.data || ''));
+  const state = await fetchStoreStateForLocale(storeUrl, config.xbox.language || 'en-US');
+  const ruState = await fetchStoreStateForLocale(storeUrl, 'ru-RU').catch(() => null);
   const channelData = state?.core2?.channels?.channelData || {};
   const productSummaries = state?.core2?.products?.productSummaries || {};
   const productSummary = getCaseInsensitiveValue(productSummaries, normalizedProductId);
+  const ruProductSummary = getCaseInsensitiveValue(ruState?.core2?.products?.productSummaries || {}, normalizedProductId);
   const products = [];
   const seen = new Set([normalizedProductId]);
 
@@ -59,6 +52,9 @@ async function getStorePageProductData({ productId, storeUrl }) {
     relatedProducts: products,
     languageInfo: extractStoreLanguageInfo(productSummary),
     categories: extractStoreCategories(productSummary),
+    description: extractPreferredStoreDescription(ruProductSummary, productSummary),
+    bundleItems: extractBundleItems(channelData, productSummaries, normalizedProductId),
+    compareEditionItems: extractCompareEditionItems(channelData, productSummaries, normalizedProductId),
   };
   cache.set(cacheKey, data);
   if (data.languageInfo) {
@@ -77,6 +73,61 @@ function toXboxRequestPath(storeUrl) {
   return storeUrl;
 }
 
+async function fetchStoreStateForLocale(storeUrl, locale = 'en-US') {
+  const response = await withRetry(() =>
+    client.get(toXboxRequestPathForLocale(storeUrl, locale), {
+      headers: {
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': locale,
+      },
+    }),
+  );
+  return extractPreloadedState(String(response.data || ''));
+}
+
+function toXboxRequestPathForLocale(storeUrl, locale) {
+  const path = toXboxRequestPath(storeUrl);
+  return path.replace(/^\/(?:[a-z]{2}-[a-z]{2})\//i, `/${locale}/`);
+}
+
+function extractPreferredStoreDescription(ruProductSummary, enProductSummary) {
+  const ru = extractStoreDescription(ruProductSummary);
+  if (ru.fullDescription || ru.shortDescription) {
+    return { ...ru, source: 'ru-RU' };
+  }
+  const en = extractStoreDescription(enProductSummary);
+  if (en.fullDescription || en.shortDescription) {
+    return { ...en, source: 'en-US' };
+  }
+  return { fullDescription: null, shortDescription: null, source: null };
+}
+
+function extractStoreDescription(productSummary) {
+  if (!productSummary || typeof productSummary !== 'object') {
+    return { fullDescription: null, shortDescription: null };
+  }
+
+  const fullDescription = firstNonEmptyString([
+    productSummary.productDescription,
+    productSummary.longDescription,
+    productSummary.description,
+  ]);
+
+  const shortDescription = firstNonEmptyString([
+    productSummary.shortDescription,
+    productSummary.tagline,
+  ]);
+
+  return { fullDescription, shortDescription };
+}
+
+function firstNonEmptyString(values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
+}
+
 function getChannelProductIds(channelData, prefix, productId) {
   const expectedKey = `${prefix}_${productId}`;
   const channelKey = Object.keys(channelData).find((key) => key.toUpperCase() === expectedKey);
@@ -86,6 +137,47 @@ function getChannelProductIds(channelData, prefix, productId) {
   return products
     .map((product) => product?.productId)
     .filter(Boolean);
+}
+
+function extractBundleItems(channelData, productSummaries, productId) {
+  const bundleIds = getChannelProductIds(channelData, 'INTHISBUNDLE', productId);
+  if (!bundleIds.length) return [];
+  return bundleIds.map((id) => {
+    const summary = getCaseInsensitiveValue(productSummaries, id);
+    return {
+      productId: id,
+      title: summary?.title || id,
+      image: extractSummaryImage(summary),
+      detailPath: `/game/${id}`,
+    };
+  });
+}
+
+function extractCompareEditionItems(channelData, productSummaries, productId) {
+  const editionIds = getChannelProductIds(channelData, 'COMPAREEDITIONS', productId)
+    .filter((id) => String(id || '').toUpperCase() !== String(productId || '').toUpperCase());
+  if (!editionIds.length) return [];
+  return editionIds.map((id) => {
+    const summary = getCaseInsensitiveValue(productSummaries, id);
+    return {
+      productId: id,
+      title: summary?.title || id,
+      image: extractSummaryImage(summary),
+      detailPath: `/game/${id}`,
+    };
+  });
+}
+
+function extractSummaryImage(summary) {
+  const images = summary?.images;
+  if (!Array.isArray(images) || !images.length) return null;
+  const preferred = images.find((image) => /FeaturePromotionalSquareArt/i.test(String(image?.imagePurpose || image?.purpose || '')))
+    || images.find((image) => /BoxArt|Tile/i.test(String(image?.imagePurpose || image?.purpose || '')))
+    || images.find((image) => /Poster|BrandedKeyArt|SuperHero/i.test(String(image?.imagePurpose || image?.purpose || '')))
+    || images[0];
+  const uri = preferred?.url || preferred?.uri || null;
+  if (!uri) return null;
+  return String(uri).startsWith('//') ? `https:${uri}` : uri;
 }
 
 function getCaseInsensitiveValue(source, key) {
