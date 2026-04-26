@@ -2,13 +2,26 @@ const axios = require('axios');
 const { randomUUID } = require('crypto');
 const config = require('../config');
 const logger = require('../utils/logger');
+const { fetchRubPrice } = require('./digisellerService');
 
 const OPLATA_BASE_URL = 'https://www.oplata.info';
 const XBOX_GAME_NAME_OPTION = '4931969';
 const XBOX_ACCOUNT_EMAIL_OPTION = '4931970';
 const XBOX_ACCOUNT_PASSWORD_OPTION = '4931971';
 
-const POST_HEADERS = {
+const FORM_POST_HEADERS = {
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+  'Accept-Language': 'ru,en;q=0.9',
+  'Cache-Control': 'no-cache',
+  'Content-Type': 'application/x-www-form-urlencoded',
+  Origin: OPLATA_BASE_URL,
+  Pragma: 'no-cache',
+  Referer: `${OPLATA_BASE_URL}/`,
+  'Upgrade-Insecure-Requests': '1',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+};
+
+const CART_POST_HEADERS = {
   Accept: 'application/json, text/plain, */*',
   'Accept-Language': 'ru,en;q=0.9',
   'Content-Type': 'application/x-www-form-urlencoded',
@@ -25,14 +38,6 @@ function createCartError(message, statusCode = 400) {
 
 function normalizeText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
-}
-
-function normalizeIp(value) {
-  const ip = String(value || '').split(',')[0].trim();
-  if (!ip) return '127.0.0.1';
-  if (ip.startsWith('::ffff:')) return ip.slice(7);
-  if (ip === '::1') return '127.0.0.1';
-  return ip;
 }
 
 function parseJsonOrXmlPayload(payload) {
@@ -67,45 +72,77 @@ function getCartAddCurrency(typeCurrency) {
   return currency || 'RUB';
 }
 
-async function createPurchaseOptions({ productId, options, unitCount, ip }) {
-  if (!productId) return null;
+function extractIdPoFromLocation(location) {
+  if (!location) return null;
   try {
-    const response = await axios.post('https://api.digiseller.com/api/purchases/options', {
-      product_id: Number(productId),
-      options: options || [],
-      unit_cnt: Math.max(1, Number(unitCount) || 1),
-      lang: 'ru-RU',
-      ip: normalizeIp(ip),
-    }, {
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    const url = new URL(location, OPLATA_BASE_URL);
+    const idPo = url.searchParams.get('id_po');
+    return idPo ? String(idPo) : null;
+  } catch {
+    const m = String(location).match(/[?&]id_po=([^&]+)/i);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+}
+
+async function createIdPoForItem(item) {
+  const digiuid = randomUUID().toUpperCase();
+  const failPage = config.digiseller.failPageUrl
+    || (config.clientOrigin ? `${config.clientOrigin.replace(/\/$/, '')}/cart` : '');
+  const body = new URLSearchParams({
+    Lang: 'ru-RU',
+    ID_D: String(item.digisellerId),
+    product_id: String(item.digisellerId),
+    Agent: config.digiseller.sellerId || '',
+    AgentN: '',
+    FailPage: failPage,
+    failpage: failPage,
+    NoClearBuyerQueryString: 'NoClear',
+    digiuid,
+    Curr_add: '',
+    TypeCurr: item.typeCurrency,
+    _subcurr: '',
+    _ow: '0',
+    firstrun: '0',
+    unit_cnt: String(item.unitCount),
+    unit_amount: String(item.amountRub),
+    product_cnt: String(item.unitCount),
+    Email: item.purchaseEmail || '',
+    ...item.optionFields,
+  });
+
+  try {
+    const response = await axios.post(config.digiseller.payPostUrl, body.toString(), {
+      headers: FORM_POST_HEADERS,
       timeout: 12000,
-      validateStatus: (status) => status >= 200 && status < 500,
+      maxRedirects: 0,
+      validateStatus: (status) => status >= 200 && status < 400,
     });
-    const payload = parseJsonOrXmlPayload(response.data);
-    const retval = String(payload.retval ?? '');
-    if (retval !== '0' || !payload.id_po) {
-      logger.warn('Digiseller cart purchases/options failed', {
-        productId,
-        retval: payload.retval ?? null,
-        retdesc: payload.retdesc || null,
+    const location = response.headers.location;
+    const idPo = extractIdPoFromLocation(location);
+    if (!idPo) {
+      logger.warn('Digiseller cart pay.asp returned no id_po', {
+        digisellerId: item.digisellerId,
+        status: response.status,
+        location,
       });
       return null;
     }
-    return String(payload.id_po);
+    return idPo;
   } catch (err) {
-    logger.error('Digiseller cart purchases/options error', {
-      productId,
+    logger.error('Digiseller cart pay.asp error', {
+      digisellerId: item.digisellerId,
       message: err.message,
+      status: err.response?.status,
     });
     return null;
   }
 }
 
-async function postCartAdd({ productId, idPo, cartUid, productCnt, typeCurrency, purchaseEmail }) {
+async function postCartAdd({ digisellerId, idPo, cartUid, productCnt, typeCurrency, purchaseEmail }) {
   const base = (config.digiseller.cartBaseUrl || 'https://shop.digiseller.ru').replace(/\/$/, '');
   const url = `${base}/xml/shop_cart_add.asp`;
   const body = new URLSearchParams({
-    product_id: String(productId),
+    product_id: String(digisellerId),
     product_cnt: String(Math.max(1, Number(productCnt) || 1)),
     typecurr: getCartAddCurrency(typeCurrency),
     email: purchaseEmail || '',
@@ -116,7 +153,7 @@ async function postCartAdd({ productId, idPo, cartUid, productCnt, typeCurrency,
 
   try {
     const response = await axios.post(url, body.toString(), {
-      headers: POST_HEADERS,
+      headers: CART_POST_HEADERS,
       timeout: 12000,
       validateStatus: (status) => status >= 200 && status < 500,
     });
@@ -124,7 +161,7 @@ async function postCartAdd({ productId, idPo, cartUid, productCnt, typeCurrency,
     const cartErr = String(payload.cart_err_num ?? payload.cart_err ?? payload.retval ?? '');
     if ((cartErr !== '0' && cartErr !== '') || !payload.cart_uid) {
       logger.warn('Digiseller cart add failed', {
-        productId,
+        digisellerId,
         cartErr,
         retdesc: payload.retdesc || null,
       });
@@ -132,7 +169,7 @@ async function postCartAdd({ productId, idPo, cartUid, productCnt, typeCurrency,
     }
     return { ok: true, cartUid: String(payload.cart_uid) };
   } catch (err) {
-    logger.error('Digiseller cart add error', { productId, message: err.message });
+    logger.error('Digiseller cart add error', { digisellerId, message: err.message });
     return { ok: false, reason: err.message };
   }
 }
@@ -169,34 +206,44 @@ function getUsdPriceValue(product) {
   return null;
 }
 
-function buildItemsForOplata(products, { gameNames, accountEmail, accountPassword }) {
+async function buildItemsForOplata(products, { gameNames, accountEmail, accountPassword, purchaseEmail }) {
   const digisellerId = config.digiseller.defaultProductId;
   if (!digisellerId) throw createCartError('Digiseller product id is not configured', 500);
   if (!accountEmail) throw createCartError('Email аккаунта Xbox обязателен');
   if (!accountPassword) throw createCartError('Пароль аккаунта Xbox обязателен');
 
-  return products.map((product, index) => {
+  const items = [];
+  for (let index = 0; index < products.length; index += 1) {
+    const product = products[index];
     const usd = getUsdPriceValue(product);
     if (!usd) {
       throw createCartError(`Не удалось определить цену для "${product.title || product.id}"`, 400);
     }
     const gameName = normalizeText(gameNames?.[index] || product.title || product.name || product.id);
-    return {
-      productId: digisellerId,
+    const rubQuote = await fetchRubPrice(digisellerId, usd, { cacheResult: true });
+    const amountRub = Math.round(Number(rubQuote?.amount || rubQuote?.value || product.priceRub?.amount || product.priceRub?.value || 0));
+    if (!amountRub || !Number.isFinite(amountRub)) {
+      throw createCartError(`Не удалось получить цену в рублях для "${gameName}"`, 502);
+    }
+    items.push({
+      digisellerId,
       typeCurrency: config.digiseller.typeCurrency,
       unitCount: usd,
+      amountRub,
       productCnt: usd,
       productTitle: gameName,
-      options: [
-        { id: Number(XBOX_GAME_NAME_OPTION), value: { text: gameName } },
-        { id: Number(XBOX_ACCOUNT_EMAIL_OPTION), value: { text: accountEmail } },
-        { id: Number(XBOX_ACCOUNT_PASSWORD_OPTION), value: { text: accountPassword } },
-      ],
-    };
-  });
+      purchaseEmail: purchaseEmail || '',
+      optionFields: {
+        [`Option_text_${XBOX_GAME_NAME_OPTION}`]: gameName,
+        [`Option_text_${XBOX_ACCOUNT_EMAIL_OPTION}`]: accountEmail,
+        [`Option_text_${XBOX_ACCOUNT_PASSWORD_OPTION}`]: accountPassword,
+      },
+    });
+  }
+  return items;
 }
 
-function buildItemsForKeyActivation(products, { gameNames }) {
+async function buildItemsForKeyActivation(products, { gameNames, purchaseEmail }) {
   const digisellerId = config.digiseller.keyActivationProductId;
   if (!digisellerId) throw createCartError('Key activation product id is not configured', 500);
   const optionCategoryId = config.digiseller.keyActivationOptionCategoryId;
@@ -206,24 +253,35 @@ function buildItemsForKeyActivation(products, { gameNames }) {
     throw createCartError('Key activation options are not configured', 500);
   }
 
-  return products.map((product, index) => {
+  const optionXml = `<response><option O="${optionCategoryId}" V="${optionValueId}"/></response>`;
+  const items = [];
+  for (let index = 0; index < products.length; index += 1) {
+    const product = products[index];
     const usd = getUsdPriceValue(product);
     if (!usd) {
       throw createCartError(`Не удалось определить цену для "${product.title || product.id}"`, 400);
     }
     const gameName = normalizeText(gameNames?.[index] || product.title || product.name || product.id);
-    return {
-      productId: digisellerId,
+    const rubQuote = await fetchRubPrice(digisellerId, usd, { cacheResult: true, optionXml });
+    const amountRub = Math.round(Number(rubQuote?.amount || rubQuote?.value || 0));
+    if (!amountRub || !Number.isFinite(amountRub)) {
+      throw createCartError(`Не удалось получить цену в рублях для "${gameName}"`, 502);
+    }
+    items.push({
+      digisellerId,
       typeCurrency: config.digiseller.keyActivationTypeCurrency || config.digiseller.typeCurrency,
       unitCount: usd,
+      amountRub,
       productCnt: usd,
       productTitle: gameName,
-      options: [
-        { id: Number(optionCategoryId), value: { id: Number(optionValueId) } },
-        { id: Number(gameNameOptionId), value: { text: gameName } },
-      ],
-    };
-  });
+      purchaseEmail: purchaseEmail || '',
+      optionFields: {
+        [`Option_radio_${optionCategoryId}`]: String(optionValueId),
+        [`Option_text_${gameNameOptionId}`]: gameName,
+      },
+    });
+  }
+  return items;
 }
 
 async function buildCartPayment({
@@ -233,7 +291,6 @@ async function buildCartPayment({
   accountEmail,
   accountPassword,
   purchaseEmail,
-  buyerIp,
 }) {
   if (!Array.isArray(products) || products.length === 0) {
     throw createCartError('Корзина пуста', 400);
@@ -248,23 +305,22 @@ async function buildCartPayment({
   const cleanGameNames = (gameNames || []).map(normalizeText);
 
   const items = paymentMode === 'oplata'
-    ? buildItemsForOplata(products, {
+    ? await buildItemsForOplata(products, {
         gameNames: cleanGameNames,
         accountEmail: cleanAccountEmail,
         accountPassword: cleanAccountPassword,
+        purchaseEmail: cleanEmail,
       })
-    : buildItemsForKeyActivation(products, { gameNames: cleanGameNames });
+    : await buildItemsForKeyActivation(products, {
+        gameNames: cleanGameNames,
+        purchaseEmail: cleanEmail,
+      });
 
   let cartUid = '';
   const addedItems = [];
 
   for (const item of items) {
-    const idPo = await createPurchaseOptions({
-      productId: item.productId,
-      options: item.options,
-      unitCount: item.unitCount,
-      ip: buyerIp,
-    });
+    const idPo = await createIdPoForItem(item);
     if (!idPo) {
       throw createCartError(
         `Не удалось подготовить вариант покупки для "${item.productTitle}"`,
@@ -272,7 +328,7 @@ async function buildCartPayment({
       );
     }
     const result = await postCartAdd({
-      productId: item.productId,
+      digisellerId: item.digisellerId,
       idPo,
       cartUid,
       productCnt: item.productCnt,
@@ -280,14 +336,14 @@ async function buildCartPayment({
       purchaseEmail: cleanEmail,
     });
     if (!result.ok) {
+      const detail = result.retdesc ? ` (${result.retdesc})` : '';
       throw createCartError(
-        result.retdesc
-          || `Не удалось добавить "${item.productTitle}" в корзину`,
+        `Не удалось добавить "${item.productTitle}" в корзину${detail}`,
         502,
       );
     }
     cartUid = result.cartUid;
-    addedItems.push({ title: item.productTitle, productId: item.productId });
+    addedItems.push({ title: item.productTitle, digisellerId: item.digisellerId, idPo });
   }
 
   if (!cartUid) throw createCartError('Не удалось создать корзину', 502);

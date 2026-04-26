@@ -6981,3 +6981,26 @@ body.mobile-menu-open {
 
 .header-cart-link .header-favorites-icon { color: #84d1f1; }
 
+.cart-modal-totals {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.cart-modal-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.85rem;
+}
+.cart-modal-total-row span { color: var(--text-muted); letter-spacing: 0.03em; }
+.cart-modal-total-row strong { font-weight: 900; font-size: 0.95rem; }
+.cart-modal-total-row strong small { color: var(--text-muted); font-weight: 600; font-size: 0.78rem; margin-left: 0.3rem; }
+.cart-modal-total-row--na strong { color: var(--text-muted); font-weight: 600; }
+

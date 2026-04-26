@@ -548,6 +548,7 @@ async function createCartPurchase(req, res, next) {
       accountEmail,
       accountPassword,
       purchaseEmail,
+      saveToProfile,
     } = req.body || {};
 
     if (!Array.isArray(productIds) || productIds.length === 0) {
@@ -571,6 +572,22 @@ async function createCartPurchase(req, res, next) {
 
     if (finalPaymentMode !== 'oplata' && finalPaymentMode !== 'key_activation') {
       throw new AppError('Этот способ оплаты не поддерживает покупку корзиной', 400);
+    }
+
+    if (req.user && saveToProfile) {
+      const saveFields = {
+        purchaseEmail: finalPurchaseEmail,
+        paymentMode: finalPaymentMode,
+      };
+      if (finalPaymentMode !== 'key_activation') {
+        saveFields.xboxAccountEmail = finalAccountEmail;
+        saveFields.xboxAccountPassword = accountPassword || undefined;
+      }
+      await updatePurchaseSettings(req.user.id, saveFields).catch((e) =>
+        logger.warn('Cart purchase settings save failed during checkout', {
+          userId: req.user.id,
+          message: e.message,
+        }));
     }
 
     const rawProducts = await getProductsByIds(productIds);
