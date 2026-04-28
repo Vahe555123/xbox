@@ -14,6 +14,7 @@ const PAYMENT_MODES = [
 ];
 
 const SPECIAL_OFFER_MODE = { id: 'special_offer', title: 'СПЕЦПРЕДЛОЖЕНИЕ', description: 'Спецпредложение для каждого товара' };
+const CART_BATCH_MODE_IDS = new Set(['oplata', 'key_activation']);
 
 const EMPTY_FORM = {
   purchaseEmail: '',
@@ -75,6 +76,25 @@ function paymentModeAvailable(items, modeId) {
   });
 }
 
+function isCartBatchMode(modeId) {
+  return CART_BATCH_MODE_IDS.has(modeId);
+}
+
+function getSeparatePurchaseAlert(modes) {
+  const hasSpecialOffer = modes.some((mode) => mode.id === 'special_offer');
+  const hasTopupCards = modes.some((mode) => mode.id === 'topup_cards');
+
+  if (hasSpecialOffer && hasTopupCards) {
+    return 'Спецпредложение и покупка кодом пополнения баланса оформляются только отдельно для каждого товара. Для этих способов не собирайте одну общую корзину.';
+  }
+
+  if (hasSpecialOffer) {
+    return 'Спецпредложение оформляется только отдельно для каждого товара. Если хотите купить именно по спецпредложению, открывайте игру отдельно.';
+  }
+
+  return 'Покупка кодом пополнения баланса оформляется только отдельно для каждого товара. Для этого способа открывайте нужные игры по одной.';
+}
+
 export default function CartPage({ currentUser, onLoginClick }) {
   const { items, count, remove, clear, hydrating } = useCart();
   const [form, setForm] = useState(EMPTY_FORM);
@@ -99,6 +119,21 @@ export default function CartPage({ currentUser, onLoginClick }) {
     }
     return modes;
   }, [items]);
+
+  const separatePurchaseModes = useMemo(
+    () => totals.filter((mode) => {
+      const available = mode.id === 'special_offer'
+        ? allHaveSpecialOffer(items)
+        : Boolean(mode.total);
+      return available && !isCartBatchMode(mode.id);
+    }),
+    [items, totals],
+  );
+
+  const separatePurchaseAlert = useMemo(
+    () => (separatePurchaseModes.length ? getSeparatePurchaseAlert(separatePurchaseModes) : null),
+    [separatePurchaseModes],
+  );
 
   const purchaseSettings = profile?.purchaseSettings || {};
   const profileUser = profile?.user || null;
@@ -272,17 +307,30 @@ export default function CartPage({ currentUser, onLoginClick }) {
 
         <aside className="cart-summary">
           <h2>Общая сумма</h2>
+          {separatePurchaseAlert && (
+            <div className="cart-summary-alert" role="note">
+              <strong>Внимание</strong>
+              <p>{separatePurchaseAlert}</p>
+            </div>
+          )}
           <ul className="cart-summary-list">
             {totals.map((mode) => {
               const available = mode.id === 'special_offer'
                 ? allHaveSpecialOffer(items)
                 : Boolean(mode.total);
-              const isCartCapable = mode.id === 'oplata' || mode.id === 'key_activation';
+              const isCartCapable = isCartBatchMode(mode.id);
+              const isSeparateOnly = available && !isCartCapable;
               return (
-                <li key={mode.id} className={`cart-summary-row ${available ? '' : 'cart-summary-row--disabled'}`}>
+                <li
+                  key={mode.id}
+                  className={`cart-summary-row ${available ? '' : 'cart-summary-row--disabled'} ${isSeparateOnly ? 'cart-summary-row--standalone' : ''}`}
+                >
                   <div className="cart-summary-mode">
                     <strong style={mode.id === 'special_offer' ? { color: '#ac84f1' } : undefined}>{mode.title}</strong>
                     <small>{mode.description}</small>
+                    {isSeparateOnly && (
+                      <small className="cart-summary-warning">Покупается только отдельно</small>
+                    )}
                   </div>
                   <div className="cart-summary-amount">
                     {mode.id === 'special_offer' && (
@@ -304,12 +352,12 @@ export default function CartPage({ currentUser, onLoginClick }) {
                   </div>
                   <button
                     type="button"
-                    className="cart-summary-buy"
+                    className={`cart-summary-buy ${isSeparateOnly ? 'cart-summary-buy--standalone' : ''}`}
                     disabled={!available || !isCartCapable}
                     title={!isCartCapable && available ? 'Этот способ нельзя оплатить корзиной' : undefined}
                     onClick={() => openPurchase(mode.id)}
                   >
-                    Купить
+                    {isSeparateOnly ? 'Только отдельно' : 'Купить'}
                   </button>
                 </li>
               );

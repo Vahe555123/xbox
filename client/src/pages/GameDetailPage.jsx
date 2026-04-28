@@ -509,9 +509,14 @@ export default function GameDetailPage() {
     selectedPaymentPrice,
     selectedPaymentFallback,
   );
+  const hasManagedPurchaseMode = Boolean(
+    data.digisellerId || data.keyActivationPayUrl || data.specialOfferUrl || data.topupCombo?.available,
+  );
+  const canOpenPurchase = hasManagedPurchaseMode || Boolean(data.officialStoreUrl);
+  const showSpecialOfferCartNote = Boolean(data.specialOfferUrl);
 
   const handleBuyClick = async () => {
-    if (!data.digisellerId && data.officialStoreUrl) {
+    if (!hasManagedPurchaseMode && data.officialStoreUrl) {
       window.location.assign(data.officialStoreUrl);
       return;
     }
@@ -696,7 +701,7 @@ export default function GameDetailPage() {
                 className="ps-buy-button"
                 type="button"
                 onClick={handleBuyClick}
-                disabled={purchaseLoading || (!data.digisellerId && !data.officialStoreUrl && !data.keyActivationPayUrl && !data.specialOfferUrl)}
+                disabled={purchaseLoading || !canOpenPurchase}
               >
                 {purchaseLoading ? 'Готовим ссылку...' : 'Купить'}
               </button>
@@ -717,6 +722,11 @@ export default function GameDetailPage() {
               </button>
             </div>
           </div>
+          {showSpecialOfferCartNote && (
+            <div className="ps-buy-note" role="note">
+              <strong>Внимание:</strong> если хотите купить игру по спецпредложению, не добавляйте её в корзину. Для этого способа оформляйте покупку отдельно через кнопку «Купить».
+            </div>
+          )}
           {favoriteToast && (
             <div className="detail-toast detail-toast--success" role="status" aria-live="polite">
               <span>{favoriteToast}</span>

@@ -3265,9 +3265,9 @@ img {
 }
 
 .ps-buy-button {
-  min-height: 48px;
-  min-width: 150px;
-  padding: 0 1.35rem;
+  min-height: 42px;
+  min-width: 136px;
+  padding: 0 1.1rem;
   border-radius: 8px;
   border: 0;
   display: inline-flex;
@@ -3275,6 +3275,7 @@ img {
   justify-content: center;
   background: #fff;
   color: #05080c;
+  font-size: 0.96rem;
   font-weight: 900;
   cursor: pointer;
   transition: transform var(--transition), background var(--transition);
@@ -3294,14 +3295,31 @@ img {
 .ps-buy-actions {
   display: inline-flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.55rem;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
+.ps-buy-note {
+  width: min(100%, 470px);
+  margin: -0.1rem 0 1rem auto;
+  padding: 0.8rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 120, 120, 0.3);
+  background: linear-gradient(180deg, rgba(255, 96, 96, 0.14), rgba(255, 96, 96, 0.06));
+  color: #ffd4d4;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.ps-buy-note strong {
+  color: #ffb2b2;
+}
+
 .ps-follow-button {
-  min-height: 48px;
-  padding: 0 1rem;
+  min-height: 42px;
+  padding: 0 0.9rem;
+  font-size: 0.94rem;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.24);
   background: rgba(255, 255, 255, 0.08);
@@ -6112,6 +6130,11 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .ps-buy-note {
+    width: 100%;
+    margin: 0 0 1rem;
+  }
+
   .ps-follow-button {
     width: 100%;
   }
@@ -6770,8 +6793,9 @@ body.mobile-menu-open {
 }
 
 .ps-cart-button {
-  min-height: 48px;
-  padding: 0 1rem;
+  min-height: 42px;
+  padding: 0 0.9rem;
+  font-size: 0.94rem;
   border-radius: 8px;
   border: 1px solid rgba(132, 209, 241, 0.5);
   background: rgba(132, 209, 241, 0.12);
@@ -6922,6 +6946,32 @@ body.mobile-menu-open {
   font-weight: 900;
 }
 
+.cart-summary-alert {
+  margin-bottom: 0.85rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 96, 96, 0.18), rgba(255, 96, 96, 0.08));
+  border: 1px solid rgba(255, 120, 120, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.cart-summary-alert strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #ffb3b3;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.cart-summary-alert p {
+  margin: 0;
+  color: #ffd7d7;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .cart-summary-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
 
 .cart-summary-row {
@@ -6936,10 +6986,12 @@ body.mobile-menu-open {
 }
 
 .cart-summary-row--disabled { opacity: 0.55; }
+.cart-summary-row--standalone { border-color: rgba(255, 120, 120, 0.22); }
 
 .cart-summary-mode { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; gap: 0.15rem; }
 .cart-summary-mode strong { font-size: 0.86rem; font-weight: 900; letter-spacing: 0.04em; }
 .cart-summary-mode small { color: var(--text-muted); font-size: 0.78rem; }
+.cart-summary-warning { color: #ff9c9c !important; font-weight: 800; }
 
 .cart-summary-amount { grid-column: 2; grid-row: 1; text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
 .cart-summary-amount strong { font-size: 1.05rem; font-weight: 900; }
@@ -6961,6 +7013,13 @@ body.mobile-menu-open {
 }
 .cart-summary-buy:hover { transform: translateY(-1px); background: #dff6ff; }
 .cart-summary-buy:disabled { opacity: 0.55; cursor: not-allowed; transform: none; background: rgba(255, 255, 255, 0.18); color: var(--text-muted); }
+.cart-summary-buy--standalone,
+.cart-summary-buy--standalone:disabled {
+  opacity: 1;
+  border: 1px solid rgba(255, 120, 120, 0.28);
+  background: rgba(255, 96, 96, 0.12);
+  color: #ffc1c1;
+}
 
 .cart-summary-note {
   margin-top: 0.8rem;
@@ -7003,4 +7062,3 @@ body.mobile-menu-open {
 .cart-modal-total-row strong { font-weight: 900; font-size: 0.95rem; }
 .cart-modal-total-row strong small { color: var(--text-muted); font-weight: 600; font-size: 0.78rem; margin-left: 0.3rem; }
 .cart-modal-total-row--na strong { color: var(--text-muted); font-weight: 600; }
-
