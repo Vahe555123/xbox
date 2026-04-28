@@ -42,7 +42,8 @@ function getDefaultFilters() {
       choices: [
         { id: 'DO_NOT_FILTER', title: 'Relevance' },
         { id: 'ReleaseDate desc', title: 'Release date: newest-oldest' },
-        { id: 'MostPopular desc', title: 'Most Popular' },
+        { id: 'WishlistCountTotal desc', title: 'Popular' },
+        { id: 'MostPopular desc', title: 'Top rated' },
         { id: 'Price asc', title: 'Price: low-high' },
         { id: 'Price desc', title: 'Price: high-low' },
         { id: 'Title Asc', title: 'Title: A-Z' },

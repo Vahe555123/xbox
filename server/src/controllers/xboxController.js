@@ -216,6 +216,7 @@ async function searchXbox(req, res, next) {
       sort: params.sort,
       hasFilters: Object.keys(params.filters).length > 0,
       hasEncodedCT: !!params.encodedCT,
+      countOnly: params.countOnly,
     });
 
     const channelId = params.deals ? 'DynamicChannel.GameDeals' : '';
@@ -229,9 +230,19 @@ async function searchXbox(req, res, next) {
       languageMode: params.languageMode,
       freeOnly: params.freeOnly,
       dealsOnly: params.deals,
+      countOnly: params.countOnly,
       encodedCT: params.encodedCT,
       channelId,
     });
+
+    if (params.countOnly) {
+      return res.json({
+        success: true,
+        total: result.totalItems,
+        totalIsApproximate: result.totalIsApproximate,
+        totalPending: false,
+      });
+    }
 
     await enrichProductsWithRub(result.products).catch((e) =>
       logger.warn('RUB enrichment failed', { message: e.message }));
@@ -246,6 +257,7 @@ async function searchXbox(req, res, next) {
       products: result.products,
       filters: result.filters,
       totalIsApproximate: result.totalIsApproximate,
+      totalPending: result.totalPending || false,
       encodedCT: result.encodedCT,
       hasMorePages: result.hasMorePages,
       deals: params.deals || false,

@@ -17,8 +17,12 @@ const logger = require('../utils/logger');
  */
 const RUB_USD_RATE = Number(process.env.RUB_USD_RATE) || 100;
 const SEARCH_RERANK_MAX_PAGES = Math.max(1, Number(process.env.SEARCH_RERANK_MAX_PAGES) || 4);
+const LOCAL_FILTER_PREFETCH_MAX_PAGES = Math.max(1, Number(process.env.SEARCH_LOCAL_FILTER_MAX_PAGES) || 12);
 const SEARCH_RERANK_TOKEN_PREFIX = 'ranked-search:';
 const SEARCH_RERANK_CACHE_TTL_SECONDS = 10 * 60;
+const DEFAULT_BROWSE_SORT = 'WishlistCountTotal desc';
+const RATING_SORT = 'MostPopular desc';
+const PRICE_ASC_SORT = 'Price asc';
 const STRONG_MATCH_SCORE = 5000;
 const SEARCH_NOISE_TOKENS = new Set([
   'a',
@@ -44,12 +48,30 @@ const SEARCH_EXPANSION_NOISE_TOKENS = new Set([
   'games',
 ]);
 
-async function search({ query, page, sort, filters, priceRange, languageMode, freeOnly = false, dealsOnly = false, encodedCT, channelId = '' }) {
-  const encodedFilters = buildEncodedFilters(filters, sort);
+async function search({
+  query,
+  page,
+  sort,
+  filters,
+  priceRange,
+  languageMode,
+  freeOnly = false,
+  dealsOnly = false,
+  countOnly = false,
+  encodedCT,
+  channelId = '',
+}) {
   const priceFilterActive = isPriceRangeActive(priceRange);
+  const normalizedPriceRange = normalizePriceRange(priceRange);
+  const effectiveSort = resolveCatalogSort({ query, sort, priceFilterActive });
+  const countSort = resolveCatalogSort({ query, sort, priceFilterActive, forcePriceAsc: priceFilterActive });
+  const encodedFilters = buildEncodedFilters(filters, effectiveSort);
+  const countEncodedFilters = buildEncodedFilters(filters, countSort);
   const dealsHandledByChannel = Boolean(dealsOnly && !query && channelId);
   const effectiveDealsOnly = dealsHandledByChannel ? false : dealsOnly;
-  const postFilterActive = Boolean(freeOnly || effectiveDealsOnly || (languageMode && languageMode !== 'all'));
+  const languageFilterActive = isLanguageFilterActive(languageMode);
+  const postFilterActive = Boolean(freeOnly || effectiveDealsOnly || languageFilterActive);
+  const localFilterActive = Boolean(priceFilterActive || postFilterActive);
 
   if (isRankedSearchToken(encodedCT)) {
     const buffered = await readRankedSearchBuffer(encodedCT);
@@ -58,7 +80,28 @@ async function search({ query, page, sort, filters, priceRange, languageMode, fr
 
   let raw;
   try {
-    if (shouldUseSearchRerank({ query, sort, encodedCT })) {
+    if (!countOnly && shouldUseBufferedRatingSort({ sort: effectiveSort, encodedCT })) {
+      const initialRaw = await fetchCatalogPage({
+        query,
+        encodedFilters,
+        encodedCT: '',
+        returnFilters: true,
+        channelId,
+      });
+
+      return searchWithBufferedRatingSort({
+        raw: initialRaw,
+        query,
+        encodedFilters,
+        channelId,
+        priceRange: normalizedPriceRange,
+        languageMode,
+        freeOnly,
+        dealsOnly: effectiveDealsOnly,
+      });
+    }
+
+    if (!countOnly && shouldUseSearchRerank({ query, sort: effectiveSort, encodedCT })) {
       return await searchWithRelevanceRerank({
         query,
         encodedFilters,
@@ -72,43 +115,59 @@ async function search({ query, page, sort, filters, priceRange, languageMode, fr
       });
     }
 
-    raw = await fetchCatalogPage({ query, encodedFilters, encodedCT: encodedCT || '', returnFilters: !encodedCT, channelId });
+    raw = await fetchCatalogPage({
+      query,
+      encodedFilters: countOnly ? countEncodedFilters : encodedFilters,
+      encodedCT: encodedCT || '',
+      returnFilters: !encodedCT,
+      channelId,
+    });
   } catch (err) {
     logger.error('Catalog service error', { message: err.message, query });
     throw err;
   }
 
+  if (countOnly) {
+    return countFilteredSearchResults({
+      raw,
+      query,
+      encodedFilters: countEncodedFilters,
+      channelId,
+      priceRange: normalizedPriceRange,
+      languageMode,
+      freeOnly,
+      dealsOnly: effectiveDealsOnly,
+      sort: countSort,
+    });
+  }
+
   let rawProducts = raw.products || [];
   let nextEncodedCT = raw.encodedCT;
 
-  if (priceFilterActive) {
-    let filteredProducts = applyPriceRange(mapProducts(rawProducts), priceRange);
-    let attempts = 0;
+  if (priceFilterActive || freeOnly || effectiveDealsOnly || languageFilterActive) {
+    const collected = await collectRawProductsForLocalFilters({
+      query,
+      encodedFilters,
+      rawProducts,
+      nextEncodedCT,
+      channelId,
+      priceRange: normalizedPriceRange,
+      freeOnly,
+      dealsOnly: effectiveDealsOnly,
+      languageMode,
+      sort: effectiveSort,
+    });
 
-    while (
-      filteredProducts.length < config.xbox.pageSize
-      && nextEncodedCT
-      && attempts < 4
-    ) {
-      const nextRaw = await fetchCatalogPage({
-        query,
-        encodedFilters,
-        encodedCT: nextEncodedCT,
-        returnFilters: false,
-        channelId,
-      });
-
-      rawProducts = [...rawProducts, ...(nextRaw.products || [])];
-      nextEncodedCT = nextRaw.encodedCT;
-      filteredProducts = applyPriceRange(mapProducts(rawProducts), priceRange);
-      attempts += 1;
-    }
+    rawProducts = collected.rawProducts;
+    nextEncodedCT = collected.nextEncodedCT;
   }
 
   const mappedProducts = mapProducts(rawProducts);
-  const products = priceFilterActive
-    ? applyPriceRange(mappedProducts, normalizePriceRange(priceRange))
-    : mappedProducts;
+  const products = applyImmediateCatalogFilters(mappedProducts, {
+    priceRange: normalizedPriceRange,
+    freeOnly,
+    dealsOnly: effectiveDealsOnly,
+  });
   const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), {
     languageMode,
     freeOnly,
@@ -120,8 +179,9 @@ async function search({ query, page, sort, filters, priceRange, languageMode, fr
 
   return {
     products: enrichedProducts,
-    totalItems: (priceFilterActive || postFilterActive) ? enrichedProducts.length : raw.totalItems,
-    totalIsApproximate: priceFilterActive || postFilterActive,
+    totalItems: localFilterActive ? null : raw.totalItems,
+    totalIsApproximate: localFilterActive,
+    totalPending: localFilterActive,
     encodedCT: nextEncodedCT,
     filters: mappedFilters,
     hasMorePages: !!nextEncodedCT,
@@ -141,6 +201,7 @@ async function searchWithRelevanceRerank({
 }) {
   const collectedRawProducts = [];
   const queryVariants = getSearchQueryVariants(query);
+  const normalizedPriceRange = normalizePriceRange(priceRange);
   let raw = null;
   let nextEncodedCT = null;
   let bestScore = 0;
@@ -169,9 +230,11 @@ async function searchWithRelevanceRerank({
   }
 
   const mappedProducts = mapProducts(dedupeRawProducts(collectedRawProducts));
-  const products = priceFilterActive
-    ? applyPriceRange(mappedProducts, normalizePriceRange(priceRange))
-    : mappedProducts;
+  const products = applyImmediateCatalogFilters(mappedProducts, {
+    priceRange: normalizedPriceRange,
+    freeOnly,
+    dealsOnly,
+  });
   const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), { languageMode, freeOnly, dealsOnly });
   const rankedProducts = rankProductsBySearchRelevance(enrichedProducts, query);
   const pageProducts = rankedProducts.slice(0, config.xbox.pageSize);
@@ -473,6 +536,259 @@ function normalizePriceRange(priceRange) {
     min: Number.isFinite(priceRange.min) ? priceRange.min / RUB_USD_RATE : null,
     max: Number.isFinite(priceRange.max) ? priceRange.max / RUB_USD_RATE : null,
   };
+}
+
+function resolveCatalogSort({ query, sort, priceFilterActive, forcePriceAsc = false }) {
+  if (forcePriceAsc && priceFilterActive) return PRICE_ASC_SORT;
+  if (sort && sort !== 'DO_NOT_FILTER') return sort;
+  if (priceFilterActive) return PRICE_ASC_SORT;
+  if (!query || !String(query).trim()) return DEFAULT_BROWSE_SORT;
+  return sort;
+}
+
+function isPriceAscendingSort(sort) {
+  return sort === PRICE_ASC_SORT;
+}
+
+function shouldUseBufferedRatingSort({ sort, encodedCT }) {
+  return sort === RATING_SORT && !encodedCT;
+}
+
+function shouldStopPriceAscendingScan(rawProducts, priceRange, sort) {
+  if (!isPriceAscendingSort(sort)) return false;
+
+  const max = Number.isFinite(priceRange?.max) ? priceRange.max : null;
+  if (max === null) return false;
+
+  const pricedValues = mapProducts(rawProducts)
+    .map((product) => product.price?.value)
+    .filter(Number.isFinite);
+
+  if (pricedValues.length === 0) return false;
+
+  return pricedValues.every((value) => value > max);
+}
+
+function isLanguageFilterActive(languageMode) {
+  return Boolean(languageMode && languageMode !== 'all');
+}
+
+function applyImmediateCatalogFilters(products, { priceRange, freeOnly, dealsOnly }) {
+  const priceFiltered = applyPriceRange(products, priceRange);
+
+  return priceFiltered.filter((product) => {
+    if (freeOnly && product.price?.value !== 0) return false;
+    if (!freeOnly && product.price?.value === 0) return false;
+    if (dealsOnly && !(product.price?.discountPercent > 0)) return false;
+    return true;
+  });
+}
+
+function getLocalFilterTargetCount(languageMode) {
+  return config.xbox.pageSize * (isLanguageFilterActive(languageMode) ? 2 : 1);
+}
+
+async function collectRawProductsForLocalFilters({
+  query,
+  encodedFilters,
+  rawProducts,
+  nextEncodedCT,
+  channelId,
+  priceRange,
+  freeOnly,
+  dealsOnly,
+  languageMode,
+  sort,
+}) {
+  const targetCount = getLocalFilterTargetCount(languageMode);
+  let collectedRawProducts = [...rawProducts];
+  let collectedNextEncodedCT = nextEncodedCT;
+  let attempts = 0;
+
+  while (
+    applyImmediateCatalogFilters(mapProducts(collectedRawProducts), {
+      priceRange,
+      freeOnly,
+      dealsOnly,
+    }).length < targetCount
+    && collectedNextEncodedCT
+    && attempts < LOCAL_FILTER_PREFETCH_MAX_PAGES
+  ) {
+    const nextRaw = await fetchCatalogPage({
+      query,
+      encodedFilters,
+      encodedCT: collectedNextEncodedCT,
+      returnFilters: false,
+      channelId,
+    });
+
+    if (shouldStopPriceAscendingScan(nextRaw.products || [], priceRange, sort)) {
+      collectedNextEncodedCT = null;
+      break;
+    }
+
+    collectedRawProducts = [...collectedRawProducts, ...(nextRaw.products || [])];
+    collectedNextEncodedCT = nextRaw.encodedCT;
+    attempts += 1;
+  }
+
+  return {
+    rawProducts: collectedRawProducts,
+    nextEncodedCT: collectedNextEncodedCT,
+  };
+}
+
+async function collectAllCatalogPages({
+  query,
+  encodedFilters,
+  rawProducts,
+  nextEncodedCT,
+  channelId,
+  priceRange,
+  sort,
+}) {
+  let collectedRawProducts = [...rawProducts];
+  let collectedNextEncodedCT = nextEncodedCT;
+  const seenTokens = new Set();
+
+  while (collectedNextEncodedCT && !seenTokens.has(collectedNextEncodedCT)) {
+    seenTokens.add(collectedNextEncodedCT);
+    const nextRaw = await fetchCatalogPage({
+      query,
+      encodedFilters,
+      encodedCT: collectedNextEncodedCT,
+      returnFilters: false,
+      channelId,
+    });
+
+    if (shouldStopPriceAscendingScan(nextRaw.products || [], priceRange, sort)) {
+      collectedNextEncodedCT = null;
+      break;
+    }
+
+    collectedRawProducts = [...collectedRawProducts, ...(nextRaw.products || [])];
+    collectedNextEncodedCT = nextRaw.encodedCT;
+  }
+
+  return {
+    rawProducts: collectedRawProducts,
+    nextEncodedCT: collectedNextEncodedCT,
+  };
+}
+
+async function countFilteredSearchResults({
+  raw,
+  query,
+  encodedFilters,
+  channelId,
+  priceRange,
+  languageMode,
+  freeOnly,
+  dealsOnly,
+  sort,
+}) {
+  const collected = await collectAllCatalogPages({
+    query,
+    encodedFilters,
+    rawProducts: raw.products || [],
+    nextEncodedCT: raw.encodedCT,
+    channelId,
+    priceRange,
+    sort,
+  });
+
+  const mappedProducts = mapProducts(dedupeRawProducts(collected.rawProducts));
+  const immediateFilteredProducts = applyImmediateCatalogFilters(mappedProducts, {
+    priceRange,
+    freeOnly,
+    dealsOnly,
+  });
+  const filteredProducts = applyPostFilters(
+    await applyProductOverrides(await enrichProducts(immediateFilteredProducts)),
+    { languageMode, freeOnly, dealsOnly },
+  );
+
+  return {
+    products: [],
+    totalItems: filteredProducts.length,
+    totalIsApproximate: false,
+    totalPending: false,
+    encodedCT: null,
+    filters: null,
+    hasMorePages: false,
+  };
+}
+
+async function searchWithBufferedRatingSort({
+  raw,
+  query,
+  encodedFilters,
+  channelId,
+  priceRange,
+  languageMode,
+  freeOnly,
+  dealsOnly,
+}) {
+  const collected = await collectAllCatalogPages({
+    query,
+    encodedFilters,
+    rawProducts: raw.products || [],
+    nextEncodedCT: raw.encodedCT,
+    channelId,
+    priceRange,
+    sort: RATING_SORT,
+  });
+
+  const mappedProducts = mapProducts(dedupeRawProducts(collected.rawProducts));
+  const immediateFilteredProducts = applyImmediateCatalogFilters(mappedProducts, {
+    priceRange,
+    freeOnly,
+    dealsOnly,
+  });
+  const filteredProducts = applyPostFilters(
+    await applyProductOverrides(await enrichProducts(immediateFilteredProducts)),
+    { languageMode, freeOnly, dealsOnly },
+  );
+  const rankedProducts = sortProductsByRating(filteredProducts);
+  const pageProducts = rankedProducts.slice(0, config.xbox.pageSize);
+  const remainingProducts = rankedProducts.slice(config.xbox.pageSize);
+  const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
+    ? mapFilters(raw.filters)
+    : null;
+  const bufferedToken = remainingProducts.length
+    ? writeRankedSearchBuffer({
+        products: remainingProducts,
+        nextExternalEncodedCT: null,
+        totalItems: rankedProducts.length,
+        totalIsApproximate: false,
+      })
+    : null;
+
+  return {
+    products: pageProducts,
+    totalItems: rankedProducts.length,
+    totalIsApproximate: false,
+    totalPending: false,
+    encodedCT: bufferedToken,
+    filters: mappedFilters,
+    hasMorePages: Boolean(bufferedToken),
+  };
+}
+
+function sortProductsByRating(products) {
+  return [...products].sort((a, b) => {
+    const aAverage = Number.isFinite(a?.rating?.average) ? a.rating.average : -1;
+    const bAverage = Number.isFinite(b?.rating?.average) ? b.rating.average : -1;
+    if (bAverage !== aAverage) return bAverage - aAverage;
+
+    const aCount = Number.isFinite(a?.rating?.count) ? a.rating.count : -1;
+    const bCount = Number.isFinite(b?.rating?.count) ? b.rating.count : -1;
+    if (bCount !== aCount) return bCount - aCount;
+
+    const aTitle = String(a?.title || '');
+    const bTitle = String(b?.title || '');
+    return aTitle.localeCompare(bTitle, 'en');
+  });
 }
 
 function applyPostFilters(products, { languageMode, freeOnly, dealsOnly }) {

@@ -39,6 +39,7 @@ function parseSearchParams(query) {
 
   const deals = query.deals === 'true' || query.deals === '1';
   const freeOnly = query.freeOnly === 'true' || query.freeOnly === '1';
+  const countOnly = query.countOnly === 'true' || query.countOnly === '1';
 
   return {
     query: q,
@@ -50,6 +51,7 @@ function parseSearchParams(query) {
     encodedCT,
     deals,
     freeOnly,
+    countOnly,
   };
 }
 
