@@ -856,6 +856,177 @@ async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp } = {}) {
   };
 }
 
+async function buildCartComboPurchase(products, { purchaseEmail, buyerIp } = {}) {
+  if (!Array.isArray(products) || products.length === 0) {
+    return { available: false, reason: 'cart_empty' };
+  }
+
+  const state = await getTopupState();
+  const cardMap = new Map(state.cards.map((c) => [c.usdValue, c]));
+  const productCombos = [];
+  const combinedItemsMap = new Map();
+  let totalUsd = 0;
+  let totalRub = 0;
+  let totalRubKnown = true;
+  let cardsCount = 0;
+
+  for (const product of products) {
+    const productTitle = String(product?.title || product?.productTitle || product?.id || product?.productId || '').trim() || 'товара';
+    const priceUsd = Math.max(0, Number(product?.priceUsd) || 0);
+    const combo = await computeCombo(priceUsd);
+
+    if (!combo?.available) {
+      return {
+        available: false,
+        reason: combo?.reason || 'combo_unavailable',
+        productId: product?.productId || product?.id || null,
+        productTitle,
+        priceUsd,
+      };
+    }
+
+    productCombos.push({
+      productId: product?.productId || product?.id || null,
+      title: productTitle,
+      priceUsd: combo.price,
+      totalUsd: combo.totalUsd,
+      totalRub: combo.totalRub,
+      totalRubFormatted: combo.totalRubFormatted,
+      cardsCount: combo.cardsCount,
+      substituted: Boolean(combo.substituted),
+      items: combo.items,
+    });
+
+    totalUsd += Number(combo.totalUsd || 0);
+    cardsCount += Number(combo.cardsCount || 0);
+    if (combo.totalRub != null) {
+      totalRub += Number(combo.totalRub);
+    } else {
+      totalRubKnown = false;
+    }
+
+    for (const item of combo.items || []) {
+      const current = combinedItemsMap.get(item.usdValue) || {
+        usdValue: item.usdValue,
+        count: 0,
+        priceRub: item.priceRub ?? cardMap.get(item.usdValue)?.priceRub ?? null,
+      };
+      current.count += Number(item.count || 0);
+      if (current.priceRub == null && item.priceRub != null) current.priceRub = item.priceRub;
+      combinedItemsMap.set(item.usdValue, current);
+    }
+  }
+
+  totalUsd = Math.round(totalUsd * 100) / 100;
+
+  const combinedItems = [...combinedItemsMap.values()]
+    .sort((a, b) => b.usdValue - a.usdValue)
+    .map((item) => ({
+      ...item,
+      subtotalRub: item.priceRub != null ? item.priceRub * item.count : null,
+      subtotalRubFormatted: item.priceRub != null ? formatRub(item.priceRub * item.count) : null,
+    }));
+
+  const links = combinedItems.map((item) => {
+    const card = cardMap.get(item.usdValue);
+    const fallbackUrl = buildCardPayUrl(card, {
+      quantity: item.count,
+      purchaseEmail,
+      optionCategoryId: state.optionCategoryId,
+    });
+    return {
+      usdValue: item.usdValue,
+      count: item.count,
+      optionId: card?.optionId || null,
+      priceRub: item.priceRub,
+      subtotalRub: item.subtotalRub,
+      subtotalRubFormatted: item.subtotalRubFormatted,
+      directUrl: fallbackUrl,
+    };
+  });
+
+  let cartUid = null;
+  let cartPaymentUrl = null;
+  let cartError = null;
+
+  if (state.optionCategoryId) {
+    const addResults = [];
+    for (const item of combinedItems) {
+      const card = cardMap.get(item.usdValue);
+      for (let i = 0; i < item.count; i += 1) {
+        const result = await addItemToCart(cartUid || '', {
+          card,
+          quantity: 1,
+          optionCategoryId: state.optionCategoryId,
+          purchaseEmail,
+          buyerIp,
+        });
+        addResults.push(result);
+        if (!result.ok) break;
+        cartUid = result.cartUid;
+      }
+      if (addResults.some((result) => !result.ok)) break;
+    }
+
+    const failures = addResults.filter((result) => !result.ok);
+    if (failures.length === 0 && cartUid) {
+      cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail });
+    } else {
+      cartError = failures[0]?.retdesc || failures[0]?.reason || 'cart_add_failed';
+      logger.warn('Topup cart build failed, falling back to per-card links', {
+        cartUid,
+        failures: failures.length,
+        productsCount: productCombos.length,
+        itemsCount: combinedItems.length,
+      });
+      cartUid = null;
+    }
+  } else {
+    cartError = 'option_category_id_missing';
+  }
+
+  let primaryPaymentUrl = cartPaymentUrl;
+  if (!primaryPaymentUrl) {
+    const perCardApi = await Promise.all(combinedItems.map(async (item) => {
+      const card = cardMap.get(item.usdValue);
+      const apiUrl = await createCardPayApiUrl(card, {
+        quantity: item.count,
+        purchaseEmail,
+        optionCategoryId: state.optionCategoryId,
+      });
+      return { usdValue: item.usdValue, apiUrl };
+    }));
+    const byUsd = new Map(perCardApi.map((result) => [result.usdValue, result.apiUrl]));
+    links.forEach((link) => {
+      const apiUrl = byUsd.get(link.usdValue);
+      link.paymentUrl = apiUrl || link.directUrl;
+      link.usedPayApi = Boolean(apiUrl);
+    });
+    primaryPaymentUrl = links[0]?.paymentUrl || null;
+  } else {
+    links.forEach((link) => {
+      link.paymentUrl = cartPaymentUrl;
+      link.usedPayApi = true;
+    });
+  }
+
+  return {
+    available: true,
+    optionCategoryId: state.optionCategoryId,
+    cartUid,
+    cartError,
+    paymentUrl: primaryPaymentUrl,
+    links,
+    products: productCombos,
+    productsCount: productCombos.length,
+    cardsCount,
+    totalUsd,
+    totalRub: totalRubKnown ? totalRub : null,
+    totalRubFormatted: totalRubKnown ? formatRub(totalRub) : null,
+    substituted: productCombos.some((product) => product.substituted),
+  };
+}
+
 async function computeCombo(priceUsd) {
   const price = Math.max(0, Number(priceUsd) || 0);
   if (price <= 0) return { available: false, reason: 'price_invalid' };
@@ -894,6 +1065,7 @@ module.exports = {
   refreshCards,
   computeCombo,
   buildComboPurchase,
+  buildCartComboPurchase,
   buildCardPayUrl,
   bracketFor,
   parseTopupHtml,

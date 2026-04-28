@@ -652,7 +652,7 @@ async function createCartPurchase(req, res, next) {
       buyerEmailForPayment,
     });
 
-    if (finalPaymentMode !== 'oplata' && finalPaymentMode !== 'key_activation') {
+    if (finalPaymentMode !== 'oplata' && finalPaymentMode !== 'key_activation' && finalPaymentMode !== 'topup_cards') {
       logger.warn('Cart purchase rejected: unsupported payment mode', {
         cartLogId,
         finalPaymentMode,
@@ -667,7 +667,7 @@ async function createCartPurchase(req, res, next) {
         paymentMode: finalPaymentMode,
       };
 
-      if (finalPaymentMode !== 'key_activation') {
+      if (finalPaymentMode !== 'key_activation' && finalPaymentMode !== 'topup_cards') {
         saveFields.xboxAccountEmail = finalAccountEmail;
         saveFields.xboxAccountPassword = accountPassword || undefined;
       }
@@ -809,6 +809,15 @@ async function createCartPurchase(req, res, next) {
 
         throw new AppError(`Ключ активации недоступен для "${product.title || product.id}"`, 400);
       }
+
+      if (finalPaymentMode === 'topup_cards' && isGameCurrencyProduct(product)) {
+        logger.warn('Cart purchase product rejected: topup cards unavailable for currency product', {
+          cartLogId,
+          product: safeProduct,
+        });
+
+        throw new AppError(`Карты пополнения недоступны для "${product.title || product.id}"`, 400);
+      }
     }
 
     logger.info('Cart purchase buildCartPayment started', {
@@ -860,10 +869,17 @@ async function createCartPurchase(req, res, next) {
       paymentUrl: cart.paymentUrl,
       provider: 'oplata',
       paymentMode: cart.paymentMode,
-      paymentType: 'cart_batch',
+      paymentType: cart.paymentMode === 'topup_cards' ? 'topup_cards' : 'cart_batch',
       currency: 'RUB',
-      cartUid: cart.cartUid,
+      cartUid: cart.cartUid || null,
+      cartBatch: Boolean(cart.cartBatch || cart.cartUid),
       items: cart.items,
+      links: cart.links || null,
+      cardsCount: cart.cardsCount ?? null,
+      totalUsd: cart.totalUsd ?? null,
+      totalRub: cart.totalRub ?? null,
+      totalRubFormatted: cart.totalRubFormatted ?? null,
+      substituted: Boolean(cart.substituted),
       purchaseEmail: finalPurchaseEmail || null,
     };
 

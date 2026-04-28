@@ -3,6 +3,7 @@ const { randomUUID } = require('crypto');
 const config = require('../config');
 const logger = require('../utils/logger');
 const { fetchRubPrice } = require('./digisellerService');
+const { buildCartComboPurchase } = require('./topupCardService');
 
 const OPLATA_BASE_URL = 'https://www.oplata.info';
 const XBOX_GAME_NAME_OPTION = '4931969';
@@ -427,6 +428,24 @@ async function buildItemsForKeyActivation(products, { gameNames, purchaseEmail }
   ];
 }
 
+function getTopupCartErrorMessage(result) {
+  const title = result?.productTitle ? `"${result.productTitle}"` : 'товара';
+
+  if (result?.reason === 'price_invalid') {
+    return `Не удалось определить цену для ${title}`;
+  }
+
+  if (result?.reason === 'no_cards_in_stock') {
+    return 'Карты пополнения временно недоступны';
+  }
+
+  if (result?.reason === 'cannot_cover_price') {
+    return `Не удалось подобрать карты пополнения для ${title}`;
+  }
+
+  return `Карты пополнения недоступны для ${title}`;
+}
+
 async function buildCartPayment({
   paymentMode,
   products,
@@ -434,11 +453,12 @@ async function buildCartPayment({
   accountEmail,
   accountPassword,
   purchaseEmail,
+  buyerIp,
 }) {
   if (!Array.isArray(products) || products.length === 0) {
     throw createCartError('Корзина пуста', 400);
   }
-  if (paymentMode !== 'oplata' && paymentMode !== 'key_activation') {
+  if (paymentMode !== 'oplata' && paymentMode !== 'key_activation' && paymentMode !== 'topup_cards') {
     throw createCartError('Этот способ оплаты не поддерживает корзину', 400);
   }
 
@@ -446,6 +466,44 @@ async function buildCartPayment({
   const cleanAccountEmail = normalizeText(accountEmail);
   const cleanAccountPassword = String(accountPassword || '').trim();
   const cleanGameNames = (gameNames || []).map(normalizeText);
+
+  if (paymentMode === 'topup_cards') {
+    const combo = await buildCartComboPurchase(
+      products.map((product, index) => ({
+        productId: product.id,
+        title: cleanGameNames[index] || product.title || product.name || product.id,
+        priceUsd: getUsdPriceValue(product),
+      })),
+      {
+        purchaseEmail: cleanEmail,
+        buyerIp,
+      },
+    );
+
+    if (!combo?.available) {
+      throw createCartError(getTopupCartErrorMessage(combo), 400);
+    }
+
+    if (!combo.paymentUrl) {
+      throw createCartError('Не удалось подготовить ссылку оплаты карт пополнения', 502);
+    }
+
+    return {
+      paymentUrl: combo.paymentUrl,
+      cartUid: combo.cartUid || null,
+      paymentMode,
+      items: combo.products || [],
+      links: combo.links || [],
+      cardsCount: combo.cardsCount || 0,
+      totalUsd: combo.totalUsd || 0,
+      totalRub: combo.totalRub ?? null,
+      totalRubFormatted: combo.totalRubFormatted || null,
+      substituted: Boolean(combo.substituted),
+      cartBatch: Boolean(combo.cartUid),
+      cartError: combo.cartError || null,
+      purchaseEmail: cleanEmail || null,
+    };
+  }
 
   const items = paymentMode === 'oplata'
     ? await buildItemsForOplata(products, {
@@ -470,15 +528,15 @@ async function buildCartPayment({
         502,
       );
     }
-const result = await postCartAdd({
-  digisellerId: item.digisellerId,
-  idPo,
-  cartUid,
-  productCnt: item.productCnt,
-  typeCurrency: item.typeCurrency,
-  purchaseEmail: cleanEmail,
-  productTitle: item.productTitle,
-});
+    const result = await postCartAdd({
+      digisellerId: item.digisellerId,
+      idPo,
+      cartUid,
+      productCnt: item.productCnt,
+      typeCurrency: item.typeCurrency,
+      purchaseEmail: cleanEmail,
+      productTitle: item.productTitle,
+    });
     if (!result.ok) {
       const detail = result.retdesc ? ` (${result.retdesc})` : '';
       throw createCartError(
@@ -487,14 +545,15 @@ const result = await postCartAdd({
       );
     }
     cartUid = result.cartUid;
-addedItems.push({
-  title: item.productTitle,
-  digisellerId: item.digisellerId,
-  idPo,
-  items: item.metaItems || [],
-  amountRub: item.amountRub,
-  totalUsd: item.unitCount,
-});  }
+    addedItems.push({
+      title: item.productTitle,
+      digisellerId: item.digisellerId,
+      idPo,
+      items: item.metaItems || [],
+      amountRub: item.amountRub,
+      totalUsd: item.unitCount,
+    });
+  }
 
   if (!cartUid) throw createCartError('Не удалось создать корзину', 502);
 

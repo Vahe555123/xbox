@@ -14,7 +14,7 @@ const PAYMENT_MODES = [
 ];
 
 const SPECIAL_OFFER_MODE = { id: 'special_offer', title: 'СПЕЦПРЕДЛОЖЕНИЕ', description: 'Спецпредложение для каждого товара' };
-const CART_BATCH_MODE_IDS = new Set(['oplata', 'key_activation']);
+const CART_BATCH_MODE_IDS = new Set(['oplata', 'key_activation', 'topup_cards']);
 
 const EMPTY_FORM = {
   purchaseEmail: '',
@@ -81,18 +81,8 @@ function isCartBatchMode(modeId) {
 }
 
 function getSeparatePurchaseAlert(modes) {
-  const hasSpecialOffer = modes.some((mode) => mode.id === 'special_offer');
-  const hasTopupCards = modes.some((mode) => mode.id === 'topup_cards');
-
-  if (hasSpecialOffer && hasTopupCards) {
-    return 'Спецпредложение и покупка кодом пополнения баланса оформляются только отдельно для каждого товара. Для этих способов не собирайте одну общую корзину.';
-  }
-
-  if (hasSpecialOffer) {
-    return 'Спецпредложение оформляется только отдельно для каждого товара. Если хотите купить именно по спецпредложению, открывайте игру отдельно.';
-  }
-
-  return 'Покупка кодом пополнения баланса оформляется только отдельно для каждого товара. Для этого способа открывайте нужные игры по одной.';
+  if (!modes.some((mode) => mode.id === 'special_offer')) return null;
+  return 'Спецпредложение оформляется только отдельно для каждого товара. Если хотите купить именно по спецпредложению, открывайте игру отдельно.';
 }
 
 export default function CartPage({ currentUser, onLoginClick }) {
@@ -125,7 +115,7 @@ export default function CartPage({ currentUser, onLoginClick }) {
       const available = mode.id === 'special_offer'
         ? allHaveSpecialOffer(items)
         : Boolean(mode.total);
-      return available && !isCartBatchMode(mode.id);
+      return available && mode.id === 'special_offer';
     }),
     [items, totals],
   );
@@ -152,7 +142,7 @@ export default function CartPage({ currentUser, onLoginClick }) {
   const needsAccountEmail = !skipAccountFields && !hasSavedAccountEmail;
   const needsAccountPassword = !skipAccountFields && !hasSavedAccountPassword;
   const hasMissingPurchaseFields = needsPurchaseEmail || needsAccountEmail || needsAccountPassword;
-  const cartSupportsServer = isOplata || isKey;
+  const cartSupportsServer = isOplata || isKey || isTopup;
 
   const handleField = (event) => {
     const { name, value, type, checked } = event.target;
@@ -364,8 +354,8 @@ export default function CartPage({ currentUser, onLoginClick }) {
             })}
           </ul>
           <p className="cart-summary-note">
-            Корзиной (одной ссылкой) поддерживаются режимы «На аккаунт» и «Ключ на игру».
-            Остальные режимы — каждый товар оплачивается отдельно.
+            Корзиной поддерживаются режимы «На аккаунт», «Ключ на игру» и «Кодом пополнения баланса».
+            Только «Спецпредложение» оформляется отдельно для каждого товара.
           </p>
         </aside>
       </div>
@@ -424,7 +414,7 @@ export default function CartPage({ currentUser, onLoginClick }) {
                 <section className="purchase-modal-section">
                   <h3>Способ оплаты</h3>
                   <div className="purchase-mode-grid">
-                    {PAYMENT_MODES.filter((m) => m.id === 'oplata' || m.id === 'key_activation').map((mode) => {
+                    {PAYMENT_MODES.filter((mode) => isCartBatchMode(mode.id)).map((mode) => {
                       const available = paymentModeAvailable(items, mode.id);
                       return (
                         <label key={mode.id} className={`purchase-mode-card ${form.paymentMode === mode.id ? 'active' : ''} ${available ? '' : 'disabled'}`}>
@@ -554,7 +544,65 @@ export default function CartPage({ currentUser, onLoginClick }) {
 
                 {purchaseError && <p className="ps-purchase-error">{purchaseError}</p>}
 
-                {purchaseResult?.paymentUrl ? (
+                {purchaseResult?.paymentUrl && purchaseResult?.paymentType === 'topup_cards' ? (
+                  <div className="purchase-result">
+                    <strong>{purchaseResult.cartBatch ? 'Корзина готова' : 'Ссылки на карты готовы'}</strong>
+                    <p>
+                      {purchaseResult.cartBatch
+                        ? 'Все карты для товаров из корзины добавлены в одну оплату.'
+                        : 'Единую корзину собрать не удалось, поэтому ниже показаны отдельные ссылки на карты.'}
+                      {' '}Итого:{' '}
+                      {purchaseResult.totalRubFormatted || `${purchaseResult.totalRub || ''} ₽`}
+                      {purchaseResult.cardsCount ? ` за ${purchaseResult.cardsCount} карт(ы).` : ''}
+                    </p>
+                    <div className="topup-combo-list">
+                      {(purchaseResult.links || []).map((link) => (
+                        <div key={link.usdValue} className="topup-combo-row">
+                          <strong>${link.usdValue} × {link.count}</strong>
+                          <span className="topup-combo-subtotal">
+                            {link.subtotalRubFormatted || (link.priceRub ? `${link.priceRub * link.count} ₽` : '')}
+                          </span>
+                          {!purchaseResult.cartBatch && link.paymentUrl && (
+                            <a
+                              className="purchase-primary"
+                              href={link.paymentUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Оплатить
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {purchaseResult.cartBatch && (
+                      <div className="purchase-result-actions">
+                        <button
+                          className="purchase-primary"
+                          type="button"
+                          onClick={() => window.location.assign(purchaseResult.paymentUrl)}
+                        >
+                          Оплатить корзину
+                        </button>
+                        <button
+                          className="purchase-secondary"
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(purchaseResult.paymentUrl);
+                              setCopyMessage('Ссылка скопирована');
+                            } catch {
+                              setCopyMessage('Не удалось скопировать');
+                            }
+                          }}
+                        >
+                          Копировать ссылку
+                        </button>
+                      </div>
+                    )}
+                    {copyMessage && <p className="purchase-muted">{copyMessage}</p>}
+                  </div>
+                ) : purchaseResult?.paymentUrl ? (
                   <div className="purchase-result">
                     <strong>Корзина готова</strong>
                     <p>Все товары добавлены в одну корзину на oplata.info. Оплатите единой ссылкой.</p>
