@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 const SKIP_FILTER_KEYS = ['orderby', 'Price', 'MaturityRating', 'Accessibility', 'SupportedLanguages'];
 const SINGLE_SELECT_KEYS = new Set(['Genre', 'Multiplayer', 'IncludedInSubscription']);
 const EMPTY_PRICE_RANGE = { min: '', max: '', currency: 'USD' };
-const AUTO_APPLY_DELAY_MS = 2000;
+const AUTO_APPLY_DELAY_MS = 500;
 
 const FILTER_TITLES = {
   orderby: 'Сортировка',
@@ -16,12 +16,12 @@ const FILTER_TITLES = {
 };
 
 const SORT_TITLES = {
-  DO_NOT_FILTER: 'По умолчанию',
+  DO_NOT_FILTER: 'По релевантности',
   'ReleaseDate desc': 'Дата выхода: сначала новые',
-  'MostPopular desc': 'Самые популярные',
+  'MostPopular desc': 'Самые популярные (по рейтингу)',
   'Price asc': 'Цена: по возрастанию',
   'Price desc': 'Цена: по убыванию',
-  'WishlistCountTotal desc': 'Чаще добавляют в список желаний',
+  'WishlistCountTotal desc': 'Популярные',
   'DiscountPercentage desc': 'Скидка: сначала больше',
   'Title Asc': 'Название: А-Я',
   'Title Desc': 'Название: Я-А',
@@ -258,6 +258,7 @@ export default function FilterPanel({
     setDraftFilters({});
     setDraftSort('');
     setDraftPriceRange(EMPTY_PRICE_RANGE);
+    setDraftQuery('');
     onClear();
   };
 
@@ -277,11 +278,38 @@ export default function FilterPanel({
             autoFocus
           />
           {draftQuery && (
-            <button className="filter-search-clear" onClick={() => setDraftQuery('')} aria-label="Очистить поиск">
+            <button
+              className="filter-search-clear"
+              onClick={() => {
+                setDraftQuery('');
+                onQueryChange('');
+              }}
+              aria-label="Очистить поиск"
+            >
               &times;
             </button>
           )}
         </div>
+
+        {sortFilter?.choices?.length > 0 && (
+          <label className="filter-field filter-sort-dropdown">
+            <span className="filter-field-label">{getFilterTitle('orderby', sortFilter.title)}</span>
+            <select
+              value={draftSort}
+              onChange={(event) => setDraftSort(event.target.value)}
+              aria-label={getFilterTitle('orderby', sortFilter.title)}
+            >
+              <option value="">По релевантности</option>
+              {sortFilter.choices
+                .filter((choice) => choice.id !== sortFilter.allChoiceId)
+                .map((choice) => (
+                  <option key={choice.id} value={choice.id === sortFilter.allChoiceId ? '' : choice.id}>
+                    {getChoiceTitle('orderby', choice)}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
 
         <div className="filter-count-pill">
           <strong>{Number(total || 0).toLocaleString('ru-RU')}</strong> товаров
@@ -326,26 +354,6 @@ export default function FilterPanel({
           </div>
 
           <div className="filter-grid">
-            {sortFilter?.choices?.length > 0 && (
-              <label className="filter-field">
-                <span className="filter-field-label">{getFilterTitle('orderby', sortFilter.title)}</span>
-                <select
-                  value={draftSort}
-                  onChange={(event) => setDraftSort(event.target.value)}
-                  aria-label={getFilterTitle('orderby', sortFilter.title)}
-                >
-                  <option value="">По умолчанию</option>
-                  {sortFilter.choices
-                    .filter((choice) => choice.id !== sortFilter.allChoiceId)
-                    .map((choice) => (
-                      <option key={choice.id} value={choice.id === sortFilter.allChoiceId ? '' : choice.id}>
-                        {getChoiceTitle('orderby', choice)}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            )}
-
             {filterKeys.map((key) => {
               const filter = filters[key];
               if (SINGLE_SELECT_KEYS.has(key)) {
@@ -423,7 +431,7 @@ export default function FilterPanel({
           </div>
 
           <div className="filter-actions">
-            <span className="filter-auto-hint">Применится автоматически через 2 секунды</span>
+            <span className="filter-auto-hint">Применяется автоматически</span>
             <button className="filter-reset-btn" type="button" onClick={resetFilters}>
               Сбросить
             </button>

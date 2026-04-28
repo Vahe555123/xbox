@@ -510,6 +510,11 @@ img {
   min-width: 260px;
 }
 
+.filter-sort-dropdown {
+  flex: 0 1 260px;
+  min-width: 220px;
+}
+
 .filter-search-icon {
   position: absolute;
   left: 1rem;
@@ -1089,9 +1094,11 @@ img {
     min-width: 0;
   }
 
+  .filter-sort-dropdown,
   .filter-count-pill,
   .filter-toggle-btn {
     flex: 1;
+    min-width: 0;
   }
 
   .filter-grid {
@@ -6232,10 +6239,12 @@ code {
     gap: 0.5rem;
   }
 
+  .filter-sort-dropdown,
   .sort-dropdown {
     width: 100%;
   }
 
+  .filter-sort-dropdown select,
   .sort-dropdown select {
     width: 100%;
     min-height: 42px;

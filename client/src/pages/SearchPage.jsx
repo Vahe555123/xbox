@@ -5,13 +5,14 @@ import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ErrorMessage from '../components/ErrorMessage';
 
-export default function SearchPage({ searchState, dealsMode = false }) {
+export default function SearchPage({ searchState, dealsMode = false, onClearDeals }) {
   const navigate = useNavigate();
 
   const {
     query,
     products,
     total,
+    totalPending,
     hasMorePages,
     loadMore,
     loading,
@@ -43,6 +44,40 @@ export default function SearchPage({ searchState, dealsMode = false }) {
     return () => observer.disconnect();
   }, [hasMorePages, loadMore, loading, loadingMore, products.length]);
 
+  const renderResultsCount = () => {
+    if (dealsMode) {
+      if (totalPending) {
+        return (
+          <>
+            <span className="results-deals-badge">🔥 Скидки</span>
+            {' '}— показано {products.length} игр, считаем общее количество...
+          </>
+        );
+      }
+
+      return (
+        <>
+          <span className="results-deals-badge">🔥 Скидки</span>
+          {' '}— {total.toLocaleString()} игр со скидкой
+        </>
+      );
+    }
+
+    if (totalPending) {
+      if (query) {
+        return <>Показано {products.length} игр по запросу <strong>"{query}"</strong>, считаем общее количество...</>;
+      }
+
+      return <>Показано {products.length} игр, считаем общее количество...</>;
+    }
+
+    if (query) {
+      return <>Показано {products.length} из {total.toLocaleString()} по запросу <strong>"{query}"</strong></>;
+    }
+
+    return <>Каталог игр ({total.toLocaleString()} товаров)</>;
+  };
+
   return (
     <div className="search-page">
       {error && <ErrorMessage message={error} />}
@@ -57,22 +92,17 @@ export default function SearchPage({ searchState, dealsMode = false }) {
         <div className="search-layout">
           <div className="search-results">
             <div className="results-toolbar">
-              <p className="results-count">
-                {dealsMode ? (
-                  <>
-                    <span className="results-deals-badge">🔥 Скидки</span>
-                    {' '}— {total.toLocaleString()} игр со скидкой
-                  </>
-                ) : query ? (
-                  <>Показано {products.length} из {total.toLocaleString()} по запросу <strong>"{query}"</strong></>
-                ) : (
-                  <>Каталог игр ({total.toLocaleString()} товаров)</>
-                )}
-              </p>
+              <p className="results-count">{renderResultsCount()}</p>
               {dealsMode && (
                 <button
                   className="results-deals-clear"
-                  onClick={() => navigate('/')}
+                  onClick={() => {
+                    if (typeof onClearDeals === 'function') {
+                      onClearDeals();
+                      return;
+                    }
+                    navigate('/');
+                  }}
                   type="button"
                 >
                   ✕ Показать все игры

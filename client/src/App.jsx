@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import SearchPage from './pages/SearchPage';
 import GameDetailPage from './pages/GameDetailPage';
@@ -14,8 +14,159 @@ import CartPage from './pages/CartPage';
 import { useSearch } from './hooks/useSearch';
 import { consumeOAuthSession, checkAdmin } from './services/api';
 
+const FILTER_QUERY_KEYS = [
+  'PlayWith',
+  'Accessibility',
+  'Price',
+  'Genre',
+  'MaturityRating',
+  'Multiplayer',
+  'TechnicalFeatures',
+  'SupportedLanguages',
+  'IncludedInSubscription',
+  'HandheldCompatibility',
+];
+
+const EMPTY_PRICE_RANGE = { min: '', max: '', currency: 'USD' };
+const DEFAULT_BROWSE_SORT = 'WishlistCountTotal desc';
+
 function isMobileNavigationViewport() {
   return typeof window !== 'undefined' && window.innerWidth <= 900;
+}
+
+function cloneFilters(filters) {
+  return Object.fromEntries(
+    Object.entries(filters || {}).map(([key, values]) => [key, Array.isArray(values) ? [...values] : []]),
+  );
+}
+
+function parseFilterValues(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizePriceValue(value) {
+  if (value === undefined || value === null) return '';
+  const normalized = String(value).trim().replace(',', '.');
+  if (!normalized) return '';
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? String(parsed) : '';
+}
+
+function resolveDefaultCatalogSort({ query, sort }) {
+  const normalizedQuery = String(query || '').trim();
+  const normalizedSort = String(sort || '').trim();
+
+  if (normalizedSort) return normalizedSort;
+  if (normalizedQuery) return '';
+  return DEFAULT_BROWSE_SORT;
+}
+
+function readCatalogState(searchString = '') {
+  const params = new URLSearchParams(searchString);
+  const query = String(params.get('q') || '').trim();
+  const sort = resolveDefaultCatalogSort({
+    query,
+    sort: String(params.get('sort') || '').trim(),
+  });
+  const filters = {};
+
+  FILTER_QUERY_KEYS.forEach((key) => {
+    const values = parseFilterValues(params.get(key));
+    if (values.length > 0) {
+      filters[key] = values;
+    }
+  });
+
+  const languageMode = String(params.get('languageMode') || '').trim();
+  if (languageMode) {
+    filters.LanguageMode = [languageMode];
+  }
+
+  if (params.get('deals') === 'true') {
+    filters.DealsOnly = ['true'];
+  }
+
+  if (params.get('freeOnly') === 'true') {
+    filters.FreeOnly = ['true'];
+  }
+
+  return {
+    query,
+    sort,
+    filters,
+    priceRange: {
+      min: normalizePriceValue(params.get('minPrice')),
+      max: normalizePriceValue(params.get('maxPrice')),
+      currency: String(params.get('priceCurrency') || 'USD').toUpperCase() === 'RUB' ? 'RUB' : 'USD',
+    },
+  };
+}
+
+function buildCatalogUrl({ query = '', sort = '', filters = {}, priceRange = EMPTY_PRICE_RANGE } = {}) {
+  const params = new URLSearchParams();
+  const normalizedFilters = cloneFilters(filters);
+  const normalizedQuery = String(query || '').trim();
+  const normalizedSort = String(sort || '').trim();
+  const effectiveSort = resolveDefaultCatalogSort({ query: normalizedQuery, sort: normalizedSort });
+  const normalizedMinPrice = normalizePriceValue(priceRange?.min);
+  const normalizedMaxPrice = normalizePriceValue(priceRange?.max);
+  const normalizedCurrency = String(priceRange?.currency || 'USD').toUpperCase() === 'RUB' ? 'RUB' : 'USD';
+
+  if (normalizedQuery) {
+    params.set('q', normalizedQuery);
+  }
+
+  if (effectiveSort && !(effectiveSort === DEFAULT_BROWSE_SORT && !normalizedQuery)) {
+    params.set('sort', effectiveSort);
+  }
+
+  FILTER_QUERY_KEYS.forEach((key) => {
+    const values = Array.isArray(normalizedFilters[key]) ? normalizedFilters[key].filter(Boolean) : [];
+    if (values.length > 0) {
+      params.set(key, values.join(','));
+    }
+  });
+
+  const languageMode = normalizedFilters.LanguageMode?.[0];
+  if (languageMode) {
+    params.set('languageMode', languageMode);
+  }
+
+  if (normalizedFilters.DealsOnly?.length) {
+    params.set('deals', 'true');
+  }
+
+  if (normalizedFilters.FreeOnly?.length) {
+    params.set('freeOnly', 'true');
+  }
+
+  if (normalizedMinPrice) {
+    params.set('minPrice', normalizedMinPrice);
+  }
+
+  if (normalizedMaxPrice) {
+    params.set('maxPrice', normalizedMaxPrice);
+  }
+
+  if (normalizedMinPrice || normalizedMaxPrice || normalizedCurrency !== 'USD') {
+    params.set('priceCurrency', normalizedCurrency);
+  }
+
+  const search = params.toString();
+  return search ? `/?${search}` : '/';
+}
+
+function withBooleanFilter(filters, key, enabled) {
+  const nextFilters = cloneFilters(filters);
+  if (enabled) {
+    nextFilters[key] = ['true'];
+  } else {
+    delete nextFilters[key];
+  }
+  return nextFilters;
 }
 
 function HeaderFavoritesLink({ active = false, onClick }) {
@@ -82,34 +233,68 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const isDealsActive = location.pathname === '/' && new URLSearchParams(location.search).get('deals') === 'true';
-  const isHomeActive = location.pathname === '/' && !isDealsActive;
-  const searchState = useSearch({ dealsMode: isDealsActive });
+  const isCatalogRoute = location.pathname === '/';
+  const urlCatalogState = useMemo(() => readCatalogState(location.search), [location.search]);
+  const isDealsActive = isCatalogRoute && Boolean(urlCatalogState.filters?.DealsOnly?.length);
+  const isHomeActive = isCatalogRoute && !isDealsActive;
+  const searchState = useSearch({
+    dealsMode: isDealsActive,
+    enabled: isCatalogRoute,
+    initialQuery: urlCatalogState.query,
+    initialSort: urlCatalogState.sort,
+    initialFilters: urlCatalogState.filters,
+    initialPriceRange: urlCatalogState.priceRange,
+  });
   const sortFilter = searchState.filterOptions?.orderby || null;
+  const currentCatalogState = useMemo(() => ({
+    query: searchState.query,
+    sort: searchState.sort,
+    filters: searchState.filters,
+    priceRange: searchState.priceRange,
+  }), [searchState.filters, searchState.priceRange, searchState.query, searchState.sort]);
+  const dealsToggleUrl = useMemo(() => buildCatalogUrl({
+    ...currentCatalogState,
+    filters: withBooleanFilter(currentCatalogState.filters, 'DealsOnly', !isDealsActive),
+  }), [currentCatalogState, isDealsActive]);
 
   const closeMobileMenu = () => {
     setMobileMenuOpen(false);
   };
 
-  const goToCatalog = () => {
-    if (location.pathname !== '/') {
-      navigate('/');
-    }
+  useEffect(() => {
+    if (!isCatalogRoute) return;
+    searchState.replaceSearchState(urlCatalogState);
+  }, [isCatalogRoute, searchState.replaceSearchState, urlCatalogState]);
+
+  const navigateToCatalog = (nextState) => {
+    navigate(buildCatalogUrl(nextState));
   };
 
   const handleGlobalQueryChange = (value) => {
-    searchState.setQuery(value);
-    goToCatalog();
+    navigateToCatalog({
+      ...currentCatalogState,
+      query: value,
+    });
   };
 
   const handleGlobalApplyFilters = (payload) => {
-    searchState.applyFilters(payload);
-    goToCatalog();
+    navigateToCatalog({
+      ...currentCatalogState,
+      filters: payload?.filters || {},
+      sort: payload?.sort || '',
+      priceRange: payload?.priceRange || EMPTY_PRICE_RANGE,
+    });
   };
 
   const handleGlobalClearFilters = () => {
-    searchState.clearFilters();
-    goToCatalog();
+    navigate('/');
+  };
+
+  const handleClearDeals = () => {
+    navigateToCatalog({
+      ...currentCatalogState,
+      filters: withBooleanFilter(currentCatalogState.filters, 'DealsOnly', false),
+    });
   };
 
   const handleAuth = (user) => {
@@ -274,7 +459,7 @@ export default function App() {
             </Link>
 
             <Link
-              to={isDealsActive ? '/' : '/?deals=true'}
+              to={dealsToggleUrl}
               className={`top-nav-link top-nav-sale ${isDealsActive ? 'active' : ''}`}
             >
               Скидки
@@ -349,7 +534,16 @@ export default function App() {
         />
 
         <Routes>
-          <Route path="/" element={<SearchPage searchState={searchState} dealsMode={isDealsActive} />} />
+          <Route
+            path="/"
+            element={(
+              <SearchPage
+                searchState={searchState}
+                dealsMode={isDealsActive}
+                onClearDeals={handleClearDeals}
+              />
+            )}
+          />
           <Route path="/favorites" element={<FavoritesPage />} />
           <Route path="/cart" element={<CartPage currentUser={currentUser} onLoginClick={() => setAuthModalOpen(true)} />} />
           <Route

@@ -19,15 +19,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export async function searchProducts({ q, sort, filters, priceRange, encodedCT, deals }) {
+export async function searchProducts({ q, sort, filters, priceRange, encodedCT, deals, countOnly, signal }) {
   const params = {};
+  const hasMinPrice = priceRange?.min !== '' && priceRange?.min !== null && priceRange?.min !== undefined;
+  const hasMaxPrice = priceRange?.max !== '' && priceRange?.max !== null && priceRange?.max !== undefined;
   if (q) params.q = q;
   if (sort) params.sort = sort;
   if (encodedCT) params.encodedCT = encodedCT;
-  if (priceRange?.min) params.minPrice = priceRange.min;
-  if (priceRange?.max) params.maxPrice = priceRange.max;
-  if (priceRange?.currency) params.priceCurrency = priceRange.currency;
+  if (hasMinPrice) params.minPrice = priceRange.min;
+  if (hasMaxPrice) params.maxPrice = priceRange.max;
+  if (priceRange?.currency && (hasMinPrice || hasMaxPrice || priceRange.currency !== 'USD')) {
+    params.priceCurrency = priceRange.currency;
+  }
   if (deals) params.deals = 'true';
+  if (countOnly) params.countOnly = 'true';
 
   if (filters && typeof filters === 'object') {
     for (const [key, values] of Object.entries(filters)) {
@@ -49,7 +54,7 @@ export async function searchProducts({ q, sort, filters, priceRange, encodedCT, 
     }
   }
 
-  const { data } = await api.get('/xbox/search', { params });
+  const { data } = await api.get('/xbox/search', { params, signal });
   return data;
 }
 
