@@ -1,7 +1,15 @@
-function parseOptionalNumber(value) {
-  if (value === undefined || value === null || value === '') return null;
-  const parsed = Number(String(value).replace(',', '.'));
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+function parseFilterValues(value) {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => String(item || '').split(','))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function parseSearchParams(query) {
@@ -9,9 +17,6 @@ function parseSearchParams(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const sort = typeof query.sort === 'string' ? query.sort.trim() : '';
   const encodedCT = typeof query.encodedCT === 'string' ? query.encodedCT.trim() : '';
-  const minPrice = parseOptionalNumber(query.minPrice);
-  const maxPrice = parseOptionalNumber(query.maxPrice);
-  const priceCurrency = String(query.priceCurrency || 'USD').toUpperCase() === 'RUB' ? 'RUB' : 'USD';
   const languageMode = typeof query.languageMode === 'string' ? query.languageMode.trim() : '';
 
   let filters = {};
@@ -32,13 +37,13 @@ function parseSearchParams(query) {
 
   for (const key of FILTER_KEYS) {
     if (query[key] && !filters[key]) {
-      const val = query[key];
-      filters[key] = typeof val === 'string' ? val.split(',').map((v) => v.trim()).filter(Boolean) : val;
+      const values = parseFilterValues(query[key]);
+      if (values.length > 0) {
+        filters[key] = values;
+      }
     }
   }
 
-  const deals = query.deals === 'true' || query.deals === '1';
-  const freeOnly = query.freeOnly === 'true' || query.freeOnly === '1';
   const countOnly = query.countOnly === 'true' || query.countOnly === '1';
 
   return {
@@ -46,11 +51,8 @@ function parseSearchParams(query) {
     page,
     sort,
     filters,
-    priceRange: { min: minPrice, max: maxPrice, currency: priceCurrency },
     languageMode,
     encodedCT,
-    deals,
-    freeOnly,
     countOnly,
   };
 }

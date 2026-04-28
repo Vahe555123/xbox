@@ -250,9 +250,7 @@ router.get('/products/search', requireAdmin, async (req, res, next) => {
         page: 1,
         sort: '',
         filters: {},
-        priceRange: {},
         languageMode,
-        freeOnly: false,
         encodedCT,
         channelId: '',
       });

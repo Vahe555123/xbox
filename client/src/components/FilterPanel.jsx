@@ -1,18 +1,28 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-const SKIP_FILTER_KEYS = ['orderby', 'Price', 'MaturityRating', 'Accessibility', 'SupportedLanguages'];
-const SINGLE_SELECT_KEYS = new Set(['Genre', 'Multiplayer', 'IncludedInSubscription']);
-const EMPTY_PRICE_RANGE = { min: '', max: '', currency: 'USD' };
+const SKIP_FILTER_KEYS = ['orderby', 'Accessibility', 'SupportedLanguages'];
+const FILTER_ORDER = [
+  'PlayWith',
+  'Price',
+  'Genre',
+  'MaturityRating',
+  'Multiplayer',
+  'TechnicalFeatures',
+  'IncludedInSubscription',
+  'HandheldCompatibility',
+];
 const AUTO_APPLY_DELAY_MS = 500;
 
 const FILTER_TITLES = {
   orderby: 'Сортировка',
-  PlayWith: 'Все платформы',
-  Genre: 'Все жанры игры',
-  Multiplayer: 'Количество игроков',
-  TechnicalFeatures: 'Технические фишки',
+  PlayWith: 'Платформы',
+  Price: 'Цена',
+  Genre: 'Жанр',
+  MaturityRating: 'Возрастной рейтинг',
+  Multiplayer: 'Мультиплеер',
+  TechnicalFeatures: 'Технические характеристики',
   IncludedInSubscription: 'Подписки',
-  HandheldCompatibility: 'Поддержка Handheld',
+  HandheldCompatibility: 'Совместимость с Handheld',
 };
 
 const SORT_TITLES = {
@@ -25,6 +35,28 @@ const SORT_TITLES = {
   'DiscountPercentage desc': 'Скидка: сначала больше',
   'Title Asc': 'Название: А-Я',
   'Title Desc': 'Название: Я-А',
+};
+
+const PRICE_TITLES = {
+  OnSale: 'Со скидкой',
+  Free: 'Бесплатно',
+  '<$5': 'До $5',
+  '$5-$10': '$5 – $10',
+  '$10-$20': '$10 – $20',
+  '$20-$40': '$20 – $40',
+  '$40-$60': '$40 – $60',
+  '$60+': 'Свыше $60',
+};
+
+const MATURITY_TITLES = {
+  'ESRB:EC': 'Early Childhood',
+  'ESRB:E': 'Everyone',
+  'ESRB:E10': 'Everyone 10+',
+  'ESRB:T': 'Teen',
+  'ESRB:M': 'Mature 17+',
+  'ESRB:AO': 'Adults Only 18+',
+  'ESRB:UR': 'Rating Pending',
+  Unrated: 'Без рейтинга',
 };
 
 const GENRE_TITLES = {
@@ -75,24 +107,14 @@ function cloneFilters(filters) {
   );
 }
 
-function normalizePriceRange(priceRange) {
-  return {
-    min: priceRange?.min ?? '',
-    max: priceRange?.max ?? '',
-    currency: priceRange?.currency || 'USD',
-  };
-}
-
-function countActiveFilters(filters, priceRange) {
-  const selectedCount = Object.values(filters || {}).reduce(
+function countActiveFilters(filters) {
+  return Object.values(filters || {}).reduce(
     (sum, values) => sum + (Array.isArray(values) ? values.length : 0),
     0,
   );
-  const hasPrice = Boolean(priceRange?.min || priceRange?.max);
-  return selectedCount + (hasPrice ? 1 : 0);
 }
 
-function serializeFilterState(filters, sort, priceRange) {
+function serializeFilterState(filters, sort) {
   const normalizedFilters = {};
 
   Object.keys(filters || {})
@@ -107,7 +129,6 @@ function serializeFilterState(filters, sort, priceRange) {
   return JSON.stringify({
     filters: normalizedFilters,
     sort: sort || '',
-    priceRange: normalizePriceRange(priceRange),
   });
 }
 
@@ -118,7 +139,9 @@ function getFilterTitle(key, fallback) {
 function getChoiceTitle(key, choice) {
   if (!choice) return '';
   if (key === 'orderby') return SORT_TITLES[choice.id] || choice.title;
+  if (key === 'Price') return PRICE_TITLES[choice.id] || choice.title;
   if (key === 'Genre') return GENRE_TITLES[choice.id] || choice.title;
+  if (key === 'MaturityRating') return MATURITY_TITLES[choice.id] || choice.title;
   if (key === 'Multiplayer') return MULTIPLAYER_TITLES[choice.id] || choice.title;
   return choice.title;
 }
@@ -133,12 +156,10 @@ export default function FilterPanel({
   sort,
   sortFilter,
   total,
-  priceRange,
 }) {
   const [expanded, setExpanded] = useState(false);
   const [draftFilters, setDraftFilters] = useState(() => cloneFilters(activeFilters));
   const [draftSort, setDraftSort] = useState(sort || '');
-  const [draftPriceRange, setDraftPriceRange] = useState(() => normalizePriceRange(priceRange));
   const [draftQuery, setDraftQuery] = useState(query || '');
 
   useEffect(() => {
@@ -148,10 +169,6 @@ export default function FilterPanel({
   useEffect(() => {
     setDraftSort(sort || '');
   }, [sort]);
-
-  useEffect(() => {
-    setDraftPriceRange(normalizePriceRange(priceRange));
-  }, [priceRange]);
 
   useEffect(() => {
     setDraftQuery(query || '');
@@ -168,8 +185,8 @@ export default function FilterPanel({
   }, [draftQuery, onQueryChange, query]);
 
   useEffect(() => {
-    const activeState = serializeFilterState(activeFilters, sort, priceRange);
-    const draftState = serializeFilterState(draftFilters, draftSort, draftPriceRange);
+    const activeState = serializeFilterState(activeFilters, sort);
+    const draftState = serializeFilterState(draftFilters, draftSort);
 
     if (activeState === draftState) return undefined;
 
@@ -177,22 +194,27 @@ export default function FilterPanel({
       onApply({
         filters: draftFilters,
         sort: draftSort,
-        priceRange: draftPriceRange,
       });
     }, AUTO_APPLY_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [activeFilters, draftFilters, draftPriceRange, draftSort, onApply, priceRange, sort]);
+  }, [activeFilters, draftFilters, draftSort, onApply, sort]);
 
   const filterKeys = useMemo(() => {
     if (!filters) return [];
-    return Object.keys(filters).filter((key) => {
+
+    const visibleKeys = Object.keys(filters).filter((key) => {
       const filter = filters[key];
       return !SKIP_FILTER_KEYS.includes(key) && filter?.choices?.some((choice) => !choice.isLabelOnly);
     });
+
+    return [
+      ...FILTER_ORDER.filter((key) => visibleKeys.includes(key)),
+      ...visibleKeys.filter((key) => !FILTER_ORDER.includes(key)),
+    ];
   }, [filters]);
 
-  const activeCount = countActiveFilters(activeFilters, priceRange);
+  const activeCount = countActiveFilters(activeFilters);
 
   const updateDraftFilter = (key, valueId) => {
     setDraftFilters((prev) => {
@@ -226,30 +248,10 @@ export default function FilterPanel({
     });
   };
 
-  const updateDraftBooleanFilter = (key, checked) => {
-    setDraftFilters((prev) => {
-      const next = cloneFilters(prev);
-      if (checked) {
-        next[key] = ['true'];
-      } else {
-        delete next[key];
-      }
-      return next;
-    });
-  };
-
-  const updateDraftPrice = (key, value) => {
-    setDraftPriceRange((prev) => ({
-      ...prev,
-      [key]: value.replace(',', '.'),
-    }));
-  };
-
   const applyFilters = () => {
     onApply({
       filters: draftFilters,
       sort: draftSort,
-      priceRange: draftPriceRange,
     });
     setExpanded(false);
   };
@@ -257,7 +259,6 @@ export default function FilterPanel({
   const resetFilters = () => {
     setDraftFilters({});
     setDraftSort('');
-    setDraftPriceRange(EMPTY_PRICE_RANGE);
     setDraftQuery('');
     onClear();
   };
@@ -334,40 +335,11 @@ export default function FilterPanel({
 
       {expanded && (
         <div className="filter-expanded">
-          <div className="filter-quick-row">
-            <label className={`filter-toggle-check ${draftFilters.DealsOnly?.length ? 'active' : ''}`}>
-              <input
-                type="checkbox"
-                checked={Boolean(draftFilters.DealsOnly?.length)}
-                onChange={(event) => updateDraftBooleanFilter('DealsOnly', event.target.checked)}
-              />
-              <span>Только со скидкой</span>
-            </label>
-            <label className={`filter-toggle-check ${draftFilters.FreeOnly?.length ? 'active' : ''}`}>
-              <input
-                type="checkbox"
-                checked={Boolean(draftFilters.FreeOnly?.length)}
-                onChange={(event) => updateDraftBooleanFilter('FreeOnly', event.target.checked)}
-              />
-              <span>Бесплатные игры</span>
-            </label>
-          </div>
-
           <div className="filter-grid">
             {filterKeys.map((key) => {
               const filter = filters[key];
-              if (SINGLE_SELECT_KEYS.has(key)) {
-                return (
-                  <FilterSelect
-                    key={key}
-                    title={getFilterTitle(key, filter.title)}
-                    choices={filter.choices}
-                    activeValue={draftFilters[key]?.[0] || ''}
-                    getTitle={(choice) => getChoiceTitle(key, choice)}
-                    onChange={(valueId) => updateDraftSingleFilter(key, valueId)}
-                  />
-                );
-              }
+              if (!filter) return null;
+
               return (
                 <FilterDropdown
                   key={key}
@@ -379,42 +351,6 @@ export default function FilterPanel({
                 />
               );
             })}
-
-            <label className="filter-field">
-              <span className="filter-field-label">Мин. цена</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Мин. цена"
-                value={draftPriceRange.min}
-                onChange={(event) => updateDraftPrice('min', event.target.value)}
-              />
-            </label>
-
-            <label className="filter-field">
-              <span className="filter-field-label">Макс. цена</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Макс. цена"
-                value={draftPriceRange.max}
-                onChange={(event) => updateDraftPrice('max', event.target.value)}
-              />
-            </label>
-
-            <label className="filter-field">
-              <span className="filter-field-label">Валюта</span>
-              <select
-                value={draftPriceRange.currency}
-                onChange={(event) => setDraftPriceRange((prev) => ({ ...prev, currency: event.target.value }))}
-                aria-label="Валюта цены"
-              >
-                <option value="USD">Доллары</option>
-                <option value="RUB">Рубли</option>
-              </select>
-            </label>
 
             <label className="filter-field">
               <span className="filter-field-label">Язык игры</span>
@@ -442,20 +378,6 @@ export default function FilterPanel({
         </div>
       )}
     </section>
-  );
-}
-
-function FilterSelect({ title, choices, activeValue, getTitle, onChange }) {
-  return (
-    <label className="filter-field">
-      <span className="filter-field-label">{title}</span>
-      <select value={activeValue} onChange={(event) => onChange(event.target.value)} aria-label={title}>
-        <option value="">{title}</option>
-        {choices.filter((choice) => !choice.isLabelOnly).map((choice) => (
-          <option key={choice.id} value={choice.id}>{getTitle(choice)}</option>
-        ))}
-      </select>
-    </label>
   );
 }
 

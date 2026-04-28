@@ -1,3 +1,34 @@
+const PRICE_CHOICE_TO_FRIENDLY_ID = {
+  OnSale: 'OnSale',
+  0: 'Free',
+  '0.01To5': '<$5',
+  '5To10': '$5-$10',
+  '10To20': '$10-$20',
+  '20To40': '$20-$40',
+  '40To60': '$40-$60',
+  '60To': '$60+',
+};
+
+const FRIENDLY_PRICE_TO_CHOICE_ID = Object.fromEntries(
+  Object.entries(PRICE_CHOICE_TO_FRIENDLY_ID).map(([choiceId, friendlyId]) => [friendlyId, choiceId]),
+);
+
+function toFriendlyChoiceId(filterKey, choiceId) {
+  if (filterKey === 'Price') {
+    return PRICE_CHOICE_TO_FRIENDLY_ID[choiceId] || choiceId;
+  }
+
+  return choiceId;
+}
+
+function toApiChoiceId(filterKey, choiceId) {
+  if (filterKey === 'Price') {
+    return FRIENDLY_PRICE_TO_CHOICE_ID[choiceId] || choiceId;
+  }
+
+  return choiceId;
+}
+
 /**
  * Maps the raw Emerald API filters to a normalized format.
  * The API returns filters under a key like "Browse" with categories:
@@ -23,7 +54,7 @@ function mapFilters(rawFilters) {
       hasAllChoice: filter.hasAllChoice || false,
       allChoiceId: filter.allChoiceId || null,
       choices: (filter.choices || []).map((choice) => ({
-        id: choice.id,
+        id: toFriendlyChoiceId(key, choice.id),
         title: choice.title || choice.id,
         isLabelOnly: choice.isLabelOnly || false,
       })),
@@ -70,7 +101,7 @@ function encodeFilters(filterSelections) {
     const choices = Array.isArray(values) ? values : [values];
     encoded[key] = {
       id: key,
-      choices: choices.map((v) => ({ id: v })),
+      choices: choices.map((v) => ({ id: toApiChoiceId(key, v) })),
     };
   }
 

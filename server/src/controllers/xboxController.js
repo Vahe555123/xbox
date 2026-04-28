@@ -219,17 +219,14 @@ async function searchXbox(req, res, next) {
       countOnly: params.countOnly,
     });
 
-    const channelId = params.deals ? 'DynamicChannel.GameDeals' : '';
+    const channelId = '';
 
     const result = await search({
       query: params.query,
       page: params.page,
       sort: params.sort,
       filters: params.filters,
-      priceRange: params.priceRange,
       languageMode: params.languageMode,
-      freeOnly: params.freeOnly,
-      dealsOnly: params.deals,
       countOnly: params.countOnly,
       encodedCT: params.encodedCT,
       channelId,
@@ -260,7 +257,7 @@ async function searchXbox(req, res, next) {
       totalPending: result.totalPending || false,
       encodedCT: result.encodedCT,
       hasMorePages: result.hasMorePages,
-      deals: params.deals || false,
+      deals: Boolean(params.filters?.Price?.includes('OnSale')),
     });
   } catch (err) {
     if (err.response) {

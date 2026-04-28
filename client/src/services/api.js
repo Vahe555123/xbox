@@ -19,37 +19,21 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export async function searchProducts({ q, sort, filters, priceRange, encodedCT, deals, countOnly, signal }) {
-  const params = {};
-  const hasMinPrice = priceRange?.min !== '' && priceRange?.min !== null && priceRange?.min !== undefined;
-  const hasMaxPrice = priceRange?.max !== '' && priceRange?.max !== null && priceRange?.max !== undefined;
-  if (q) params.q = q;
-  if (sort) params.sort = sort;
-  if (encodedCT) params.encodedCT = encodedCT;
-  if (hasMinPrice) params.minPrice = priceRange.min;
-  if (hasMaxPrice) params.maxPrice = priceRange.max;
-  if (priceRange?.currency && (hasMinPrice || hasMaxPrice || priceRange.currency !== 'USD')) {
-    params.priceCurrency = priceRange.currency;
-  }
-  if (deals) params.deals = 'true';
-  if (countOnly) params.countOnly = 'true';
+export async function searchProducts({ q, sort, filters, encodedCT, countOnly, signal }) {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (sort) params.set('sort', sort);
+  if (encodedCT) params.set('encodedCT', encodedCT);
+  if (countOnly) params.set('countOnly', 'true');
 
   if (filters && typeof filters === 'object') {
     for (const [key, values] of Object.entries(filters)) {
       if (Array.isArray(values) && values.length > 0) {
         if (key === 'LanguageMode') {
-          params.languageMode = values[0];
+          params.set('languageMode', values[0]);
           continue;
         }
-        if (key === 'DealsOnly') {
-          params.deals = 'true';
-          continue;
-        }
-        if (key === 'FreeOnly') {
-          params.freeOnly = 'true';
-          continue;
-        }
-        params[key] = values.join(',');
+        values.forEach((value) => params.append(key, value));
       }
     }
   }

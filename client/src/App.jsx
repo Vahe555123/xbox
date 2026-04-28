@@ -16,19 +16,18 @@ import { consumeOAuthSession, checkAdmin } from './services/api';
 
 const FILTER_QUERY_KEYS = [
   'PlayWith',
-  'Accessibility',
   'Price',
   'Genre',
   'MaturityRating',
   'Multiplayer',
   'TechnicalFeatures',
-  'SupportedLanguages',
   'IncludedInSubscription',
   'HandheldCompatibility',
 ];
 
-const EMPTY_PRICE_RANGE = { min: '', max: '', currency: 'USD' };
 const DEFAULT_BROWSE_SORT = 'WishlistCountTotal desc';
+const DEALS_FILTER_KEY = 'Price';
+const DEALS_FILTER_VALUE = 'OnSale';
 
 function isMobileNavigationViewport() {
   return typeof window !== 'undefined' && window.innerWidth <= 900;
@@ -40,19 +39,21 @@ function cloneFilters(filters) {
   );
 }
 
-function parseFilterValues(value) {
-  return String(value || '')
-    .split(',')
+function parseFilterValues(values) {
+  const items = Array.isArray(values) ? values : [values];
+
+  return items
+    .flatMap((value) => String(value || '').split(','))
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
-function normalizePriceValue(value) {
-  if (value === undefined || value === null) return '';
-  const normalized = String(value).trim().replace(',', '.');
-  if (!normalized) return '';
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) && parsed >= 0 ? String(parsed) : '';
+function getParamValues(params, key) {
+  const values = parseFilterValues(params.getAll(key));
+  if (values.length > 0) return values;
+
+  const fallbackValue = params.get(key);
+  return fallbackValue ? parseFilterValues(fallbackValue) : [];
 }
 
 function resolveDefaultCatalogSort({ query, sort }) {
@@ -74,7 +75,7 @@ function readCatalogState(searchString = '') {
   const filters = {};
 
   FILTER_QUERY_KEYS.forEach((key) => {
-    const values = parseFilterValues(params.get(key));
+    const values = getParamValues(params, key);
     if (values.length > 0) {
       filters[key] = values;
     }
@@ -85,35 +86,28 @@ function readCatalogState(searchString = '') {
     filters.LanguageMode = [languageMode];
   }
 
+  // Keep legacy links working, but do not serialize them back to the URL.
   if (params.get('deals') === 'true') {
-    filters.DealsOnly = ['true'];
+    filters.Price = Array.from(new Set([...(filters.Price || []), DEALS_FILTER_VALUE]));
   }
 
   if (params.get('freeOnly') === 'true') {
-    filters.FreeOnly = ['true'];
+    filters.Price = Array.from(new Set([...(filters.Price || []), 'Free']));
   }
 
   return {
     query,
     sort,
     filters,
-    priceRange: {
-      min: normalizePriceValue(params.get('minPrice')),
-      max: normalizePriceValue(params.get('maxPrice')),
-      currency: String(params.get('priceCurrency') || 'USD').toUpperCase() === 'RUB' ? 'RUB' : 'USD',
-    },
   };
 }
 
-function buildCatalogUrl({ query = '', sort = '', filters = {}, priceRange = EMPTY_PRICE_RANGE } = {}) {
+function buildCatalogUrl({ query = '', sort = '', filters = {} } = {}) {
   const params = new URLSearchParams();
   const normalizedFilters = cloneFilters(filters);
   const normalizedQuery = String(query || '').trim();
   const normalizedSort = String(sort || '').trim();
   const effectiveSort = resolveDefaultCatalogSort({ query: normalizedQuery, sort: normalizedSort });
-  const normalizedMinPrice = normalizePriceValue(priceRange?.min);
-  const normalizedMaxPrice = normalizePriceValue(priceRange?.max);
-  const normalizedCurrency = String(priceRange?.currency || 'USD').toUpperCase() === 'RUB' ? 'RUB' : 'USD';
 
   if (normalizedQuery) {
     params.set('q', normalizedQuery);
@@ -125,9 +119,7 @@ function buildCatalogUrl({ query = '', sort = '', filters = {}, priceRange = EMP
 
   FILTER_QUERY_KEYS.forEach((key) => {
     const values = Array.isArray(normalizedFilters[key]) ? normalizedFilters[key].filter(Boolean) : [];
-    if (values.length > 0) {
-      params.set(key, values.join(','));
-    }
+    values.forEach((value) => params.append(key, value));
   });
 
   const languageMode = normalizedFilters.LanguageMode?.[0];
@@ -135,37 +127,26 @@ function buildCatalogUrl({ query = '', sort = '', filters = {}, priceRange = EMP
     params.set('languageMode', languageMode);
   }
 
-  if (normalizedFilters.DealsOnly?.length) {
-    params.set('deals', 'true');
-  }
-
-  if (normalizedFilters.FreeOnly?.length) {
-    params.set('freeOnly', 'true');
-  }
-
-  if (normalizedMinPrice) {
-    params.set('minPrice', normalizedMinPrice);
-  }
-
-  if (normalizedMaxPrice) {
-    params.set('maxPrice', normalizedMaxPrice);
-  }
-
-  if (normalizedMinPrice || normalizedMaxPrice || normalizedCurrency !== 'USD') {
-    params.set('priceCurrency', normalizedCurrency);
-  }
-
   const search = params.toString();
   return search ? `/?${search}` : '/';
 }
 
-function withBooleanFilter(filters, key, enabled) {
+function withFilterValue(filters, key, value, enabled) {
   const nextFilters = cloneFilters(filters);
+  const nextValues = new Set(nextFilters[key] || []);
+
   if (enabled) {
-    nextFilters[key] = ['true'];
+    nextValues.add(value);
   } else {
-    delete nextFilters[key];
+    nextValues.delete(value);
   }
+
+  if (nextValues.size === 0) {
+    delete nextFilters[key];
+  } else {
+    nextFilters[key] = [...nextValues];
+  }
+
   return nextFilters;
 }
 
@@ -235,26 +216,23 @@ export default function App() {
   const navigate = useNavigate();
   const isCatalogRoute = location.pathname === '/';
   const urlCatalogState = useMemo(() => readCatalogState(location.search), [location.search]);
-  const isDealsActive = isCatalogRoute && Boolean(urlCatalogState.filters?.DealsOnly?.length);
+  const isDealsActive = isCatalogRoute && Boolean(urlCatalogState.filters?.Price?.includes(DEALS_FILTER_VALUE));
   const isHomeActive = isCatalogRoute && !isDealsActive;
   const searchState = useSearch({
-    dealsMode: isDealsActive,
     enabled: isCatalogRoute,
     initialQuery: urlCatalogState.query,
     initialSort: urlCatalogState.sort,
     initialFilters: urlCatalogState.filters,
-    initialPriceRange: urlCatalogState.priceRange,
   });
   const sortFilter = searchState.filterOptions?.orderby || null;
   const currentCatalogState = useMemo(() => ({
     query: searchState.query,
     sort: searchState.sort,
     filters: searchState.filters,
-    priceRange: searchState.priceRange,
-  }), [searchState.filters, searchState.priceRange, searchState.query, searchState.sort]);
+  }), [searchState.filters, searchState.query, searchState.sort]);
   const dealsToggleUrl = useMemo(() => buildCatalogUrl({
     ...currentCatalogState,
-    filters: withBooleanFilter(currentCatalogState.filters, 'DealsOnly', !isDealsActive),
+    filters: withFilterValue(currentCatalogState.filters, DEALS_FILTER_KEY, DEALS_FILTER_VALUE, !isDealsActive),
   }), [currentCatalogState, isDealsActive]);
 
   const closeMobileMenu = () => {
@@ -282,7 +260,6 @@ export default function App() {
       ...currentCatalogState,
       filters: payload?.filters || {},
       sort: payload?.sort || '',
-      priceRange: payload?.priceRange || EMPTY_PRICE_RANGE,
     });
   };
 
@@ -293,7 +270,7 @@ export default function App() {
   const handleClearDeals = () => {
     navigateToCatalog({
       ...currentCatalogState,
-      filters: withBooleanFilter(currentCatalogState.filters, 'DealsOnly', false),
+      filters: withFilterValue(currentCatalogState.filters, DEALS_FILTER_KEY, DEALS_FILTER_VALUE, false),
     });
   };
 
@@ -530,7 +507,6 @@ export default function App() {
           sort={searchState.sort}
           sortFilter={sortFilter}
           total={searchState.total}
-          priceRange={searchState.priceRange}
         />
 
         <Routes>

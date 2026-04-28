@@ -18,7 +18,7 @@ const COMMON_HEADERS = {
 /**
  * Browse all games with optional filters and pagination.
  * This is the same API that powers https://www.xbox.com/en-US/games/browse
- * Pass channelId = 'DynamicChannel.GameDeals' to get only discounted games.
+ * `channelId` is optional and can be used for special browse channels when needed.
  */
 async function browseGames({ encodedFilters = '', encodedCT = '', returnFilters = true, channelId = '' } = {}) {
   const cacheKey = `browse:${channelId}:${encodedFilters}:${encodedCT}`;

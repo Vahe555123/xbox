@@ -15,14 +15,12 @@ const logger = require('../utils/logger');
  * - If no query, uses the browse endpoint (full catalog, 16K+ games)
  * - Supports filters and pagination via encodedCT
  */
-const RUB_USD_RATE = Number(process.env.RUB_USD_RATE) || 100;
 const SEARCH_RERANK_MAX_PAGES = Math.max(1, Number(process.env.SEARCH_RERANK_MAX_PAGES) || 4);
-const LOCAL_FILTER_PREFETCH_MAX_PAGES = Math.max(1, Number(process.env.SEARCH_LOCAL_FILTER_MAX_PAGES) || 12);
+const LANGUAGE_FILTER_PREFETCH_MAX_PAGES = Math.max(1, Number(process.env.SEARCH_LANGUAGE_FILTER_MAX_PAGES) || 12);
 const SEARCH_RERANK_TOKEN_PREFIX = 'ranked-search:';
 const SEARCH_RERANK_CACHE_TTL_SECONDS = 10 * 60;
 const DEFAULT_BROWSE_SORT = 'WishlistCountTotal desc';
 const RATING_SORT = 'MostPopular desc';
-const PRICE_ASC_SORT = 'Price asc';
 const STRONG_MATCH_SCORE = 5000;
 const SEARCH_NOISE_TOKENS = new Set([
   'a',
@@ -53,25 +51,14 @@ async function search({
   page,
   sort,
   filters,
-  priceRange,
   languageMode,
-  freeOnly = false,
-  dealsOnly = false,
   countOnly = false,
   encodedCT,
   channelId = '',
 }) {
-  const priceFilterActive = isPriceRangeActive(priceRange);
-  const normalizedPriceRange = normalizePriceRange(priceRange);
-  const effectiveSort = resolveCatalogSort({ query, sort, priceFilterActive });
-  const countSort = resolveCatalogSort({ query, sort, priceFilterActive, forcePriceAsc: priceFilterActive });
+  const effectiveSort = resolveSort({ query, sort });
   const encodedFilters = buildEncodedFilters(filters, effectiveSort);
-  const countEncodedFilters = buildEncodedFilters(filters, countSort);
-  const dealsHandledByChannel = Boolean(dealsOnly && !query && channelId);
-  const effectiveDealsOnly = dealsHandledByChannel ? false : dealsOnly;
   const languageFilterActive = isLanguageFilterActive(languageMode);
-  const postFilterActive = Boolean(freeOnly || effectiveDealsOnly || languageFilterActive);
-  const localFilterActive = Boolean(priceFilterActive || postFilterActive);
 
   if (isRankedSearchToken(encodedCT)) {
     const buffered = await readRankedSearchBuffer(encodedCT);
@@ -94,10 +81,7 @@ async function search({
         query,
         encodedFilters,
         channelId,
-        priceRange: normalizedPriceRange,
         languageMode,
-        freeOnly,
-        dealsOnly: effectiveDealsOnly,
       });
     }
 
@@ -105,19 +89,14 @@ async function search({
       return await searchWithRelevanceRerank({
         query,
         encodedFilters,
-        priceRange,
-        priceFilterActive,
         languageMode,
-        freeOnly,
-        dealsOnly: effectiveDealsOnly,
-        postFilterActive,
         channelId,
       });
     }
 
     raw = await fetchCatalogPage({
       query,
-      encodedFilters: countOnly ? countEncodedFilters : encodedFilters,
+      encodedFilters,
       encodedCT: encodedCT || '',
       returnFilters: !encodedCT,
       channelId,
@@ -128,50 +107,47 @@ async function search({
   }
 
   if (countOnly) {
+    if (!languageFilterActive) {
+      return {
+        products: [],
+        totalItems: Number.isFinite(raw?.totalItems) ? raw.totalItems : 0,
+        totalIsApproximate: false,
+        totalPending: false,
+        encodedCT: null,
+        filters: null,
+        hasMorePages: false,
+      };
+    }
+
     return countFilteredSearchResults({
       raw,
       query,
-      encodedFilters: countEncodedFilters,
+      encodedFilters,
       channelId,
-      priceRange: normalizedPriceRange,
       languageMode,
-      freeOnly,
-      dealsOnly: effectiveDealsOnly,
-      sort: countSort,
     });
   }
 
   let rawProducts = raw.products || [];
   let nextEncodedCT = raw.encodedCT;
 
-  if (priceFilterActive || freeOnly || effectiveDealsOnly || languageFilterActive) {
-    const collected = await collectRawProductsForLocalFilters({
+  if (languageFilterActive) {
+    const collected = await collectRawProductsForLanguage({
       query,
       encodedFilters,
       rawProducts,
       nextEncodedCT,
       channelId,
-      priceRange: normalizedPriceRange,
-      freeOnly,
-      dealsOnly: effectiveDealsOnly,
       languageMode,
-      sort: effectiveSort,
     });
 
     rawProducts = collected.rawProducts;
     nextEncodedCT = collected.nextEncodedCT;
   }
 
-  const mappedProducts = mapProducts(rawProducts);
-  const products = applyImmediateCatalogFilters(mappedProducts, {
-    priceRange: normalizedPriceRange,
-    freeOnly,
-    dealsOnly: effectiveDealsOnly,
-  });
+  const products = mapProducts(rawProducts);
   const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), {
     languageMode,
-    freeOnly,
-    dealsOnly: effectiveDealsOnly,
   });
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)
@@ -179,9 +155,9 @@ async function search({
 
   return {
     products: enrichedProducts,
-    totalItems: localFilterActive ? null : raw.totalItems,
-    totalIsApproximate: localFilterActive,
-    totalPending: localFilterActive,
+    totalItems: languageFilterActive ? null : raw.totalItems,
+    totalIsApproximate: languageFilterActive,
+    totalPending: languageFilterActive,
     encodedCT: nextEncodedCT,
     filters: mappedFilters,
     hasMorePages: !!nextEncodedCT,
@@ -191,17 +167,11 @@ async function search({
 async function searchWithRelevanceRerank({
   query,
   encodedFilters,
-  priceRange,
-  priceFilterActive,
   languageMode,
-  freeOnly,
-  dealsOnly,
-  postFilterActive,
   channelId,
 }) {
   const collectedRawProducts = [];
   const queryVariants = getSearchQueryVariants(query);
-  const normalizedPriceRange = normalizePriceRange(priceRange);
   let raw = null;
   let nextEncodedCT = null;
   let bestScore = 0;
@@ -230,31 +200,28 @@ async function searchWithRelevanceRerank({
   }
 
   const mappedProducts = mapProducts(dedupeRawProducts(collectedRawProducts));
-  const products = applyImmediateCatalogFilters(mappedProducts, {
-    priceRange: normalizedPriceRange,
-    freeOnly,
-    dealsOnly,
-  });
-  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), { languageMode, freeOnly, dealsOnly });
+  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(mappedProducts)), { languageMode });
   const rankedProducts = rankProductsBySearchRelevance(enrichedProducts, query);
   const pageProducts = rankedProducts.slice(0, config.xbox.pageSize);
   const remainingProducts = rankedProducts.slice(config.xbox.pageSize);
   const mappedFilters = raw?.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)
     : null;
+  const languageFilterActive = isLanguageFilterActive(languageMode);
   const bufferedToken = remainingProducts.length
     ? writeRankedSearchBuffer({
         products: remainingProducts,
         nextExternalEncodedCT: nextEncodedCT || null,
-        totalItems: (priceFilterActive || postFilterActive) ? rankedProducts.length : raw?.totalItems,
-        totalIsApproximate: priceFilterActive || postFilterActive,
+        totalItems: languageFilterActive ? null : raw?.totalItems,
+        totalIsApproximate: languageFilterActive,
       })
     : nextEncodedCT || null;
 
   return {
     products: pageProducts,
-    totalItems: (priceFilterActive || postFilterActive) ? rankedProducts.length : raw?.totalItems,
-    totalIsApproximate: priceFilterActive || postFilterActive,
+    totalItems: languageFilterActive ? null : raw?.totalItems,
+    totalIsApproximate: languageFilterActive,
+    totalPending: languageFilterActive,
     encodedCT: bufferedToken,
     filters: mappedFilters,
     hasMorePages: Boolean(bufferedToken),
@@ -330,6 +297,7 @@ async function readRankedSearchBuffer(encodedCT) {
     products: pageProducts,
     totalItems: session.totalItems,
     totalIsApproximate: session.totalIsApproximate,
+    totalPending: false,
     encodedCT: nextToken,
     filters: null,
     hasMorePages: Boolean(nextToken),
@@ -530,89 +498,41 @@ function countOrderedMatches(needles, haystack) {
   return count;
 }
 
-function normalizePriceRange(priceRange) {
-  if (priceRange?.currency !== 'RUB') return priceRange;
-  return {
-    min: Number.isFinite(priceRange.min) ? priceRange.min / RUB_USD_RATE : null,
-    max: Number.isFinite(priceRange.max) ? priceRange.max / RUB_USD_RATE : null,
-  };
-}
-
-function resolveCatalogSort({ query, sort, priceFilterActive, forcePriceAsc = false }) {
-  if (forcePriceAsc && priceFilterActive) return PRICE_ASC_SORT;
+function resolveSort({ query, sort }) {
   if (sort && sort !== 'DO_NOT_FILTER') return sort;
-  if (priceFilterActive) return PRICE_ASC_SORT;
   if (!query || !String(query).trim()) return DEFAULT_BROWSE_SORT;
   return sort;
-}
-
-function isPriceAscendingSort(sort) {
-  return sort === PRICE_ASC_SORT;
 }
 
 function shouldUseBufferedRatingSort({ sort, encodedCT }) {
   return sort === RATING_SORT && !encodedCT;
 }
 
-function shouldStopPriceAscendingScan(rawProducts, priceRange, sort) {
-  if (!isPriceAscendingSort(sort)) return false;
-
-  const max = Number.isFinite(priceRange?.max) ? priceRange.max : null;
-  if (max === null) return false;
-
-  const pricedValues = mapProducts(rawProducts)
-    .map((product) => product.price?.value)
-    .filter(Number.isFinite);
-
-  if (pricedValues.length === 0) return false;
-
-  return pricedValues.every((value) => value > max);
-}
-
 function isLanguageFilterActive(languageMode) {
   return Boolean(languageMode && languageMode !== 'all');
 }
 
-function applyImmediateCatalogFilters(products, { priceRange, freeOnly, dealsOnly }) {
-  const priceFiltered = applyPriceRange(products, priceRange);
-
-  return priceFiltered.filter((product) => {
-    if (freeOnly && product.price?.value !== 0) return false;
-    if (!freeOnly && product.price?.value === 0) return false;
-    if (dealsOnly && !(product.price?.discountPercent > 0)) return false;
-    return true;
-  });
+function getLanguageFilterTargetCount() {
+  return config.xbox.pageSize;
 }
 
-function getLocalFilterTargetCount(languageMode) {
-  return config.xbox.pageSize * (isLanguageFilterActive(languageMode) ? 2 : 1);
-}
-
-async function collectRawProductsForLocalFilters({
+async function collectRawProductsForLanguage({
   query,
   encodedFilters,
   rawProducts,
   nextEncodedCT,
   channelId,
-  priceRange,
-  freeOnly,
-  dealsOnly,
   languageMode,
-  sort,
 }) {
-  const targetCount = getLocalFilterTargetCount(languageMode);
+  const targetCount = getLanguageFilterTargetCount();
   let collectedRawProducts = [...rawProducts];
   let collectedNextEncodedCT = nextEncodedCT;
   let attempts = 0;
 
   while (
-    applyImmediateCatalogFilters(mapProducts(collectedRawProducts), {
-      priceRange,
-      freeOnly,
-      dealsOnly,
-    }).length < targetCount
+    await countLanguageFilteredProducts(collectedRawProducts, languageMode) < targetCount
     && collectedNextEncodedCT
-    && attempts < LOCAL_FILTER_PREFETCH_MAX_PAGES
+    && attempts < LANGUAGE_FILTER_PREFETCH_MAX_PAGES
   ) {
     const nextRaw = await fetchCatalogPage({
       query,
@@ -621,11 +541,6 @@ async function collectRawProductsForLocalFilters({
       returnFilters: false,
       channelId,
     });
-
-    if (shouldStopPriceAscendingScan(nextRaw.products || [], priceRange, sort)) {
-      collectedNextEncodedCT = null;
-      break;
-    }
 
     collectedRawProducts = [...collectedRawProducts, ...(nextRaw.products || [])];
     collectedNextEncodedCT = nextRaw.encodedCT;
@@ -644,8 +559,6 @@ async function collectAllCatalogPages({
   rawProducts,
   nextEncodedCT,
   channelId,
-  priceRange,
-  sort,
 }) {
   let collectedRawProducts = [...rawProducts];
   let collectedNextEncodedCT = nextEncodedCT;
@@ -660,11 +573,6 @@ async function collectAllCatalogPages({
       returnFilters: false,
       channelId,
     });
-
-    if (shouldStopPriceAscendingScan(nextRaw.products || [], priceRange, sort)) {
-      collectedNextEncodedCT = null;
-      break;
-    }
 
     collectedRawProducts = [...collectedRawProducts, ...(nextRaw.products || [])];
     collectedNextEncodedCT = nextRaw.encodedCT;
@@ -681,11 +589,7 @@ async function countFilteredSearchResults({
   query,
   encodedFilters,
   channelId,
-  priceRange,
   languageMode,
-  freeOnly,
-  dealsOnly,
-  sort,
 }) {
   const collected = await collectAllCatalogPages({
     query,
@@ -693,19 +597,12 @@ async function countFilteredSearchResults({
     rawProducts: raw.products || [],
     nextEncodedCT: raw.encodedCT,
     channelId,
-    priceRange,
-    sort,
   });
 
   const mappedProducts = mapProducts(dedupeRawProducts(collected.rawProducts));
-  const immediateFilteredProducts = applyImmediateCatalogFilters(mappedProducts, {
-    priceRange,
-    freeOnly,
-    dealsOnly,
-  });
   const filteredProducts = applyPostFilters(
-    await applyProductOverrides(await enrichProducts(immediateFilteredProducts)),
-    { languageMode, freeOnly, dealsOnly },
+    await applyProductOverrides(await enrichProducts(mappedProducts)),
+    { languageMode },
   );
 
   return {
@@ -724,10 +621,7 @@ async function searchWithBufferedRatingSort({
   query,
   encodedFilters,
   channelId,
-  priceRange,
   languageMode,
-  freeOnly,
-  dealsOnly,
 }) {
   const collected = await collectAllCatalogPages({
     query,
@@ -735,19 +629,12 @@ async function searchWithBufferedRatingSort({
     rawProducts: raw.products || [],
     nextEncodedCT: raw.encodedCT,
     channelId,
-    priceRange,
-    sort: RATING_SORT,
   });
 
   const mappedProducts = mapProducts(dedupeRawProducts(collected.rawProducts));
-  const immediateFilteredProducts = applyImmediateCatalogFilters(mappedProducts, {
-    priceRange,
-    freeOnly,
-    dealsOnly,
-  });
   const filteredProducts = applyPostFilters(
-    await applyProductOverrides(await enrichProducts(immediateFilteredProducts)),
-    { languageMode, freeOnly, dealsOnly },
+    await applyProductOverrides(await enrichProducts(mappedProducts)),
+    { languageMode },
   );
   const rankedProducts = sortProductsByRating(filteredProducts);
   const pageProducts = rankedProducts.slice(0, config.xbox.pageSize);
@@ -791,12 +678,18 @@ function sortProductsByRating(products) {
   });
 }
 
-function applyPostFilters(products, { languageMode, freeOnly, dealsOnly }) {
+async function countLanguageFilteredProducts(rawProducts, languageMode) {
+  const mappedProducts = mapProducts(dedupeRawProducts(rawProducts));
+  const filteredProducts = applyPostFilters(
+    await applyProductOverrides(await enrichProducts(mappedProducts)),
+    { languageMode },
+  );
+  return filteredProducts.length;
+}
+
+function applyPostFilters(products, { languageMode }) {
   return products.filter((product) => {
     if (product.notAvailableSeparately) return false;
-    if (freeOnly && product.price?.value !== 0) return false;
-    if (!freeOnly && product.price?.value === 0) return false;
-    if (dealsOnly && !(product.price?.discountPercent > 0)) return false;
     if (languageMode && languageMode !== 'all' && product.russianLanguageMode !== languageMode) return false;
     return true;
   });
@@ -861,28 +754,9 @@ function fetchCatalogPage({ query, encodedFilters, encodedCT, returnFilters, cha
   });
 }
 
-function isPriceRangeActive(priceRange) {
-  return Number.isFinite(priceRange?.min) || Number.isFinite(priceRange?.max);
-}
-
-function applyPriceRange(products, priceRange) {
-  const min = Number.isFinite(priceRange?.min) ? priceRange.min : null;
-  const max = Number.isFinite(priceRange?.max) ? priceRange.max : null;
-
-  if (min === null && max === null) return products;
-
-  return products.filter((product) => {
-    const price = product.price?.value;
-    if (!Number.isFinite(price)) return false;
-    if (min !== null && price < min) return false;
-    if (max !== null && price > max) return false;
-    return true;
-  });
-}
-
 function buildEncodedFilters(filters, sort) {
   const filterObj = {};
-  const localFilterKeys = new Set(['LanguageMode', 'DealsOnly', 'FreeOnly']);
+  const localFilterKeys = new Set(['LanguageMode']);
 
   if (filters && typeof filters === 'object') {
     for (const [key, values] of Object.entries(filters)) {
