@@ -536,6 +536,7 @@ function mapSkus(displaySkuAvailabilities) {
         actions: av.Actions || [],
         displayRank: av.DisplayRank ?? null,
         price: mapPriceFromOrder(av.OrderManagementData?.Price),
+        dealEndDate: extractDealEndDateFromAvailability(av),
         alternateIds: av.AlternateIds || [],
         passProductIds,
         isSubscriptionOffer: passProductIds.some((id) => isKnownSubscriptionId(id)),
