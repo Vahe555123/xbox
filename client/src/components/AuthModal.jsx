@@ -32,11 +32,17 @@ function VKIcon() {
   );
 }
 
-function TelegramIcon() {
+/** Стилизованная «отправка» в бейдже — не официальный логотип Telegram. */
+function TelegramPaperBadge() {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-      <path fill="#fff" d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
-    </svg>
+    <span className="auth-telegram-icon-badge" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M2.01 21 23 12 2.01 3v7.09L18.99 12 2.01 14.91V21z"
+        />
+      </svg>
+    </span>
   );
 }
 
@@ -99,7 +105,8 @@ export default function AuthModal({ open, onClose, onAuth, externalError }) {
     script.async = true;
     script.setAttribute('data-telegram-login', providers.telegram.botUsername);
     script.setAttribute('data-size', 'large');
-    script.setAttribute('data-radius', '8');
+    script.setAttribute('data-radius', '10');
+    script.setAttribute('data-userpic', 'false');
     script.setAttribute('data-request-access', 'write');
     script.setAttribute('data-onauth', 'window.onTelegramAuth(user)');
     container.appendChild(script);
@@ -183,6 +190,14 @@ export default function AuthModal({ open, onClose, onAuth, externalError }) {
     setError('');
     setNotice('');
     window.location.assign(`/api/auth/oauth/${provider}`);
+  };
+
+  const explainTelegramUnavailable = () => {
+    if (providers.telegram?.enabled && !providers.telegram?.ready) {
+      setError('Telegram вход не настроен: добавьте TELEGRAM_BOT_TOKEN и перезапустите сервер');
+      return;
+    }
+    setError('Telegram вход сейчас недоступен');
   };
 
   const title = mode === 'register'
@@ -287,15 +302,27 @@ export default function AuthModal({ open, onClose, onAuth, externalError }) {
                     <span>VK</span>
                   </button>
                   {providers.telegram?.ready ? (
-                    <div className="auth-telegram-widget" ref={telegramRef} />
+                    <div
+                      className={`auth-social-button auth-telegram-widget-host${loading ? ' auth-telegram-widget-host--busy' : ''}`}
+                      title="Войти через Telegram"
+                      role="group"
+                      aria-label="Войти через Telegram"
+                    >
+                      <div className="auth-telegram-faux" aria-hidden="true">
+                        <TelegramPaperBadge />
+                        <span>Telegram</span>
+                      </div>
+                      <div className="auth-telegram-widget auth-telegram-widget--overlay" ref={telegramRef} />
+                    </div>
                   ) : (
                     <button
                       type="button"
-                      className="auth-social-button auth-social-telegram"
-                      disabled
+                      className="auth-social-button"
+                      onClick={explainTelegramUnavailable}
                       title="Telegram (недоступно)"
+                      aria-label="Войти через Telegram (недоступно)"
                     >
-                      <TelegramIcon />
+                      <TelegramPaperBadge />
                       <span>Telegram</span>
                     </button>
                   )}
