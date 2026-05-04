@@ -1060,7 +1060,7 @@ export default function GameDetailPage() {
           )}
 
           <section className="detail-section">
-            <h2>Особенности и фишки</h2>
+            <h2>Особенности и фишки </h2>
             {featureCapabilities.length > 0 ? (
               <div className="accessibility-chips">
                 {featureCapabilities.map((capability) => (
