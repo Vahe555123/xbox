@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { Blob } = require('buffer');
+const axios = require('axios');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const config = require('../config');
 const pool = require('../db/pool');
 const { getSupportLinks } = require('./supportLinksService');
@@ -402,34 +404,20 @@ async function getTelegramProxyUrl() {
 
 async function buildTelegramRequestConfig(base = {}) {
   const proxyUrl = await getTelegramProxyUrl();
-  applyTelegramProxyEnv(proxyUrl);
-  return { ...base };
-}
-
-function applyTelegramProxyEnv(proxyUrl) {
+  const configWithProxy = { ...base };
   const value = String(proxyUrl || '').trim();
-
-  if (!value) {
-    delete process.env.HTTP_PROXY;
-    delete process.env.HTTPS_PROXY;
-    delete process.env.NODE_USE_ENV_PROXY;
-    return;
-  }
+  if (!value) return configWithProxy;
 
   try {
-    // Validate URL before exposing it to the fetch env proxy agent.
-    // The agent itself reads HTTP(S)_PROXY from process.env.
-    // eslint-disable-next-line no-new
-    new URL(value);
-    process.env.NODE_USE_ENV_PROXY = '1';
-    process.env.HTTP_PROXY = value;
-    process.env.HTTPS_PROXY = value;
+    const agent = new HttpsProxyAgent(value);
+    configWithProxy.httpAgent = agent;
+    configWithProxy.httpsAgent = agent;
+    configWithProxy.proxy = false;
   } catch {
     logger.warn('[TelegramBot] Invalid proxy URL configured', { proxy: maskProxyUrl(value) });
-    delete process.env.HTTP_PROXY;
-    delete process.env.HTTPS_PROXY;
-    delete process.env.NODE_USE_ENV_PROXY;
   }
+
+  return configWithProxy;
 }
 
 function maskProxyUrl(proxyUrl) {
@@ -466,56 +454,25 @@ async function telegramJsonRequest(url, options = {}) {
     timeout = config.auth.telegram.requestTimeoutMs,
   } = options;
 
-  await buildTelegramRequestConfig({ timeout });
-
-  const requestUrl = new URL(url);
-  if (query && typeof query === 'object') {
-    for (const [key, value] of Object.entries(query)) {
-      if (value !== undefined && value !== null && value !== '') {
-        requestUrl.searchParams.set(key, String(value));
-      }
-    }
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
-
+  const requestConfig = await buildTelegramRequestConfig({
+    url,
+    method,
+    headers,
+    data: body,
+    params: query,
+    timeout,
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
   try {
-    const response = await fetch(requestUrl, {
-      method,
-      headers,
-      body,
-      signal: controller.signal,
-    });
-    const text = await response.text();
-    let data = null;
-
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = text;
-    }
-
-    if (!response.ok) {
-      const err = new Error(`Request failed with status code ${response.status}`);
-      err.status = response.status;
-      err.response = {
-        status: response.status,
-        statusText: response.statusText,
-        data,
-      };
-      throw err;
-    }
-
-    return data;
+    const response = await axios(requestConfig);
+    return response.data;
   } catch (err) {
-    if (err.name === 'AbortError') {
+    if (err.code === 'ECONNABORTED') {
       const timeoutErr = new Error(`Telegram request timeout after ${timeout}ms`);
       timeoutErr.code = 'ETIMEDOUT';
       throw timeoutErr;
     }
     throw err;
-  } finally {
-    clearTimeout(timer);
   }
 }
