@@ -974,7 +974,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                   <textarea
                     value={overrideForm.customDescription}
                     onChange={(e) => setOverrideForm((current) => ({ ...current, customDescription: e.target.value }))}
-                    placeholder="Если оставить пустым — используется описание из Xbox Store (ru-RU, затем en-US)"
+                    placeholder="Если оставить пустым — используется описание из Xbox Store (ru-UA, затем en-US)"
                     rows={6}
                   />
                 </label>

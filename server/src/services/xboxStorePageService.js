@@ -5,6 +5,7 @@ const cache = require('../utils/cache');
 const client = createAxiosClient('https://www.xbox.com');
 const LANGUAGE_CACHE_TTL = 12 * 3600;
 const STORE_PAGE_CACHE_TTL = 12 * 3600;
+const DESCRIPTION_CACHE_TTL = 12 * 3600;
 const inflight = new Map();
 
 const RELATED_CHANNELS = [
@@ -35,17 +36,10 @@ async function getStorePageProductData({ productId, storeUrl, languageOnly = fal
   if (inflight.has(inflightKey)) return inflight.get(inflightKey);
 
   const promise = (async () => {
-    const enPromise = fetchStoreStateForLocale(storeUrl, config.xbox.language || 'en-US');
-    const ruPromise = languageOnly
-      ? Promise.resolve(null)
-      : fetchStoreStateForLocale(storeUrl, 'ru-RU').catch(() => null);
-
-    const [state, ruState] = await Promise.all([enPromise, ruPromise]);
-
+    const state = await fetchStoreStateForLocale(storeUrl, config.xbox.language || 'en-US');
     const channelData = state?.core2?.channels?.channelData || {};
     const productSummaries = state?.core2?.products?.productSummaries || {};
     const productSummary = getCaseInsensitiveValue(productSummaries, normalizedProductId);
-    const ruProductSummary = getCaseInsensitiveValue(ruState?.core2?.products?.productSummaries || {}, normalizedProductId);
     const languageInfo = extractStoreLanguageInfo(productSummary);
 
     if (languageInfo) {
@@ -80,12 +74,69 @@ async function getStorePageProductData({ productId, storeUrl, languageOnly = fal
       relatedProducts: products,
       languageInfo,
       categories: extractStoreCategories(productSummary),
-      description: extractPreferredStoreDescription(ruProductSummary, productSummary),
+      description: extractStoreDescriptionWithSource(productSummary, config.xbox.language || 'en-US'),
       bundleItems: extractBundleItems(channelData, productSummaries, normalizedProductId),
       compareEditionItems: extractCompareEditionItems(channelData, productSummaries, normalizedProductId),
     };
     cache.set(fullCacheKey, data, STORE_PAGE_CACHE_TTL);
     return data;
+  })().finally(() => {
+    inflight.delete(inflightKey);
+  });
+
+  inflight.set(inflightKey, promise);
+  return promise;
+}
+
+async function getStoreLocalizedDescription({
+  productId,
+  storeUrl,
+  locale = 'ru-UA',
+  fallbackLocale = config.xbox.language || 'en-US',
+} = {}) {
+  if (!productId || !storeUrl) {
+    return { fullDescription: null, shortDescription: null, source: null };
+  }
+
+  const normalizedProductId = String(productId).toUpperCase();
+  const cacheKey = `xbox-store-description:${normalizedProductId}:${locale}:${fallbackLocale}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  const inflightKey = `description:${normalizedProductId}:${locale}:${fallbackLocale}`;
+  if (inflight.has(inflightKey)) return inflight.get(inflightKey);
+
+  const promise = (async () => {
+    const localizedState = await fetchStoreStateForLocale(storeUrl, locale).catch(() => null);
+    const localizedSummary = getCaseInsensitiveValue(
+      localizedState?.core2?.products?.productSummaries || {},
+      normalizedProductId,
+    );
+    const localizedDescription = extractStoreDescriptionWithSource(localizedSummary, locale);
+
+    if (localizedDescription.fullDescription || localizedDescription.shortDescription) {
+      cache.set(cacheKey, localizedDescription, DESCRIPTION_CACHE_TTL);
+      return localizedDescription;
+    }
+
+    if (!fallbackLocale || fallbackLocale === locale) {
+      const emptyDescription = { fullDescription: null, shortDescription: null, source: null };
+      cache.set(cacheKey, emptyDescription, DESCRIPTION_CACHE_TTL);
+      return emptyDescription;
+    }
+
+    const fallbackState = await fetchStoreStateForLocale(storeUrl, fallbackLocale).catch(() => null);
+    const fallbackSummary = getCaseInsensitiveValue(
+      fallbackState?.core2?.products?.productSummaries || {},
+      normalizedProductId,
+    );
+    const fallbackDescription = extractStoreDescriptionWithSource(fallbackSummary, fallbackLocale);
+    const result = (fallbackDescription.fullDescription || fallbackDescription.shortDescription)
+      ? fallbackDescription
+      : { fullDescription: null, shortDescription: null, source: null };
+
+    cache.set(cacheKey, result, DESCRIPTION_CACHE_TTL);
+    return result;
   })().finally(() => {
     inflight.delete(inflightKey);
   });
@@ -121,18 +172,6 @@ function toXboxRequestPathForLocale(storeUrl, locale) {
   return path.replace(/^\/(?:[a-z]{2}-[a-z]{2})\//i, `/${locale}/`);
 }
 
-function extractPreferredStoreDescription(ruProductSummary, enProductSummary) {
-  const ru = extractStoreDescription(ruProductSummary);
-  if (ru.fullDescription || ru.shortDescription) {
-    return { ...ru, source: 'ru-RU' };
-  }
-  const en = extractStoreDescription(enProductSummary);
-  if (en.fullDescription || en.shortDescription) {
-    return { ...en, source: 'en-US' };
-  }
-  return { fullDescription: null, shortDescription: null, source: null };
-}
-
 function extractStoreDescription(productSummary) {
   if (!productSummary || typeof productSummary !== 'object') {
     return { fullDescription: null, shortDescription: null };
@@ -150,6 +189,14 @@ function extractStoreDescription(productSummary) {
   ]);
 
   return { fullDescription, shortDescription };
+}
+
+function extractStoreDescriptionWithSource(productSummary, source) {
+  const description = extractStoreDescription(productSummary);
+  if (description.fullDescription || description.shortDescription) {
+    return { ...description, source };
+  }
+  return { ...description, source: null };
 }
 
 function firstNonEmptyString(values) {
@@ -321,6 +368,7 @@ function getCachedLanguageInfo(productId) {
 
 module.exports = {
   getStorePageProductData,
+  getStoreLocalizedDescription,
   getStorePageRelatedProducts,
   extractPreloadedState,
   extractStoreLanguageInfo,

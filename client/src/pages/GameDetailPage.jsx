@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { createProductPurchase, fetchProductDetail, fetchProfile, fetchRelatedProducts } from '../services/api';
+import {
+  createProductPurchase,
+  fetchProductDetail,
+  fetchProductLocalizedDescription,
+  fetchProfile,
+  fetchRelatedProducts,
+} from '../services/api';
 import Spinner from '../components/Spinner';
 import ErrorMessage from '../components/ErrorMessage';
 import ProductCard from '../components/ProductCard';
@@ -249,6 +255,7 @@ export default function GameDetailPage() {
   const [purchaseResult, setPurchaseResult] = useState(null);
   const [copyMessage, setCopyMessage] = useState('');
   const [favoriteToast, setFavoriteToast] = useState('');
+  const [localizedDescriptionLoading, setLocalizedDescriptionLoading] = useState(false);
   const scrollRefs = useRef({});
 
   useEffect(() => {
@@ -271,6 +278,7 @@ export default function GameDetailPage() {
     setPurchaseResult(null);
     setCopyMessage('');
     setFavoriteToast('');
+    setLocalizedDescriptionLoading(false);
 
     let cancelled = false;
     fetchProductDetail(productId)
@@ -280,6 +288,59 @@ export default function GameDetailPage() {
 
     return () => { cancelled = true; };
   }, [productId]);
+
+  useEffect(() => {
+    if (!data?.id || !data.officialStoreUrl) return undefined;
+    if (data.descriptionOverride || data.descriptionSource === 'admin-override') return undefined;
+
+    const currentSource = String(data.descriptionSource || '').toLowerCase();
+    if (currentSource.startsWith('ru-')) return undefined;
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    setLocalizedDescriptionLoading(true);
+    fetchProductLocalizedDescription(data.id, {
+      locale: 'ru-UA',
+      signal: controller.signal,
+    })
+      .then((res) => {
+        if (cancelled) return;
+
+        const description = res.description || {};
+        const hasFetchedDescription = Boolean(description.fullDescription || description.shortDescription);
+        if (!hasFetchedDescription) return;
+
+        setData((current) => {
+          if (!current || current.id !== data.id) return current;
+          if (current.descriptionOverride || current.descriptionSource === 'admin-override') return current;
+
+          const nextSource = String(description.source || '').toLowerCase();
+          const isRussianDescription = nextSource.startsWith('ru-');
+          if (!isRussianDescription && (current.fullDescription || current.shortDescription)) {
+            return current;
+          }
+
+          return {
+            ...current,
+            fullDescription: description.fullDescription || current.fullDescription,
+            shortDescription: description.shortDescription || current.shortDescription,
+            descriptionSource: description.source || current.descriptionSource || null,
+          };
+        });
+      })
+      .catch(() => {
+        if (controller.signal.aborted || cancelled) return;
+      })
+      .finally(() => {
+        if (!cancelled) setLocalizedDescriptionLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [data?.descriptionOverride, data?.descriptionSource, data?.id, data?.officialStoreUrl]);
 
   useEffect(() => {
     if (!data?.relatedProducts?.length) return undefined;
@@ -397,6 +458,7 @@ export default function GameDetailPage() {
     () => capabilitiesById.has('XPA') || Boolean(data?.xbox?.xpa),
     [capabilitiesById, data?.xbox?.xpa],
   );
+  const detailDescriptionText = data?.fullDescription || data?.shortDescription || '';
 
   useEffect(() => {
     if (!data?.id) return;
@@ -445,7 +507,7 @@ export default function GameDetailPage() {
   const hasRubPrice = Boolean(data.priceRub?.formatted);
   const isUnavailablePrice = price?.status === 'unavailable' || price?.formatted === 'Price not available';
   const storePriceLabel = getStorePriceLabel(price, data.releaseInfo, isUnavailablePrice);
-  const fallbackPriceLabel = hasRubPrice ? null : 'Цена недоступна';
+  const fallbackPriceLabel = hasRubPrice ? null : '';
   const discountPercent = price?.discountPercent ? Math.round(price.discountPercent) : null;
   const gamePassSavingsBadgePercent = Number(data.gamePassSavingsPercent) > 0
     ? Math.round(Number(data.gamePassSavingsPercent))
@@ -1088,7 +1150,7 @@ export default function GameDetailPage() {
               </div>
             </dl>
             <div className="detail-body-text">
-              {data.fullDescription || data.shortDescription || 'Описание недоступно.'}
+              {detailDescriptionText || (localizedDescriptionLoading ? 'Загружаем описание...' : 'Описание недоступно.')}
             </div>
           </section>
 

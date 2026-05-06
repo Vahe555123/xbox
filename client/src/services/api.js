@@ -47,6 +47,14 @@ export async function fetchProductDetail(productId) {
   return data;
 }
 
+export async function fetchProductLocalizedDescription(productId, { locale = 'ru-UA', signal } = {}) {
+  const { data } = await api.get(`/xbox/product/${encodeURIComponent(productId)}/description`, {
+    params: { locale },
+    signal,
+  });
+  return data;
+}
+
 export async function createProductPurchase(productId, payload) {
   const { data } = await api.post(`/xbox/product/${encodeURIComponent(productId)}/purchase`, payload);
   return data;

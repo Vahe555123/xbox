@@ -26,7 +26,7 @@ const GAME_PASS_LABELS = new Set([
   'standard',
 ]);
 
-function ProductCard({ product, unavailablePriceLabel = 'Цена недоступна' }) {
+function ProductCard({ product, unavailablePriceLabel = '' }) {
   const [imgError, setImgError] = useState(false);
   const {
     title,

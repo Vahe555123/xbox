@@ -1,6 +1,6 @@
 const { search } = require('../services/searchService');
 const { getProductById, getProductsByIds } = require('../services/displayCatalogService');
-const { getStorePageProductData } = require('../services/xboxStorePageService');
+const { getStorePageProductData, getStoreLocalizedDescription } = require('../services/xboxStorePageService');
 const { mapProductDetail } = require('../mappers/productDetailMapper');
 const { mapRelatedProducts } = require('../mappers/relatedProductMapper');
 const { parseSearchParams } = require('../utils/queryParams');
@@ -353,6 +353,40 @@ async function getProductDetail(req, res, next) {
       const status = err.response.status;
       const message = err.response.data?.message || err.message;
       logger.error('Display catalog error', { status, message });
+      return next(new AppError(`Catalog error: ${message}`, status >= 500 ? 502 : status));
+    }
+    next(err);
+  }
+}
+
+async function getProductLocalizedDescription(req, res, next) {
+  try {
+    const { productId } = req.params;
+    const locale = String(req.query.locale || 'ru-UA').trim() || 'ru-UA';
+
+    logger.info('Product localized description request', { productId, locale });
+
+    const raw = await getProductById(productId);
+    const product = mapProductDetail(raw);
+    const description = await getStoreLocalizedDescription({
+      productId: product.id,
+      storeUrl: product.officialStoreUrl,
+      locale,
+    });
+
+    res.json({
+      success: true,
+      productId: product.id,
+      description,
+    });
+  } catch (err) {
+    if (err.statusCode === 404 || err.response?.status === 404) {
+      return next(new AppError('Product not found', 404));
+    }
+    if (err.response) {
+      const status = err.response.status;
+      const message = err.response.data?.message || err.message;
+      logger.error('Localized description error', { status, message });
       return next(new AppError(`Catalog error: ${message}`, status >= 500 ? 502 : status));
     }
     next(err);
@@ -961,4 +995,12 @@ function getHealth(_req, res) {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 }
 
-module.exports = { searchXbox, getProductDetail, createProductPurchase, createCartPurchase, getRelatedProducts, getHealth };
+module.exports = {
+  searchXbox,
+  getProductDetail,
+  getProductLocalizedDescription,
+  createProductPurchase,
+  createCartPurchase,
+  getRelatedProducts,
+  getHealth,
+};
