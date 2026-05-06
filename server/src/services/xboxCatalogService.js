@@ -41,7 +41,7 @@ async function browseGames({ encodedFilters = '', encodedCT = '', returnFilters 
   );
 
   const result = normalizeResponse(response.data, 'BROWSE');
-  cache.set(cacheKey, result);
+  cache.set(cacheKey, result, getBrowseCacheTtlSeconds({ encodedCT, channelId }));
   return result;
 }
 
@@ -124,6 +124,11 @@ function normalizeResponse(data, channelKey) {
     encodedCT: channel.encodedCT || null,
     filters,
   };
+}
+
+function getBrowseCacheTtlSeconds({ encodedCT, channelId }) {
+  const isMainCatalogRequest = !encodedCT && !channelId;
+  return isMainCatalogRequest ? config.cache.mainCatalogTtl : config.cache.ttl;
 }
 
 module.exports = { browseGames, searchGames, loadMore };

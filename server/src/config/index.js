@@ -21,6 +21,7 @@ const config = {
 
   cache: {
     ttl: parseInt(process.env.CACHE_TTL, 10) || 300,
+    mainCatalogTtl: parseInt(process.env.MAIN_CATALOG_CACHE_TTL, 10) || 900,
   },
 
   rateLimit: {

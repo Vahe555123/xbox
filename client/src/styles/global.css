@@ -4448,7 +4448,10 @@ code {
 
 .rp-scroll-controls {
   display: flex;
+  align-items: center;
   gap: 0.65rem;
+  align-self: center;
+  transform: translateY(-2px);
 }
 
 .rp-scroll-btn {
