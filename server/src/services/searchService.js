@@ -707,7 +707,7 @@ async function fetchStorePageLanguageMap(products) {
     }
     if (!product.storeUrl) return;
     try {
-      const data = await getStorePageProductData({ productId: id, storeUrl: product.storeUrl });
+      const data = await getStorePageProductData({ productId: id, storeUrl: product.storeUrl, languageOnly: true });
       if (data.languageInfo) map.set(id, data.languageInfo);
     } catch (err) {
       logger.debug('Store page language fetch failed for catalog product', { productId: id, message: err.message });

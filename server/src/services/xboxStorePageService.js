@@ -3,7 +3,9 @@ const { createAxiosClient, withRetry } = require('../utils/axiosClient');
 const cache = require('../utils/cache');
 
 const client = createAxiosClient('https://www.xbox.com');
-const LANGUAGE_CACHE_TTL = 3600;
+const LANGUAGE_CACHE_TTL = 12 * 3600;
+const STORE_PAGE_CACHE_TTL = 12 * 3600;
+const inflight = new Map();
 
 const RELATED_CHANNELS = [
   { prefix: 'PRODUCTADDONS', relationshipType: 'ProductAddOns', limit: 24 },
@@ -15,52 +17,81 @@ async function getStorePageRelatedProducts({ productId, storeUrl }) {
   return data.relatedProducts;
 }
 
-async function getStorePageProductData({ productId, storeUrl }) {
+async function getStorePageProductData({ productId, storeUrl, languageOnly = false }) {
   if (!productId || !storeUrl) return { relatedProducts: [], languageInfo: null };
   const normalizedProductId = String(productId).toUpperCase();
-  const cacheKey = `xbox-store-page-product:${normalizedProductId}`;
-  const cached = cache.get(cacheKey);
-  if (cached) return cached;
+  const fullCacheKey = `xbox-store-page-product:${normalizedProductId}`;
+  const cachedFull = cache.get(fullCacheKey);
+  if (cachedFull) return cachedFull;
 
-  const state = await fetchStoreStateForLocale(storeUrl, config.xbox.language || 'en-US');
-  const ruState = await fetchStoreStateForLocale(storeUrl, 'ru-RU').catch(() => null);
-  const channelData = state?.core2?.channels?.channelData || {};
-  const productSummaries = state?.core2?.products?.productSummaries || {};
-  const productSummary = getCaseInsensitiveValue(productSummaries, normalizedProductId);
-  const ruProductSummary = getCaseInsensitiveValue(ruState?.core2?.products?.productSummaries || {}, normalizedProductId);
-  const products = [];
-  const seen = new Set([normalizedProductId]);
-
-  for (const channel of RELATED_CHANNELS) {
-    const channelProducts = getChannelProductIds(channelData, channel.prefix, normalizedProductId)
-      .filter((id) => {
-        const normalizedId = String(id).toUpperCase();
-        if (seen.has(normalizedId)) return false;
-        seen.add(normalizedId);
-        return true;
-      })
-      .slice(0, channel.limit)
-      .map((id) => ({
-        productId: id,
-        relationshipType: channel.relationshipType,
-      }));
-
-    products.push(...channelProducts);
+  if (languageOnly) {
+    const cachedLang = cache.get(`xbox-store-language:${normalizedProductId}`);
+    if (cachedLang) {
+      return { relatedProducts: [], languageInfo: cachedLang };
+    }
   }
 
-  const data = {
-    relatedProducts: products,
-    languageInfo: extractStoreLanguageInfo(productSummary),
-    categories: extractStoreCategories(productSummary),
-    description: extractPreferredStoreDescription(ruProductSummary, productSummary),
-    bundleItems: extractBundleItems(channelData, productSummaries, normalizedProductId),
-    compareEditionItems: extractCompareEditionItems(channelData, productSummaries, normalizedProductId),
-  };
-  cache.set(cacheKey, data);
-  if (data.languageInfo) {
-    cache.set(`xbox-store-language:${normalizedProductId}`, data.languageInfo, LANGUAGE_CACHE_TTL);
-  }
-  return data;
+  const inflightKey = `${languageOnly ? 'lang' : 'full'}:${normalizedProductId}`;
+  if (inflight.has(inflightKey)) return inflight.get(inflightKey);
+
+  const promise = (async () => {
+    const enPromise = fetchStoreStateForLocale(storeUrl, config.xbox.language || 'en-US');
+    const ruPromise = languageOnly
+      ? Promise.resolve(null)
+      : fetchStoreStateForLocale(storeUrl, 'ru-RU').catch(() => null);
+
+    const [state, ruState] = await Promise.all([enPromise, ruPromise]);
+
+    const channelData = state?.core2?.channels?.channelData || {};
+    const productSummaries = state?.core2?.products?.productSummaries || {};
+    const productSummary = getCaseInsensitiveValue(productSummaries, normalizedProductId);
+    const ruProductSummary = getCaseInsensitiveValue(ruState?.core2?.products?.productSummaries || {}, normalizedProductId);
+    const languageInfo = extractStoreLanguageInfo(productSummary);
+
+    if (languageInfo) {
+      cache.set(`xbox-store-language:${normalizedProductId}`, languageInfo, LANGUAGE_CACHE_TTL);
+    }
+
+    if (languageOnly) {
+      return { relatedProducts: [], languageInfo };
+    }
+
+    const products = [];
+    const seen = new Set([normalizedProductId]);
+
+    for (const channel of RELATED_CHANNELS) {
+      const channelProducts = getChannelProductIds(channelData, channel.prefix, normalizedProductId)
+        .filter((id) => {
+          const normalizedId = String(id).toUpperCase();
+          if (seen.has(normalizedId)) return false;
+          seen.add(normalizedId);
+          return true;
+        })
+        .slice(0, channel.limit)
+        .map((id) => ({
+          productId: id,
+          relationshipType: channel.relationshipType,
+        }));
+
+      products.push(...channelProducts);
+    }
+
+    const data = {
+      relatedProducts: products,
+      languageInfo,
+      categories: extractStoreCategories(productSummary),
+      description: extractPreferredStoreDescription(ruProductSummary, productSummary),
+      bundleItems: extractBundleItems(channelData, productSummaries, normalizedProductId),
+      compareEditionItems: extractCompareEditionItems(channelData, productSummaries, normalizedProductId),
+    };
+    cache.set(fullCacheKey, data, STORE_PAGE_CACHE_TTL);
+    return data;
+  })().finally(() => {
+    inflight.delete(inflightKey);
+  });
+
+  inflight.set(inflightKey, promise);
+  return promise;
 }
 
 function toXboxRequestPath(storeUrl) {

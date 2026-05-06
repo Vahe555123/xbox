@@ -77,13 +77,13 @@ async function assignTopupCombo(product) {
   const usd = getProductUsdPrice(product);
   if (!usd) return product;
   try {
-    const combo = await topupCardService.computeCombo(usd);
-    if (combo?.available) product.topupCombo = combo;
     const originalUsd = getProductOriginalUsdPrice(product);
-    if (originalUsd) {
-      const originalCombo = await topupCardService.computeCombo(originalUsd);
-      if (originalCombo?.available) product.topupComboOriginal = originalCombo;
-    }
+    const [combo, originalCombo] = await Promise.all([
+      topupCardService.computeCombo(usd),
+      originalUsd ? topupCardService.computeCombo(originalUsd) : Promise.resolve(null),
+    ]);
+    if (combo?.available) product.topupCombo = combo;
+    if (originalCombo?.available) product.topupComboOriginal = originalCombo;
   } catch (e) {
     logger.warn('Topup combo computation failed', { productId: product.id, message: e.message });
   }
@@ -135,29 +135,33 @@ function estimateOriginalRubPrice(currentRub, product) {
 async function assignPaymentPrices(product) {
   if (!product) return product;
 
-  let keyActivationRub = null;
-  if (product.keyActivationPayUrl) {
-    keyActivationRub = await getKeyActivationRubPriceForProduct(product).catch((e) => {
-      logger.warn('Key activation RUB enrichment failed', {
-        productId: product.id,
-        message: e.message,
-      });
-      return null;
-    });
-  }
+  const keyActivationPromise = product.keyActivationPayUrl
+    ? getKeyActivationRubPriceForProduct(product).catch((e) => {
+        logger.warn('Key activation RUB enrichment failed', {
+          productId: product.id,
+          message: e.message,
+        });
+        return null;
+      })
+    : Promise.resolve(null);
 
-  let specialOfferInfo = null;
-  if (product.specialOfferUrl) {
-    specialOfferInfo = await getSpecialOfferInfo(product.specialOfferUrl).catch((e) => {
-      logger.warn('Special offer info fetch failed', {
-        productId: product.id,
-        message: e.message,
-      });
-      return null;
-    });
-    if (!specialOfferInfo) {
-      product.specialOfferUrl = null;
-    }
+  const specialOfferPromise = product.specialOfferUrl
+    ? getSpecialOfferInfo(product.specialOfferUrl).catch((e) => {
+        logger.warn('Special offer info fetch failed', {
+          productId: product.id,
+          message: e.message,
+        });
+        return null;
+      })
+    : Promise.resolve(null);
+
+  const [keyActivationRub, specialOfferInfo] = await Promise.all([
+    keyActivationPromise,
+    specialOfferPromise,
+  ]);
+
+  if (product.specialOfferUrl && !specialOfferInfo) {
+    product.specialOfferUrl = null;
   }
 
   product.paymentPrices = {
@@ -195,6 +199,18 @@ async function assignPurchaseOptions(product) {
   await assignTopupCombo(product);
   await assignPaymentPrices(product);
   return product;
+}
+
+async function enrichAndAssignProducts(products) {
+  if (!Array.isArray(products) || products.length === 0) return products;
+  for (const product of products) assignKeyActivationUrl(product);
+  await Promise.all([
+    enrichProductsWithRub(products).catch((e) =>
+      logger.warn('RUB enrichment failed', { message: e.message })),
+    Promise.all(products.map((p) => assignTopupCombo(p))),
+  ]);
+  await Promise.all(products.map((p) => assignPaymentPrices(p)));
+  return products;
 }
 
 async function assignPurchaseOptionsForProducts(products) {
@@ -241,9 +257,7 @@ async function searchXbox(req, res, next) {
       });
     }
 
-    await enrichProductsWithRub(result.products).catch((e) =>
-      logger.warn('RUB enrichment failed', { message: e.message }));
-    await assignPurchaseOptionsForProducts(result.products);
+    await enrichAndAssignProducts(result.products);
 
     res.json({
       success: true,
@@ -519,9 +533,7 @@ async function getRelatedProducts(req, res, next) {
     sortProductsByRequestedIds(products, productIds);
     await applyProductOverrides(products);
 
-    await enrichProductsWithRub(products).catch((e) =>
-      logger.warn('RUB enrichment failed', { message: e.message }));
-    await assignPurchaseOptionsForProducts(products);
+    await enrichAndAssignProducts(products);
 
     res.json({
       success: true,

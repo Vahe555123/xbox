@@ -25,7 +25,7 @@ const GAME_PASS_LABELS = new Set([
   'standard',
 ]);
 
-export default function ProductCard({ product, unavailablePriceLabel = 'Цена недоступна' }) {
+function ProductCard({ product, unavailablePriceLabel = 'Цена недоступна' }) {
   const [imgError, setImgError] = useState(false);
   const {
     title,
@@ -260,3 +260,8 @@ function getStorePriceLabel(price, releaseInfo, isUnavailablePrice) {
   }
   return price?.formatted || releaseInfo?.label || null;
 }
+
+export default React.memo(ProductCard, (prev, next) => (
+  prev.product === next.product
+  && prev.unavailablePriceLabel === next.unavailablePriceLabel
+));

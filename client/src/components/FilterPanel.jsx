@@ -13,7 +13,7 @@ const FILTER_ORDER = [
   'IncludedInSubscription',
   'HandheldCompatibility',
 ];
-const AUTO_APPLY_DELAY_MS = 500;
+const AUTO_APPLY_DELAY_MS = 250;
 
 const FILTER_TITLES = {
   orderby: 'Сортировка',
