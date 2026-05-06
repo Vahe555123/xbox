@@ -119,10 +119,14 @@ async function initDb() {
       id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
       vk_url TEXT NOT NULL DEFAULT '',
       telegram_url TEXT NOT NULL DEFAULT '',
+      telegram_bot_proxy_url TEXT NOT NULL DEFAULT '',
       max_url TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE support_links
+      ADD COLUMN IF NOT EXISTS telegram_bot_proxy_url TEXT NOT NULL DEFAULT '';
 
     CREATE TABLE IF NOT EXISTS digiseller_products (
       product_id TEXT PRIMARY KEY,

@@ -60,6 +60,7 @@ const config = {
     telegram: {
       botUsername: process.env.TELEGRAM_BOT_USERNAME || '',
       botToken: process.env.TELEGRAM_BOT_TOKEN || '',
+      proxyUrl: process.env.TELEGRAM_BOT_PROXY_URL || '',
       pollingEnabled: parseBool(process.env.TELEGRAM_BOT_POLLING, true),
       pollIntervalMs: parseInt(process.env.TELEGRAM_BOT_POLL_INTERVAL_MS, 10) || 3000,
       requestTimeoutMs: parseInt(process.env.TELEGRAM_BOT_REQUEST_TIMEOUT_MS, 10) || 8000,

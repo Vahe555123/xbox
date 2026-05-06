@@ -6,10 +6,18 @@ const logger = require('../utils/logger');
 const client = createAxiosClient(config.xbox.catalogBaseUrl);
 
 async function getProductById(productId) {
+  return getProductByIdForLanguage(productId, config.xbox.language);
+}
+
+async function getProductByIdForLanguage(productId, language = config.xbox.language) {
   const cacheKey = `dcat:product:${productId}`;
-  const cached = cache.get(cacheKey);
+  const languageSuffix = language || config.xbox.language;
+  const localizedCacheKey = languageSuffix === config.xbox.language
+    ? cacheKey
+    : `${cacheKey}:${languageSuffix}`;
+  const cached = cache.get(localizedCacheKey);
   if (cached) {
-    logger.debug('Cache hit for display catalog product', { productId });
+    logger.debug('Cache hit for display catalog product', { productId, language: languageSuffix });
     return cached;
   }
 
@@ -17,7 +25,7 @@ async function getProductById(productId) {
     client.get(`/v7.0/products/${encodeURIComponent(productId)}`, {
       params: {
         market: config.xbox.market,
-        languages: config.xbox.language,
+        languages: languageSuffix,
         fieldsTemplate: 'details',
       },
     }),
@@ -30,7 +38,7 @@ async function getProductById(productId) {
     throw err;
   }
 
-  cache.set(cacheKey, product);
+  cache.set(localizedCacheKey, product);
   return product;
 }
 
@@ -73,4 +81,4 @@ async function getProductsByIds(productIds) {
   return allProducts;
 }
 
-module.exports = { getProductById, getProductsByIds };
+module.exports = { getProductById, getProductByIdForLanguage, getProductsByIds };

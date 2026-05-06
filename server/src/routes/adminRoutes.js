@@ -316,7 +316,7 @@ router.delete('/product-overrides/:productId', requireAdmin, async (req, res, ne
 
 router.get('/support-links', requireAdmin, async (_req, res, next) => {
   try {
-    const links = await getSupportLinks();
+    const links = await getSupportLinks({ includePrivate: true });
     res.json({ links });
   } catch (err) {
     next(err);

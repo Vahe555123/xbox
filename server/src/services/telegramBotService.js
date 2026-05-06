@@ -4,11 +4,17 @@ const { Blob } = require('buffer');
 const axios = require('axios');
 const config = require('../config');
 const pool = require('../db/pool');
+const { getSupportLinks } = require('./supportLinksService');
 const logger = require('../utils/logger');
 
 let pollingTimer = null;
 let pollingOffset = 0;
 let pollingInFlight = false;
+let proxyCache = {
+  value: null,
+  expiresAt: 0,
+};
+const PROXY_CACHE_TTL_MS = 5 * 1000;
 
 function hasBotToken() {
   return Boolean(config.auth.telegram.botToken);
@@ -25,8 +31,11 @@ async function callTelegram(method, payload = {}, options = {}) {
 
   let data;
   try {
-    const response = await axios.post(apiUrl(method), payload, {
+    const requestConfig = await buildTelegramRequestConfig({
       timeout: options.timeout || config.auth.telegram.requestTimeoutMs,
+    });
+    const response = await axios.post(apiUrl(method), payload, {
+      ...requestConfig,
     });
     data = response.data;
   } catch (err) {
@@ -61,8 +70,11 @@ async function callTelegramMultipart(method, formData, options = {}) {
 
   let data;
   try {
-    const response = await axios.post(apiUrl(method), formData, {
+    const requestConfig = await buildTelegramRequestConfig({
       timeout: options.timeout || config.auth.telegram.requestTimeoutMs,
+    });
+    const response = await axios.post(apiUrl(method), formData, {
+      ...requestConfig,
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
     });
@@ -272,13 +284,14 @@ async function pollOnce() {
   pollingInFlight = true;
 
   try {
+    const requestConfig = await buildTelegramRequestConfig({ timeout: 25000 });
     const { data } = await axios.get(apiUrl('getUpdates'), {
+      ...requestConfig,
       params: {
         offset: pollingOffset || undefined,
         timeout: 20,
         allowed_updates: JSON.stringify(['message']),
       },
-      timeout: 25000,
     });
 
     if (!data?.ok) {
@@ -290,7 +303,14 @@ async function pollOnce() {
       await handleTelegramUpdate(update);
     }
   } catch (err) {
-    logger.error('[TelegramBot] Polling failed', { message: err.message });
+    const proxyUrl = await getTelegramProxyUrl();
+    logger.error('[TelegramBot] Polling failed', {
+      message: err.message,
+      code: err.code || null,
+      status: err.response?.status || err.status || null,
+      proxyConfigured: Boolean(proxyUrl),
+      proxy: maskProxyUrl(proxyUrl),
+    });
   } finally {
     pollingInFlight = false;
   }
@@ -324,10 +344,21 @@ function startPolling() {
   }
   if (pollingTimer) return;
 
-  logger.info('[TelegramBot] Polling starting without webhook');
-  deleteWebhookForPolling().finally(() => {
-    pollOnce().finally(scheduleNextPoll);
-  });
+  getTelegramProxyUrl()
+    .then((proxyUrl) => {
+      logger.info('[TelegramBot] Polling starting without webhook', {
+        proxyConfigured: Boolean(proxyUrl),
+        proxy: maskProxyUrl(proxyUrl),
+      });
+    })
+    .catch(() => {
+      logger.info('[TelegramBot] Polling starting without webhook');
+    })
+    .finally(() => {
+      deleteWebhookForPolling().finally(() => {
+        pollOnce().finally(scheduleNextPoll);
+      });
+    });
 }
 
 function stopPolling() {
@@ -345,3 +376,80 @@ module.exports = {
   startPolling,
   stopPolling,
 };
+
+async function getTelegramProxyUrl() {
+  if (Date.now() < proxyCache.expiresAt) {
+    return proxyCache.value;
+  }
+
+  try {
+    const links = await getSupportLinks({ includePrivate: true });
+    const value = String(links?.telegramBotProxyUrl || config.auth.telegram.proxyUrl || '').trim();
+    proxyCache = {
+      value,
+      expiresAt: Date.now() + PROXY_CACHE_TTL_MS,
+    };
+    return value;
+  } catch (err) {
+    const fallback = String(config.auth.telegram.proxyUrl || '').trim();
+    proxyCache = {
+      value: fallback,
+      expiresAt: Date.now() + PROXY_CACHE_TTL_MS,
+    };
+    logger.warn('[TelegramBot] Failed to load proxy settings', { message: err.message });
+    return fallback;
+  }
+}
+
+async function buildTelegramRequestConfig(base = {}) {
+  const proxyUrl = await getTelegramProxyUrl();
+  const configWithTimeout = { ...base };
+  const proxy = parseAxiosProxy(proxyUrl);
+  if (proxy) {
+    configWithTimeout.proxy = proxy;
+  }
+  return configWithTimeout;
+}
+
+function parseAxiosProxy(proxyUrl) {
+  const value = String(proxyUrl || '').trim();
+  if (!value) return null;
+
+  try {
+    const parsed = new URL(value);
+    const protocol = parsed.protocol.replace(':', '');
+    const port = parsed.port ? Number(parsed.port) : (protocol === 'https' ? 443 : 80);
+    if (!parsed.hostname || !Number.isFinite(port)) return null;
+
+    const proxy = {
+      protocol,
+      host: parsed.hostname,
+      port,
+    };
+
+    if (parsed.username || parsed.password) {
+      proxy.auth = {
+        username: decodeURIComponent(parsed.username || ''),
+        password: decodeURIComponent(parsed.password || ''),
+      };
+    }
+
+    return proxy;
+  } catch {
+    logger.warn('[TelegramBot] Invalid proxy URL configured', { proxy: maskProxyUrl(value) });
+    return null;
+  }
+}
+
+function maskProxyUrl(proxyUrl) {
+  const value = String(proxyUrl || '').trim();
+  if (!value) return '';
+
+  try {
+    const parsed = new URL(value);
+    const auth = parsed.username ? `${decodeURIComponent(parsed.username)}:***@` : '';
+    return `${parsed.protocol}//${auth}${parsed.host}`;
+  } catch {
+    return 'invalid-proxy-url';
+  }
+}

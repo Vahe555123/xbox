@@ -109,6 +109,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [supportLinksForm, setSupportLinksForm] = useState({
     vkUrl: '',
     telegramUrl: '',
+    telegramBotProxyUrl: '',
     maxUrl: '',
   });
   const [supportLinksMessage, setSupportLinksMessage] = useState('');
@@ -193,6 +194,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setSupportLinksForm({
         vkUrl: links.vkUrl || '',
         telegramUrl: links.telegramUrl || '',
+        telegramBotProxyUrl: links.telegramBotProxyUrl || '',
         maxUrl: links.maxUrl || '',
       });
     } catch { /* ignore */ }
@@ -295,6 +297,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setSupportLinksForm({
         vkUrl: links.vkUrl || '',
         telegramUrl: links.telegramUrl || '',
+        telegramBotProxyUrl: links.telegramBotProxyUrl || '',
         maxUrl: links.maxUrl || '',
       });
       setSupportLinksMessage('Контакты поддержки сохранены');
@@ -643,6 +646,16 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                   value={supportLinksForm.telegramUrl}
                   onChange={(e) => setSupportLinksForm((current) => ({ ...current, telegramUrl: e.target.value }))}
                   placeholder="https://t.me/..."
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>Telegram Proxy</span>
+                <input
+                  type="text"
+                  value={supportLinksForm.telegramBotProxyUrl}
+                  onChange={(e) => setSupportLinksForm((current) => ({ ...current, telegramBotProxyUrl: e.target.value }))}
+                  placeholder="http://login:password@host:port"
                 />
               </label>
 

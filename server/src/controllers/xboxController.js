@@ -1,6 +1,6 @@
 const { search } = require('../services/searchService');
-const { getProductById, getProductsByIds } = require('../services/displayCatalogService');
-const { getStorePageProductData, getStoreLocalizedDescription } = require('../services/xboxStorePageService');
+const { getProductById, getProductByIdForLanguage, getProductsByIds } = require('../services/displayCatalogService');
+const { getStorePageProductData } = require('../services/xboxStorePageService');
 const { mapProductDetail } = require('../mappers/productDetailMapper');
 const { mapRelatedProducts } = require('../mappers/relatedProductMapper');
 const { parseSearchParams } = require('../utils/queryParams');
@@ -23,6 +23,7 @@ const {
   resolvePurchaseDeliveryTarget,
 } = require('../services/purchaseDeliveryService');
 const { applyProductOverrides } = require('../services/productOverrideService');
+const config = require('../config');
 
 function assignKeyActivationUrl(product) {
   if (!product) return product;
@@ -363,20 +364,46 @@ async function getProductLocalizedDescription(req, res, next) {
   try {
     const { productId } = req.params;
     const locale = String(req.query.locale || 'ru-UA').trim() || 'ru-UA';
+    const preferredLanguage = resolveDescriptionLanguage(locale);
 
-    logger.info('Product localized description request', { productId, locale });
+    logger.info('Product localized description request', { productId, locale, preferredLanguage });
 
-    const raw = await getProductById(productId);
-    const product = mapProductDetail(raw);
-    const description = await getStoreLocalizedDescription({
-      productId: product.id,
-      storeUrl: product.officialStoreUrl,
+    const [localizedRaw, fallbackRaw] = await Promise.all([
+      getProductByIdForLanguage(productId, preferredLanguage).catch((err) => {
+        logger.warn('Localized catalog fetch failed', {
+          productId,
+          locale,
+          preferredLanguage,
+          message: err.message,
+          status: err.response?.status || err.statusCode || null,
+        });
+        return null;
+      }),
+      getProductById(productId),
+    ]);
+
+    const localizedProduct = localizedRaw ? mapProductDetail(localizedRaw) : null;
+    const fallbackProduct = mapProductDetail(fallbackRaw);
+    const localizedDescription = extractProductDescription(localizedProduct);
+    const fallbackDescription = extractProductDescription(fallbackProduct);
+    const hasLocalizedDescription = Boolean(localizedDescription.fullDescription || localizedDescription.shortDescription);
+    const description = hasLocalizedDescription
+      ? { ...localizedDescription, source: preferredLanguage }
+      : { ...fallbackDescription, source: config.xbox.language || 'en-US' };
+
+    logger.info('Product localized description resolved', {
+      productId,
       locale,
+      preferredLanguage,
+      source: description.source,
+      localizedFound: hasLocalizedDescription,
+      hasFullDescription: Boolean(description.fullDescription),
+      hasShortDescription: Boolean(description.shortDescription),
     });
 
     res.json({
       success: true,
-      productId: product.id,
+      productId: fallbackProduct.id,
       description,
     });
   } catch (err) {
@@ -391,6 +418,19 @@ async function getProductLocalizedDescription(req, res, next) {
     }
     next(err);
   }
+}
+
+function resolveDescriptionLanguage(locale) {
+  const normalized = String(locale || '').trim().toLowerCase();
+  if (normalized === 'ru-ua' || normalized === 'ru') return 'ru-RU';
+  return locale || 'ru-RU';
+}
+
+function extractProductDescription(product) {
+  return {
+    fullDescription: product?.fullDescription || null,
+    shortDescription: product?.shortDescription || null,
+  };
 }
 
 async function createProductPurchase(req, res, next) {
