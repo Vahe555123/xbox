@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const { Blob } = require('buffer');
-const axios = require('axios');
 const config = require('../config');
 const pool = require('../db/pool');
 const { getSupportLinks } = require('./supportLinksService');
@@ -31,13 +30,14 @@ async function callTelegram(method, payload = {}, options = {}) {
 
   let data;
   try {
-    const requestConfig = await buildTelegramRequestConfig({
+    data = await telegramJsonRequest(apiUrl(method), {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: {
+        'Content-Type': 'application/json',
+      },
       timeout: options.timeout || config.auth.telegram.requestTimeoutMs,
     });
-    const response = await axios.post(apiUrl(method), payload, {
-      ...requestConfig,
-    });
-    data = response.data;
   } catch (err) {
     const description = err.response?.data?.description || err.message;
     const wrapped = new Error(description);
@@ -70,15 +70,11 @@ async function callTelegramMultipart(method, formData, options = {}) {
 
   let data;
   try {
-    const requestConfig = await buildTelegramRequestConfig({
+    data = await telegramJsonRequest(apiUrl(method), {
+      method: 'POST',
+      body: formData,
       timeout: options.timeout || config.auth.telegram.requestTimeoutMs,
     });
-    const response = await axios.post(apiUrl(method), formData, {
-      ...requestConfig,
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity,
-    });
-    data = response.data;
   } catch (err) {
     const description = err.response?.data?.description || err.message;
     const wrapped = new Error(description);
@@ -284,14 +280,14 @@ async function pollOnce() {
   pollingInFlight = true;
 
   try {
-    const requestConfig = await buildTelegramRequestConfig({ timeout: 25000 });
-    const { data } = await axios.get(apiUrl('getUpdates'), {
-      ...requestConfig,
-      params: {
+    const data = await telegramJsonRequest(apiUrl('getUpdates'), {
+      method: 'GET',
+      query: {
         offset: pollingOffset || undefined,
         timeout: 20,
         allowed_updates: JSON.stringify(['message']),
       },
+      timeout: 25000,
     });
 
     if (!data?.ok) {
@@ -406,41 +402,33 @@ async function getTelegramProxyUrl() {
 
 async function buildTelegramRequestConfig(base = {}) {
   const proxyUrl = await getTelegramProxyUrl();
-  const configWithTimeout = { ...base };
-  const proxy = parseAxiosProxy(proxyUrl);
-  if (proxy) {
-    configWithTimeout.proxy = proxy;
-  }
-  return configWithTimeout;
+  applyTelegramProxyEnv(proxyUrl);
+  return { ...base };
 }
 
-function parseAxiosProxy(proxyUrl) {
+function applyTelegramProxyEnv(proxyUrl) {
   const value = String(proxyUrl || '').trim();
-  if (!value) return null;
+
+  if (!value) {
+    delete process.env.HTTP_PROXY;
+    delete process.env.HTTPS_PROXY;
+    delete process.env.NODE_USE_ENV_PROXY;
+    return;
+  }
 
   try {
-    const parsed = new URL(value);
-    const protocol = parsed.protocol.replace(':', '');
-    const port = parsed.port ? Number(parsed.port) : (protocol === 'https' ? 443 : 80);
-    if (!parsed.hostname || !Number.isFinite(port)) return null;
-
-    const proxy = {
-      protocol,
-      host: parsed.hostname,
-      port,
-    };
-
-    if (parsed.username || parsed.password) {
-      proxy.auth = {
-        username: decodeURIComponent(parsed.username || ''),
-        password: decodeURIComponent(parsed.password || ''),
-      };
-    }
-
-    return proxy;
+    // Validate URL before exposing it to the fetch env proxy agent.
+    // The agent itself reads HTTP(S)_PROXY from process.env.
+    // eslint-disable-next-line no-new
+    new URL(value);
+    process.env.NODE_USE_ENV_PROXY = '1';
+    process.env.HTTP_PROXY = value;
+    process.env.HTTPS_PROXY = value;
   } catch {
     logger.warn('[TelegramBot] Invalid proxy URL configured', { proxy: maskProxyUrl(value) });
-    return null;
+    delete process.env.HTTP_PROXY;
+    delete process.env.HTTPS_PROXY;
+    delete process.env.NODE_USE_ENV_PROXY;
   }
 }
 
@@ -466,5 +454,68 @@ function summarizeTelegramErrorPayload(payload) {
     return JSON.stringify(payload).slice(0, 1000);
   } catch {
     return '[unserializable-response]';
+  }
+}
+
+async function telegramJsonRequest(url, options = {}) {
+  const {
+    method = 'GET',
+    query,
+    headers = {},
+    body,
+    timeout = config.auth.telegram.requestTimeoutMs,
+  } = options;
+
+  await buildTelegramRequestConfig({ timeout });
+
+  const requestUrl = new URL(url);
+  if (query && typeof query === 'object') {
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== null && value !== '') {
+        requestUrl.searchParams.set(key, String(value));
+      }
+    }
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(requestUrl, {
+      method,
+      headers,
+      body,
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let data = null;
+
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+
+    if (!response.ok) {
+      const err = new Error(`Request failed with status code ${response.status}`);
+      err.status = response.status;
+      err.response = {
+        status: response.status,
+        statusText: response.statusText,
+        data,
+      };
+      throw err;
+    }
+
+    return data;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      const timeoutErr = new Error(`Telegram request timeout after ${timeout}ms`);
+      timeoutErr.code = 'ETIMEDOUT';
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
 }
