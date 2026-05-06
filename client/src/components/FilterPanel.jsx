@@ -12,6 +12,7 @@ const FILTER_ORDER = [
   'SupportedLanguages',
   'IncludedInSubscription',
   'HandheldCompatibility',
+  'SpecialOffers',
 ];
 const AUTO_APPLY_DELAY_MS = 250;
 
@@ -27,6 +28,7 @@ const FILTER_TITLES = {
   SupportedLanguages: 'Поддерживаемые языки',
   IncludedInSubscription: 'Подписки',
   HandheldCompatibility: 'Совместимость с Handheld',
+  SpecialOffers: 'Спецпредложения',
 };
 
 const SORT_TITLES = {
@@ -97,6 +99,17 @@ const MULTIPLAYER_TITLES = {
   CoopSupportOnline: 'Онлайн-кооператив',
   CoopSupportLocal: 'Локальный кооператив',
   LocalMultiplayer: 'Локальный мультиплеер',
+};
+
+const CUSTOM_FILTERS = {
+  SpecialOffers: {
+    id: 'SpecialOffers',
+    title: 'Спецпредложения',
+    isMultiSelect: true,
+    choices: [
+      { id: 'Available', title: 'Есть спецпредложение', isLabelOnly: false },
+    ],
+  },
 };
 
 function cloneFilters(filters) {
@@ -199,10 +212,13 @@ export default function FilterPanel({
   }, [activeFilters, draftFilters, draftSort, onApply, sort]);
 
   const filterKeys = useMemo(() => {
-    if (!filters) return [];
+    const availableFilters = {
+      ...(filters || {}),
+      ...CUSTOM_FILTERS,
+    };
 
-    const visibleKeys = Object.keys(filters).filter((key) => {
-      const filter = filters[key];
+    const visibleKeys = Object.keys(availableFilters).filter((key) => {
+      const filter = availableFilters[key];
       return !SKIP_FILTER_KEYS.includes(key) && filter?.choices?.some((choice) => !choice.isLabelOnly);
     });
 
@@ -323,7 +339,7 @@ export default function FilterPanel({
         <div className="filter-expanded">
           <div className="filter-grid">
             {filterKeys.map((key) => {
-              const filter = filters[key];
+              const filter = filters?.[key] || CUSTOM_FILTERS[key];
               if (!filter) return null;
 
               return (

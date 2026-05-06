@@ -15,6 +15,18 @@ function normalizeLanguageMode(mode) {
   return value;
 }
 
+function normalizeSearchKeywordsInput(value) {
+  const items = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split(/[\n,;|]+/g);
+
+  return items
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index);
+}
+
 function rowToOverride(row) {
   if (!row) return null;
   const data = row.data || {};
@@ -25,6 +37,7 @@ function rowToOverride(row) {
     languageNote: row.language_note || '',
     specialOfferUrl: row.special_offer_url || null,
     customDescription: data.customDescription || '',
+    searchKeywords: normalizeSearchKeywordsInput(data.searchKeywords),
     data,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -69,6 +82,9 @@ function applyOverrideToProduct(product, override) {
     product.descriptionSource = 'admin-override';
     product.descriptionOverride = true;
   }
+  if (override.searchKeywords?.length) {
+    product.searchKeywords = override.searchKeywords;
+  }
 
   applyLanguageMode(product, override.russianLanguageMode);
   product.adminOverride = {
@@ -77,6 +93,7 @@ function applyOverrideToProduct(product, override) {
     languageNote: override.languageNote || '',
     specialOfferUrl: override.specialOfferUrl || null,
     customDescription: override.customDescription || '',
+    searchKeywords: override.searchKeywords || [],
     updatedAt: override.updatedAt,
   };
 
@@ -120,10 +137,10 @@ async function listProductOverrides({ search = '', page = 1, limit = 50 } = {}) 
 
   if (search) {
     params.push(`%${String(search).trim()}%`);
-    where = `WHERE product_id ILIKE $3 OR title ILIKE $3`;
+    where = `WHERE product_id ILIKE $3 OR title ILIKE $3 OR data::text ILIKE $3`;
   }
 
-  const countWhere = search ? `WHERE product_id ILIKE $1 OR title ILIKE $1` : '';
+  const countWhere = search ? `WHERE product_id ILIKE $1 OR title ILIKE $1 OR data::text ILIKE $1` : '';
   const countParams = search ? [params[2]] : [];
 
   const [items, count] = await Promise.all([
@@ -160,9 +177,11 @@ async function upsertProductOverride(productId, payload = {}) {
     ? payload.data
     : {};
   const customDescription = String(payload.customDescription || '').trim();
+  const searchKeywords = normalizeSearchKeywordsInput(payload.searchKeywords);
   const data = {
     ...payloadData,
     ...(customDescription ? { customDescription } : {}),
+    ...(searchKeywords.length ? { searchKeywords } : {}),
   };
 
   const { rows } = await pool.query(
@@ -189,10 +208,22 @@ async function deleteProductOverride(productId) {
   return { productId: id };
 }
 
+async function listSearchableProductOverrides() {
+  const { rows } = await pool.query(
+    `SELECT *
+     FROM product_overrides
+     WHERE jsonb_typeof(data->'searchKeywords') = 'array'
+       AND jsonb_array_length(data->'searchKeywords') > 0`,
+  );
+
+  return rows.map(rowToOverride);
+}
+
 module.exports = {
   applyProductOverrides,
   deleteProductOverride,
   getProductOverride,
   listProductOverrides,
+  listSearchableProductOverrides,
   upsertProductOverride,
 };

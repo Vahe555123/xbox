@@ -1429,9 +1429,12 @@ img {
 
 /* Favorites page */
 .favorites-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1rem 1.25rem 2rem;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 2.5rem;
+  display: grid;
+  gap: 1.25rem;
 }
 
 .favorites-title {
@@ -1471,7 +1474,319 @@ img {
 }
 
 .favorites-grid {
-  margin-top: 0.5rem;
+  margin-top: 0;
+}
+
+.favorites-grid .product-grid {
+  align-items: stretch;
+}
+
+/* Help page */
+.help-page {
+  display: grid;
+  gap: 1.5rem;
+  padding-bottom: 2.5rem;
+}
+
+.help-hero {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(1.6rem, 4vw, 2.8rem);
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(96, 135, 255, 0.24), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(73, 212, 160, 0.16), transparent 32%),
+    linear-gradient(135deg, rgba(20, 24, 31, 0.98), rgba(10, 14, 20, 0.98));
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.28);
+}
+
+.help-hero::after {
+  content: '';
+  position: absolute;
+  inset: auto -10% -45% auto;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(115, 146, 255, 0.18), transparent 70%);
+  pointer-events: none;
+}
+
+.help-kicker {
+  margin: 0 0 0.75rem;
+  color: #8eddbd;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.help-hero h1 {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  max-width: 860px;
+  font-size: clamp(2rem, 4vw, 3.3rem);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.help-hero-text {
+  position: relative;
+  z-index: 1;
+  max-width: 760px;
+  margin: 1rem 0 0;
+  color: var(--text-muted);
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
+.help-hero-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  margin-top: 1.5rem;
+}
+
+.help-primary-link,
+.help-secondary-link,
+.help-inline-link {
+  text-decoration: none;
+  transition: transform 0.15s ease, filter 0.15s ease, border-color 0.15s ease;
+}
+
+.help-primary-link,
+.help-secondary-link {
+  min-height: 48px;
+  padding: 0.85rem 1.2rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.help-primary-link {
+  background: linear-gradient(135deg, #46c98d, #63c1ff);
+  color: #06131c;
+  box-shadow: 0 16px 34px rgba(56, 198, 138, 0.22);
+}
+
+.help-secondary-link {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.help-inline-link:hover,
+.help-primary-link:hover,
+.help-secondary-link:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+
+.help-feature-grid,
+.help-contact-grid,
+.help-steps-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.help-feature-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.help-card,
+.help-section,
+.help-step-card,
+.help-faq-item {
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(14, 18, 24, 0.92);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.18);
+}
+
+.help-card {
+  padding: 1.4rem;
+}
+
+.help-card-accent {
+  background:
+    radial-gradient(circle at top right, rgba(73, 212, 160, 0.14), transparent 32%),
+    linear-gradient(180deg, rgba(16, 28, 33, 0.98), rgba(13, 19, 24, 0.98));
+}
+
+.help-card-label {
+  margin: 0 0 0.55rem;
+  color: #63c1ff;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.help-card h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.help-card p {
+  margin: 0.8rem 0 0;
+  color: var(--text-muted);
+  line-height: 1.65;
+  white-space: pre-line;
+}
+
+.help-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  color: #8eddbd;
+  font-weight: 700;
+}
+
+.help-section {
+  padding: 1.4rem;
+}
+
+.help-section-head {
+  margin-bottom: 1rem;
+}
+
+.help-section-head h2 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.help-section-head p {
+  margin: 0.5rem 0 0;
+  color: var(--text-muted);
+  line-height: 1.65;
+}
+
+.help-contact-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.help-contact-card {
+  min-height: 120px;
+  padding: 1.1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  text-decoration: none;
+  display: grid;
+  align-content: start;
+  gap: 0.8rem;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.help-contact-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(99, 193, 255, 0.28);
+  background: rgba(99, 193, 255, 0.06);
+}
+
+.help-contact-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(99, 193, 255, 0.2), rgba(70, 201, 141, 0.18));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #d8f2ff;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.help-contact-card strong,
+.help-contact-card small {
+  display: block;
+}
+
+.help-contact-card small {
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+.help-steps-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.help-step-card {
+  padding: 1.35rem;
+}
+
+.help-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(99, 193, 255, 0.12);
+  color: #9dd7ff;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.help-step-card h3 {
+  margin: 1rem 0 0;
+  font-size: 1.08rem;
+}
+
+.help-step-card p {
+  margin: 0.75rem 0 0;
+  color: var(--text-muted);
+  line-height: 1.65;
+  white-space: pre-line;
+}
+
+.help-faq-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.help-faq-item {
+  overflow: hidden;
+}
+
+.help-faq-item summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 1.15rem 1.25rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.help-faq-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.help-faq-item summary::after {
+  content: '+';
+  font-size: 1.15rem;
+  color: #8eddbd;
+}
+
+.help-faq-item[open] summary::after {
+  content: '−';
+}
+
+.help-faq-answer {
+  padding: 0 1.25rem 1.2rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+  white-space: pre-line;
 }
 
 /* ========== Product Info ========== */
@@ -5406,6 +5721,16 @@ code {
   background: rgba(77, 205, 153, 0.16);
 }
 
+.support-modal-help-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.95rem;
+  color: #8eddbd;
+  font-weight: 700;
+  text-decoration: none;
+}
+
 /* ========== Admin Page ========== */
 .admin-page {
   max-width: 1200px;
@@ -5632,6 +5957,29 @@ code {
   color: #6ec6f0;
 }
 
+.admin-role-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 0.18rem 0.58rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.admin-role-pill--active {
+  background: rgba(70, 201, 141, 0.12);
+  color: #8eddbd;
+}
+
+.admin-role-pill--config {
+  background: rgba(99, 193, 255, 0.14);
+  color: #9dd7ff;
+}
+
 /* Definition list */
 .admin-dl {
   display: grid;
@@ -5708,6 +6056,10 @@ code {
 .admin-btn-primary:hover:not(:disabled) {
   background: #9b78f5;
   transform: translateY(-1px);
+}
+
+.admin-table td .admin-btn + .admin-btn {
+  margin-left: 0.4rem;
 }
 
 .admin-btn-accent {
@@ -6102,6 +6454,12 @@ code {
   .rp-catalog-carousel .product-card {
     flex-basis: 250px;
   }
+
+  .help-feature-grid,
+  .help-contact-grid,
+  .help-steps-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ===== Phone (≤ 600px) ===== */
@@ -6339,12 +6697,33 @@ code {
 
   /* ── Favorites page ── */
   .favorites-page {
-    padding: 0.75rem 0.7rem 2rem;
+    padding: 0 0 2rem;
   }
 
   .favorites-count-bar {
     padding: 0.65rem 0.9rem;
     font-size: 0.85rem;
+  }
+
+  .help-page {
+    gap: 1rem;
+  }
+
+  .help-hero,
+  .help-section,
+  .help-card,
+  .help-step-card {
+    border-radius: 18px;
+  }
+
+  .help-hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .help-primary-link,
+  .help-secondary-link {
+    width: 100%;
   }
 
   /* ── Detail page / store hero ── */
@@ -6431,10 +6810,18 @@ code {
   }
 
   .support-widget-trigger {
-    right: 14px;
-    bottom: 14px;
-    height: 48px;
-    padding: 0 14px;
+    right: 12px;
+    bottom: 12px;
+    height: 42px;
+    padding: 0 12px;
+    gap: 0.45rem;
+    font-size: 0.86rem;
+    border-radius: 14px;
+  }
+
+  .support-widget-trigger svg {
+    width: 18px;
+    height: 18px;
   }
 
   .support-modal {

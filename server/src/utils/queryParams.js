@@ -32,7 +32,7 @@ function parseSearchParams(query) {
   const FILTER_KEYS = [
     'PlayWith', 'Accessibility', 'Price', 'Genre', 'MaturityRating',
     'Multiplayer', 'TechnicalFeatures', 'SupportedLanguages',
-    'IncludedInSubscription', 'HandheldCompatibility',
+    'IncludedInSubscription', 'HandheldCompatibility', 'SpecialOffers',
   ];
 
   for (const key of FILTER_KEYS) {

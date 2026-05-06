@@ -5,12 +5,15 @@ import {
   fetchAdminStats,
   fetchAdminUsers,
   fetchAdminUserDetail,
+  updateAdminUserAccess,
   fetchAdminNotifications,
   fetchAdminSupportLinks,
+  fetchAdminHelpContent,
   searchAdminProducts,
   fetchProductOverrides,
   updateProductOverride,
   updateAdminSupportLinks,
+  updateAdminHelpContent,
   deleteProductOverride,
   fetchSchedulerState,
   updateSchedulerInterval,
@@ -84,6 +87,68 @@ function productLanguageLabel(mode) {
   return PRODUCT_LANGUAGE_MODES.find((item) => item.value === (mode || 'auto'))?.label || mode || 'Авто';
 }
 
+function serializeDelimitedPairs(items, leftKey, rightKey) {
+  return (items || [])
+    .map((item) => {
+      const left = String(item?.[leftKey] || '').trim();
+      const right = String(item?.[rightKey] || '').trim();
+      return left || right ? `${left} || ${right}`.trim() : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function parseDelimitedPairs(text, leftKey, rightKey) {
+  return String(text || '')
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [left, ...rest] = line.split('||');
+      return {
+        [leftKey]: String(left || '').trim(),
+        [rightKey]: String(rest.join('||') || '').trim(),
+      };
+    })
+    .filter((item) => item[leftKey] || item[rightKey]);
+}
+
+function helpContentToForm(content = {}) {
+  return {
+    eyebrow: content.eyebrow || '',
+    title: content.title || '',
+    subtitle: content.subtitle || '',
+    supportTitle: content.supportTitle || '',
+    supportDescription: content.supportDescription || '',
+    supportButtonLabel: content.supportButtonLabel || '',
+    supportButtonUrl: content.supportButtonUrl || '',
+    purchasesTitle: content.purchasesTitle || '',
+    purchasesDescription: content.purchasesDescription || '',
+    purchasesButtonLabel: content.purchasesButtonLabel || '',
+    purchasesButtonUrl: content.purchasesButtonUrl || '',
+    stepsText: serializeDelimitedPairs(content.steps, 'title', 'body'),
+    faqText: serializeDelimitedPairs(content.faqItems, 'question', 'answer'),
+  };
+}
+
+function helpFormToPayload(form = {}) {
+  return {
+    eyebrow: form.eyebrow || '',
+    title: form.title || '',
+    subtitle: form.subtitle || '',
+    supportTitle: form.supportTitle || '',
+    supportDescription: form.supportDescription || '',
+    supportButtonLabel: form.supportButtonLabel || '',
+    supportButtonUrl: form.supportButtonUrl || '',
+    purchasesTitle: form.purchasesTitle || '',
+    purchasesDescription: form.purchasesDescription || '',
+    purchasesButtonLabel: form.purchasesButtonLabel || '',
+    purchasesButtonUrl: form.purchasesButtonUrl || '',
+    steps: parseDelimitedPairs(form.stepsText, 'title', 'body'),
+    faqItems: parseDelimitedPairs(form.faqText, 'question', 'answer'),
+  };
+}
+
 const DIG_RATE_MODES = [
   {
     id: 'oplata',
@@ -114,12 +179,17 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   });
   const [supportLinksMessage, setSupportLinksMessage] = useState('');
   const [supportLinksSaving, setSupportLinksSaving] = useState(false);
+  const [helpContentForm, setHelpContentForm] = useState(() => helpContentToForm({}));
+  const [helpContentMessage, setHelpContentMessage] = useState('');
+  const [helpContentSaving, setHelpContentSaving] = useState(false);
 
   // Users
   const [users, setUsers] = useState([]);
   const [usersTotal, setUsersTotal] = useState(0);
   const [usersPage, setUsersPage] = useState(1);
   const [usersSearch, setUsersSearch] = useState('');
+  const [userAccessSavingId, setUserAccessSavingId] = useState('');
+  const [userAccessMessage, setUserAccessMessage] = useState('');
 
   // User detail modal
   const [selectedUser, setSelectedUser] = useState(null);
@@ -143,6 +213,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     russianLanguageMode: 'auto',
     languageNote: '',
     specialOfferUrl: '',
+    searchKeywords: '',
     customDescription: '',
   });
   const [overrideMessage, setOverrideMessage] = useState('');
@@ -197,6 +268,13 @@ export default function AdminPage({ currentUser, onLoginClick }) {
         telegramBotProxyUrl: links.telegramBotProxyUrl || '',
         maxUrl: links.maxUrl || '',
       });
+    } catch { /* ignore */ }
+  }, []);
+
+  const loadHelpContent = useCallback(async () => {
+    try {
+      const content = await fetchAdminHelpContent();
+      setHelpContentForm(helpContentToForm(content));
     } catch { /* ignore */ }
   }, []);
 
@@ -267,9 +345,10 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       loadProductOverrides();
       loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter });
     }
+    else if (tab === 'help') loadHelpContent();
     else if (tab === 'digiseller') loadDigiseller();
     else if (tab === 'topup') loadTopupCards();
-  }, [tab, authorized, loadDashboard, loadSupportLinks, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadDigiseller, loadTopupCards]);
+  }, [tab, authorized, loadDashboard, loadSupportLinks, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards]);
 
   const handleUserSearch = (e) => {
     e.preventDefault();
@@ -309,6 +388,39 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     }
   };
 
+  const handleHelpContentSave = async (event) => {
+    event.preventDefault();
+    setHelpContentSaving(true);
+    setHelpContentMessage('');
+    try {
+      const content = await updateAdminHelpContent(helpFormToPayload(helpContentForm));
+      setHelpContentForm(helpContentToForm(content));
+      setHelpContentMessage('Раздел помощи сохранён');
+    } catch (err) {
+      setHelpContentMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setHelpContentSaving(false);
+    }
+  };
+
+  const handleUserAdminToggle = async (user) => {
+    if (!user?.id) return;
+    setUserAccessSavingId(user.id);
+    setUserAccessMessage('');
+    try {
+      const updatedUser = await updateAdminUserAccess(user.id, !user.isManualAdmin);
+      setUsers((current) => current.map((entry) => (entry.id === user.id ? updatedUser : entry)));
+      setSelectedUser((current) => (current?.user?.id === user.id
+        ? { ...current, user: updatedUser }
+        : current));
+      setUserAccessMessage(updatedUser.isManualAdmin ? 'Админ выдан' : 'Админ снят');
+    } catch (err) {
+      setUserAccessMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setUserAccessSavingId('');
+    }
+  };
+
   const selectProductForOverride = (product, override = null) => {
     const currentOverride = override || product.adminOverride || {};
     setSelectedProductOverride(product || null);
@@ -318,6 +430,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       russianLanguageMode: currentOverride.russianLanguageMode || product?.russianLanguageMode || 'auto',
       languageNote: currentOverride.languageNote || product?.languageNote || '',
       specialOfferUrl: currentOverride.specialOfferUrl || '',
+      searchKeywords: (currentOverride.searchKeywords || []).join(', '),
       customDescription: currentOverride.customDescription || '',
     });
     setOverrideMessage('');
@@ -331,6 +444,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       russianLanguageMode: override.russianLanguageMode || 'auto',
       languageNote: override.languageNote || '',
       specialOfferUrl: override.specialOfferUrl || '',
+      searchKeywords: (override.searchKeywords || []).join(', '),
       customDescription: override.customDescription || '',
     });
     setOverrideMessage('');
@@ -349,6 +463,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
         russianLanguageMode: override.russianLanguageMode || 'auto',
         languageNote: override.languageNote || '',
         specialOfferUrl: override.specialOfferUrl || '',
+        searchKeywords: (override.searchKeywords || []).join(', '),
         customDescription: override.customDescription || '',
       }));
       await loadProductOverrides();
@@ -369,6 +484,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
         russianLanguageMode: 'auto',
         languageNote: '',
         specialOfferUrl: '',
+        searchKeywords: '',
         customDescription: '',
       }));
       await loadProductOverrides();
@@ -527,6 +643,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
           ['notifications', 'Уведомления'],
           ['products', 'Игры'],
           ['scheduler', 'Планировщик'],
+          ['help', 'Помощь'],
           ['digiseller', 'Digiseller'],
           ['topup', 'Карты пополнения'],
         ].map(([key, label]) => (
@@ -694,6 +811,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
           </form>
 
           <p className="admin-total">Всего: {usersTotal}</p>
+          {userAccessMessage && <p className="admin-scheduler-result">{userAccessMessage}</p>}
 
           <div className="admin-table-wrap">
             <table className="admin-table">
@@ -702,6 +820,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                   <th>Имя</th>
                   <th>Email</th>
                   <th>Провайдер</th>
+                  <th>Админ</th>
                   <th>Избранных</th>
                   <th>Регистрация</th>
                   <th></th>
@@ -717,11 +836,24 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                         {providerLabel(u.last_provider)}
                       </span>
                     </td>
+                    <td>
+                      <span className={`admin-role-pill ${u.isAdmin ? 'admin-role-pill--active' : ''} ${u.isConfigAdmin ? 'admin-role-pill--config' : ''}`}>
+                        {u.isConfigAdmin ? 'ENV' : u.isManualAdmin ? 'Да' : 'Нет'}
+                      </span>
+                    </td>
                     <td>{u.favorites_count}</td>
                     <td>{formatDate(u.created_at)}</td>
                     <td>
-                      <button className="admin-btn admin-btn-sm" onClick={() => openUserDetail(u.id)}>
+                      <button className="admin-btn admin-btn-sm" type="button" onClick={() => openUserDetail(u.id)}>
                         Подробнее
+                      </button>
+                      <button
+                        className="admin-btn admin-btn-sm"
+                        type="button"
+                        onClick={() => handleUserAdminToggle(u)}
+                        disabled={userAccessSavingId === u.id || u.isConfigAdmin}
+                      >
+                        {userAccessSavingId === u.id ? 'Сохраняем...' : u.isManualAdmin ? 'Снять' : 'Выдать'}
                       </button>
                     </td>
                   </tr>
@@ -763,6 +895,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <dt>ID</dt><dd className="admin-mono">{selectedUser.user.id}</dd>
               <dt>Email</dt><dd>{selectedUser.user.email || '—'}</dd>
               <dt>Провайдер</dt><dd>{providerLabel(selectedUser.user.last_provider)}</dd>
+              <dt>Админ</dt><dd>{selectedUser.user.isConfigAdmin ? 'ENV' : selectedUser.user.isManualAdmin ? 'Да' : 'Нет'}</dd>
               <dt>Верифицирован</dt><dd>{selectedUser.user.verified ? 'Да' : 'Нет'}</dd>
               <dt>Регистрация</dt><dd>{formatDate(selectedUser.user.created_at)}</dd>
             </dl>
@@ -983,6 +1116,16 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 </label>
 
                 <label className="admin-field">
+                  <span>Дополнительные ключевые слова поиска</span>
+                  <input
+                    type="text"
+                    value={overrideForm.searchKeywords}
+                    onChange={(e) => setOverrideForm((current) => ({ ...current, searchKeywords: e.target.value }))}
+                    placeholder="Например: fifa, football, ea fc"
+                  />
+                </label>
+
+                <label className="admin-field">
                   <span>Описание игры (ручная замена)</span>
                   <textarea
                     value={overrideForm.customDescription}
@@ -1037,6 +1180,163 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== Help ==================== */}
+      {tab === 'help' && (
+        <div className="admin-panel">
+          <div className="admin-grid-2col">
+            <div className="admin-card">
+              <h3>Верхний блок</h3>
+              <form className="admin-override-form" onSubmit={handleHelpContentSave}>
+                <label className="admin-field">
+                  <span>Надзаголовок</span>
+                  <input
+                    type="text"
+                    value={helpContentForm.eyebrow}
+                    onChange={(e) => setHelpContentForm((current) => ({ ...current, eyebrow: e.target.value }))}
+                    placeholder="Помощь"
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Заголовок</span>
+                  <input
+                    type="text"
+                    value={helpContentForm.title}
+                    onChange={(e) => setHelpContentForm((current) => ({ ...current, title: e.target.value }))}
+                    placeholder="Как купить игру и получить помощь"
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Подзаголовок</span>
+                  <textarea
+                    value={helpContentForm.subtitle}
+                    onChange={(e) => setHelpContentForm((current) => ({ ...current, subtitle: e.target.value }))}
+                    rows={5}
+                  />
+                </label>
+
+                <div className="admin-override-actions">
+                  <button className="admin-btn admin-btn-primary" type="submit" disabled={helpContentSaving}>
+                    {helpContentSaving ? 'Сохраняем...' : 'Сохранить помощь'}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="admin-card">
+              <h3>Карточки помощи</h3>
+              <form className="admin-override-form" onSubmit={handleHelpContentSave}>
+                <label className="admin-field">
+                  <span>Заголовок поддержки</span>
+                  <input
+                    type="text"
+                    value={helpContentForm.supportTitle}
+                    onChange={(e) => setHelpContentForm((current) => ({ ...current, supportTitle: e.target.value }))}
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Описание поддержки</span>
+                  <textarea
+                    value={helpContentForm.supportDescription}
+                    onChange={(e) => setHelpContentForm((current) => ({ ...current, supportDescription: e.target.value }))}
+                    rows={4}
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Текст кнопки поддержки</span>
+                  <input
+                    type="text"
+                    value={helpContentForm.supportButtonLabel}
+                    onChange={(e) => setHelpContentForm((current) => ({ ...current, supportButtonLabel: e.target.value }))}
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Ссылка кнопки поддержки</span>
+                  <input
+                    type="text"
+                    value={helpContentForm.supportButtonUrl}
+                    onChange={(e) => setHelpContentForm((current) => ({ ...current, supportButtonUrl: e.target.value }))}
+                    placeholder="Если пусто, страница возьмёт первую ссылку из контактов"
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Заголовок блока покупки</span>
+                  <input
+                    type="text"
+                    value={helpContentForm.purchasesTitle}
+                    onChange={(e) => setHelpContentForm((current) => ({ ...current, purchasesTitle: e.target.value }))}
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Описание блока покупки</span>
+                  <textarea
+                    value={helpContentForm.purchasesDescription}
+                    onChange={(e) => setHelpContentForm((current) => ({ ...current, purchasesDescription: e.target.value }))}
+                    rows={4}
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Текст кнопки покупки</span>
+                  <input
+                    type="text"
+                    value={helpContentForm.purchasesButtonLabel}
+                    onChange={(e) => setHelpContentForm((current) => ({ ...current, purchasesButtonLabel: e.target.value }))}
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Ссылка кнопки покупки</span>
+                  <input
+                    type="text"
+                    value={helpContentForm.purchasesButtonUrl}
+                    onChange={(e) => setHelpContentForm((current) => ({ ...current, purchasesButtonUrl: e.target.value }))}
+                    placeholder="https://oplata.info"
+                  />
+                </label>
+              </form>
+            </div>
+          </div>
+
+          <div className="admin-card">
+            <h3>Пошаговый блок</h3>
+            <p className="admin-card-desc">Каждая строка: Заголовок || Описание</p>
+            <form className="admin-override-form" onSubmit={handleHelpContentSave}>
+              <label className="admin-field">
+                <span>Шаги</span>
+                <textarea
+                  value={helpContentForm.stepsText}
+                  onChange={(e) => setHelpContentForm((current) => ({ ...current, stepsText: e.target.value }))}
+                  rows={7}
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>FAQ</span>
+                <textarea
+                  value={helpContentForm.faqText}
+                  onChange={(e) => setHelpContentForm((current) => ({ ...current, faqText: e.target.value }))}
+                  rows={8}
+                />
+              </label>
+
+              <div className="admin-override-actions">
+                <button className="admin-btn admin-btn-primary" type="submit" disabled={helpContentSaving}>
+                  {helpContentSaving ? 'Сохраняем...' : 'Сохранить раздел помощи'}
+                </button>
+              </div>
+              {helpContentMessage && <p className="admin-scheduler-result">{helpContentMessage}</p>}
+            </form>
           </div>
         </div>
       )}

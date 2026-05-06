@@ -8,6 +8,7 @@ async function initDb() {
       email TEXT UNIQUE,
       password_hash TEXT,
       verified BOOLEAN NOT NULL DEFAULT FALSE,
+      is_admin BOOLEAN NOT NULL DEFAULT FALSE,
       name TEXT,
       avatar TEXT,
       last_provider TEXT NOT NULL DEFAULT 'email',
@@ -19,6 +20,7 @@ async function initDb() {
       ADD COLUMN IF NOT EXISTS purchase_email TEXT,
       ADD COLUMN IF NOT EXISTS xbox_account_email TEXT,
       ADD COLUMN IF NOT EXISTS xbox_account_password_encrypted TEXT,
+      ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS purchase_payment_mode TEXT NOT NULL DEFAULT 'oplata';
 
     CREATE TABLE IF NOT EXISTS oauth_accounts (
@@ -127,6 +129,13 @@ async function initDb() {
 
     ALTER TABLE support_links
       ADD COLUMN IF NOT EXISTS telegram_bot_proxy_url TEXT NOT NULL DEFAULT '';
+
+    CREATE TABLE IF NOT EXISTS site_content (
+      key TEXT PRIMARY KEY,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
     CREATE TABLE IF NOT EXISTS digiseller_products (
       product_id TEXT PRIMARY KEY,

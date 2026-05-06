@@ -2,8 +2,9 @@ const crypto = require('crypto');
 const catalogService = require('./xboxCatalogService');
 const { getProductsByIds } = require('./displayCatalogService');
 const { mapProducts, enrichProductsWithCatalogDetails } = require('../mappers/productMapper');
+const { mapRelatedProducts } = require('../mappers/relatedProductMapper');
 const { mapFilters, encodeFilters } = require('../mappers/filtersMapper');
-const { applyProductOverrides } = require('./productOverrideService');
+const { applyProductOverrides, listSearchableProductOverrides } = require('./productOverrideService');
 const { getCachedLanguageInfo, getStorePageProductData } = require('./xboxStorePageService');
 const config = require('../config');
 const cache = require('../utils/cache');
@@ -21,6 +22,9 @@ const SEARCH_RERANK_TOKEN_PREFIX = 'ranked-search:';
 const SEARCH_RERANK_CACHE_TTL_SECONDS = 10 * 60;
 const DEFAULT_BROWSE_SORT = 'WishlistCountTotal desc';
 const RATING_SORT = 'MostPopular desc';
+const SPECIAL_OFFERS_FILTER_KEY = 'SpecialOffers';
+const SPECIAL_OFFERS_FILTER_VALUE = 'Available';
+const KEYWORD_MATCH_TIER_OFFSET = 3;
 const SEARCH_MATCH_TIERS = {
   EXACT: 0,
   PHRASE_PREFIX: 1,
@@ -66,6 +70,7 @@ async function search({
   const effectiveSort = resolveSort({ query, sort });
   const encodedFilters = buildEncodedFilters(filters, effectiveSort);
   const languageFilterActive = isLanguageFilterActive(languageMode);
+  const specialOffersOnly = isSpecialOfferFilterActive(filters);
 
   if (isRankedSearchToken(encodedCT)) {
     const buffered = await readRankedSearchBuffer(encodedCT);
@@ -89,6 +94,7 @@ async function search({
         encodedFilters,
         channelId,
         languageMode,
+        specialOffersOnly,
       });
     }
 
@@ -98,6 +104,7 @@ async function search({
         encodedFilters,
         languageMode,
         channelId,
+        specialOffersOnly,
       });
     }
 
@@ -132,6 +139,7 @@ async function search({
       encodedFilters,
       channelId,
       languageMode,
+      specialOffersOnly,
     });
   }
 
@@ -146,6 +154,7 @@ async function search({
       nextEncodedCT,
       channelId,
       languageMode,
+      specialOffersOnly,
     });
 
     rawProducts = collected.rawProducts;
@@ -155,14 +164,24 @@ async function search({
   const products = mapProducts(rawProducts);
   const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), {
     languageMode,
+    specialOffersOnly,
   });
+  const extraKeywordProducts = query
+    ? await loadOverrideKeywordProducts(query, enrichedProducts, { languageMode, specialOffersOnly })
+    : [];
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)
     : null;
+  const mergedProducts = mergeProductsById(enrichedProducts, extraKeywordProducts);
+  const totalItems = languageFilterActive
+    ? null
+    : Number.isFinite(raw?.totalItems)
+      ? raw.totalItems + extraKeywordProducts.length
+      : raw?.totalItems;
 
   return {
-    products: enrichedProducts,
-    totalItems: languageFilterActive ? null : raw.totalItems,
+    products: mergedProducts,
+    totalItems,
     totalIsApproximate: languageFilterActive,
     totalPending: languageFilterActive,
     encodedCT: nextEncodedCT,
@@ -176,6 +195,7 @@ async function searchWithRelevanceRerank({
   encodedFilters,
   languageMode,
   channelId,
+  specialOffersOnly,
 }) {
   const collectedRawProducts = [];
   const queryVariants = getSearchQueryVariants(query);
@@ -207,8 +227,18 @@ async function searchWithRelevanceRerank({
   }
 
   const mappedProducts = mapProducts(dedupeRawProducts(collectedRawProducts));
-  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(mappedProducts)), { languageMode });
-  const rankedProducts = rankProductsBySearchRelevance(enrichedProducts, query);
+  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(mappedProducts)), {
+    languageMode,
+    specialOffersOnly,
+  });
+  const extraKeywordProducts = await loadOverrideKeywordProducts(query, enrichedProducts, {
+    languageMode,
+    specialOffersOnly,
+  });
+  const rankedProducts = rankProductsBySearchRelevance(
+    mergeProductsById(enrichedProducts, extraKeywordProducts),
+    query,
+  );
   const pageProducts = rankedProducts.slice(0, config.xbox.pageSize);
   const remainingProducts = rankedProducts.slice(config.xbox.pageSize);
   const mappedFilters = raw?.filters && Object.keys(raw.filters).length > 0
@@ -219,14 +249,22 @@ async function searchWithRelevanceRerank({
     ? writeRankedSearchBuffer({
         products: remainingProducts,
         nextExternalEncodedCT: nextEncodedCT || null,
-        totalItems: languageFilterActive ? null : raw?.totalItems,
+        totalItems: languageFilterActive
+          ? null
+          : Number.isFinite(raw?.totalItems)
+            ? raw.totalItems + extraKeywordProducts.length
+            : raw?.totalItems,
         totalIsApproximate: languageFilterActive,
       })
     : nextEncodedCT || null;
 
   return {
     products: pageProducts,
-    totalItems: languageFilterActive ? null : raw?.totalItems,
+    totalItems: languageFilterActive
+      ? null
+      : Number.isFinite(raw?.totalItems)
+        ? raw.totalItems + extraKeywordProducts.length
+        : raw?.totalItems,
     totalIsApproximate: languageFilterActive,
     totalPending: languageFilterActive,
     encodedCT: bufferedToken,
@@ -383,12 +421,55 @@ function bestRawSearchMatchTier(rawProducts, query) {
   ), SEARCH_MATCH_TIERS.NONE);
 }
 
+async function loadOverrideKeywordProducts(query, existingProducts, { languageMode, specialOffersOnly }) {
+  const overrides = await listSearchableProductOverrides();
+  if (!overrides.length) return [];
+
+  const seenIds = new Set((existingProducts || []).map((product) => String(product?.id || '').toUpperCase()).filter(Boolean));
+  const matchedOverrides = overrides
+    .map((override) => {
+      const keywordMatch = getBestKeywordMatch(override.searchKeywords, query);
+      if (keywordMatch.tier === SEARCH_MATCH_TIERS.NONE) return null;
+      return {
+        productId: String(override.productId || '').toUpperCase(),
+        tier: keywordMatch.tier,
+        score: keywordMatch.score,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.tier !== b.tier) return a.tier - b.tier;
+      if (b.score !== a.score) return b.score - a.score;
+      return a.productId.localeCompare(b.productId);
+    });
+
+  const missingIds = matchedOverrides
+    .map((item) => item.productId)
+    .filter((productId) => !seenIds.has(productId));
+
+  if (!missingIds.length) return [];
+
+  const rawProducts = await getProductsByIds(missingIds);
+  const mappedProducts = mapRelatedProducts(rawProducts, {});
+  const enrichedProducts = applyPostFilters(
+    await applyProductOverrides(await enrichProducts(mappedProducts)),
+    { languageMode, specialOffersOnly },
+  );
+  const productsById = new Map(
+    enrichedProducts.map((product) => [String(product?.id || '').toUpperCase(), product]),
+  );
+
+  return matchedOverrides
+    .map((item) => productsById.get(item.productId))
+    .filter(Boolean);
+}
+
 function rankProductsBySearchRelevance(products, query) {
   return [...products]
     .map((product, index) => ({
       product,
-      matchTier: getSearchMatchTier(product.title, query),
-      score: scoreSearchTitle(product.title, query, index),
+      matchTier: getProductSearchMatchTier(product, query),
+      score: getProductSearchScore(product, query, index),
       index,
     }))
     .sort((a, b) => {
@@ -397,6 +478,48 @@ function rankProductsBySearchRelevance(products, query) {
       return a.index - b.index;
     })
     .map(({ product }) => product);
+}
+
+function getProductSearchMatchTier(product, query) {
+  const titleTier = getSearchMatchTier(product?.title, query);
+  if (titleTier !== SEARCH_MATCH_TIERS.NONE) return titleTier;
+
+  const keywordTier = getBestKeywordMatch(product?.searchKeywords, query).tier;
+  if (keywordTier === SEARCH_MATCH_TIERS.NONE) return SEARCH_MATCH_TIERS.NONE;
+
+  return keywordTier + KEYWORD_MATCH_TIER_OFFSET;
+}
+
+function getProductSearchScore(product, query, originalIndex = 0) {
+  const titleTier = getSearchMatchTier(product?.title, query);
+  if (titleTier !== SEARCH_MATCH_TIERS.NONE) {
+    return scoreSearchTitle(product?.title, query, originalIndex);
+  }
+
+  const keywordMatch = getBestKeywordMatch(product?.searchKeywords, query);
+  if (keywordMatch.tier === SEARCH_MATCH_TIERS.NONE) return 0;
+
+  return keywordMatch.score - 1800 - originalIndex * 0.01;
+}
+
+function getBestKeywordMatch(searchKeywords, query) {
+  const keywords = Array.isArray(searchKeywords)
+    ? searchKeywords
+    : [];
+
+  return keywords.reduce((best, keyword) => {
+    const tier = getSearchMatchTier(keyword, query);
+    if (tier === SEARCH_MATCH_TIERS.NONE) return best;
+
+    const score = scoreSearchTitle(keyword, query, 0);
+    if (tier < best.tier) {
+      return { tier, score };
+    }
+    if (tier === best.tier && score > best.score) {
+      return { tier, score };
+    }
+    return best;
+  }, { tier: SEARCH_MATCH_TIERS.NONE, score: 0 });
 }
 
 function getSearchMatchTier(title, query) {
@@ -555,6 +678,7 @@ async function collectRawProductsForLanguage({
   nextEncodedCT,
   channelId,
   languageMode,
+  specialOffersOnly,
 }) {
   const targetCount = getLanguageFilterTargetCount();
   let collectedRawProducts = [...rawProducts];
@@ -562,7 +686,7 @@ async function collectRawProductsForLanguage({
   let attempts = 0;
 
   while (
-    await countLanguageFilteredProducts(collectedRawProducts, languageMode) < targetCount
+    await countLanguageFilteredProducts(collectedRawProducts, languageMode, specialOffersOnly) < targetCount
     && collectedNextEncodedCT
     && attempts < LANGUAGE_FILTER_PREFETCH_MAX_PAGES
   ) {
@@ -622,6 +746,7 @@ async function countFilteredSearchResults({
   encodedFilters,
   channelId,
   languageMode,
+  specialOffersOnly,
 }) {
   const collected = await collectAllCatalogPages({
     query,
@@ -634,12 +759,16 @@ async function countFilteredSearchResults({
   const mappedProducts = mapProducts(dedupeRawProducts(collected.rawProducts));
   const filteredProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(mappedProducts)),
-    { languageMode },
+    { languageMode, specialOffersOnly },
   );
+  const extraKeywordProducts = query
+    ? await loadOverrideKeywordProducts(query, filteredProducts, { languageMode, specialOffersOnly })
+    : [];
+  const mergedProducts = mergeProductsById(filteredProducts, extraKeywordProducts);
 
   return {
     products: [],
-    totalItems: filteredProducts.length,
+    totalItems: mergedProducts.length,
     totalIsApproximate: false,
     totalPending: false,
     encodedCT: null,
@@ -654,6 +783,7 @@ async function searchWithBufferedRatingSort({
   encodedFilters,
   channelId,
   languageMode,
+  specialOffersOnly,
 }) {
   const collected = await collectAllCatalogPages({
     query,
@@ -666,9 +796,12 @@ async function searchWithBufferedRatingSort({
   const mappedProducts = mapProducts(dedupeRawProducts(collected.rawProducts));
   const filteredProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(mappedProducts)),
-    { languageMode },
+    { languageMode, specialOffersOnly },
   );
-  const rankedProducts = sortProductsByRating(filteredProducts);
+  const extraKeywordProducts = query
+    ? await loadOverrideKeywordProducts(query, filteredProducts, { languageMode, specialOffersOnly })
+    : [];
+  const rankedProducts = sortProductsByRating(mergeProductsById(filteredProducts, extraKeywordProducts));
   const pageProducts = rankedProducts.slice(0, config.xbox.pageSize);
   const remainingProducts = rankedProducts.slice(config.xbox.pageSize);
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
@@ -710,19 +843,20 @@ function sortProductsByRating(products) {
   });
 }
 
-async function countLanguageFilteredProducts(rawProducts, languageMode) {
+async function countLanguageFilteredProducts(rawProducts, languageMode, specialOffersOnly = false) {
   const mappedProducts = mapProducts(dedupeRawProducts(rawProducts));
   const filteredProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(mappedProducts)),
-    { languageMode },
+    { languageMode, specialOffersOnly },
   );
   return filteredProducts.length;
 }
 
-function applyPostFilters(products, { languageMode }) {
+function applyPostFilters(products, { languageMode, specialOffersOnly }) {
   return products.filter((product) => {
     if (product.notAvailableSeparately) return false;
     if (languageMode && languageMode !== 'all' && product.russianLanguageMode !== languageMode) return false;
+    if (specialOffersOnly && !product.specialOfferUrl) return false;
     return true;
   });
 }
@@ -788,7 +922,7 @@ function fetchCatalogPage({ query, encodedFilters, encodedCT, returnFilters, cha
 
 function buildEncodedFilters(filters, sort) {
   const filterObj = {};
-  const localFilterKeys = new Set(['LanguageMode']);
+  const localFilterKeys = new Set(['LanguageMode', SPECIAL_OFFERS_FILTER_KEY]);
 
   if (filters && typeof filters === 'object') {
     for (const [key, values] of Object.entries(filters)) {
@@ -804,6 +938,26 @@ function buildEncodedFilters(filters, sort) {
   }
 
   return encodeFilters(filterObj);
+}
+
+function isSpecialOfferFilterActive(filters) {
+  return Boolean(filters?.[SPECIAL_OFFERS_FILTER_KEY]?.includes(SPECIAL_OFFERS_FILTER_VALUE));
+}
+
+function mergeProductsById(...groups) {
+  const seen = new Set();
+  const result = [];
+
+  for (const group of groups) {
+    for (const product of group || []) {
+      const id = String(product?.id || '').toUpperCase();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      result.push(product);
+    }
+  }
+
+  return result;
 }
 
 module.exports = { search };

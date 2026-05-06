@@ -1,7 +1,6 @@
 const { Router } = require('express');
 const { requireAdmin, requireAuth } = require('../middleware/auth');
 const pool = require('../db/pool');
-const config = require('../config');
 const dealScheduler = require('../services/dealScheduler');
 const digisellerService = require('../services/digisellerService');
 const topupCardService = require('../services/topupCardService');
@@ -15,6 +14,13 @@ const {
   listProductOverrides,
   upsertProductOverride,
 } = require('../services/productOverrideService');
+const {
+  enrichUserWithAdminAccess,
+  enrichUsersWithAdminAccess,
+  isUserAdmin,
+  setUserAdminAccess,
+} = require('../services/adminAccessService');
+const { getHelpContent, updateHelpContent } = require('../services/helpContentService');
 const { getSupportLinks, updateSupportLinks } = require('../services/supportLinksService');
 const logger = require('../utils/logger');
 
@@ -23,22 +29,7 @@ const ADMIN_PRODUCT_LANGUAGE_MODES = new Set(['unknown', 'no_ru', 'full_ru', 'ru
 
 // Check if current user is admin (used by client to show/hide admin button)
 router.get('/check', requireAuth, async (req, res) => {
-  const user = req.user;
-  const adminEmails = config.admin.emails;
-  const adminTgIds = config.admin.telegramIds;
-
-  let isAdmin = user.email && adminEmails.includes(user.email.toLowerCase());
-
-  if (!isAdmin && adminTgIds.length > 0) {
-    const { rows } = await pool.query(
-      `SELECT provider_user_id FROM oauth_accounts
-       WHERE user_id = $1 AND provider = 'telegram'`,
-      [user.id],
-    );
-    isAdmin = rows.some((r) => adminTgIds.includes(r.provider_user_id));
-  }
-
-  res.json({ isAdmin: Boolean(isAdmin) });
+  res.json({ isAdmin: await isUserAdmin(req.user) });
 });
 
 // Dashboard stats
@@ -105,6 +96,7 @@ router.get('/users', requireAdmin, async (req, res, next) => {
         u.id,
         u.email,
         u.name,
+        u.is_admin,
         u.last_provider,
         u.verified,
         u.created_at,
@@ -123,9 +115,10 @@ router.get('/users', requireAdmin, async (req, res, next) => {
       ? `SELECT COUNT(*)::int AS total FROM users u WHERE u.email ILIKE $1 OR u.name ILIKE $1`
       : 'SELECT COUNT(*)::int AS total FROM users';
     const { rows: countRows } = await pool.query(countQuery, countParams);
+    const usersWithAccess = await enrichUsersWithAdminAccess(rows);
 
     res.json({
-      users: rows,
+      users: usersWithAccess,
       total: countRows[0].total,
       page,
       limit,
@@ -165,7 +158,7 @@ router.get('/users/:userId', requireAdmin, async (req, res, next) => {
       `, [userId]),
     ]);
 
-    const user = userRows[0];
+    const user = await enrichUserWithAdminAccess(userRows[0]);
     delete user.password_hash;
     delete user.xbox_account_password_encrypted;
 
@@ -174,6 +167,43 @@ router.get('/users/:userId', requireAdmin, async (req, res, next) => {
       favorites: favorites.rows,
       oauthAccounts: oauth.rows,
       notifications: notifications.rows,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/users/:userId/admin', requireAdmin, async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { isAdmin } = req.body || {};
+
+    if (typeof isAdmin !== 'boolean') {
+      return res.status(400).json({ error: 'isAdmin must be a boolean' });
+    }
+
+    const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const targetUser = await enrichUserWithAdminAccess(rows[0]);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (!isAdmin && req.user.id === userId) {
+      return res.status(400).json({ error: 'You cannot revoke your own admin access from the admin panel' });
+    }
+    if (!isAdmin && targetUser.isConfigAdmin) {
+      return res.status(400).json({ error: 'This admin access is controlled via .env' });
+    }
+
+    const updatedUser = await setUserAdminAccess(userId, isAdmin);
+    const enrichedUser = await enrichUserWithAdminAccess(updatedUser);
+
+    res.json({
+      success: true,
+      user: enrichedUser,
     });
   } catch (err) {
     next(err);
@@ -327,6 +357,24 @@ router.put('/support-links', requireAdmin, async (req, res, next) => {
   try {
     const links = await updateSupportLinks(req.body || {});
     res.json({ success: true, links });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/help-content', requireAdmin, async (_req, res, next) => {
+  try {
+    const content = await getHelpContent();
+    res.json({ content });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/help-content', requireAdmin, async (req, res, next) => {
+  try {
+    const content = await updateHelpContent(req.body || {});
+    res.json({ success: true, content });
   } catch (err) {
     next(err);
   }

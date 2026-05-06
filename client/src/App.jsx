@@ -5,6 +5,7 @@ import GameDetailPage from './pages/GameDetailPage';
 import FavoritesPage from './pages/FavoritesPage';
 import ProfilePage from './pages/ProfilePage';
 import AdminPage from './pages/AdminPage';
+import HelpPage from './pages/HelpPage';
 import AuthModal from './components/AuthModal';
 import FilterPanel from './components/FilterPanel';
 import SupportWidget from './components/SupportWidget';
@@ -23,6 +24,7 @@ const FILTER_QUERY_KEYS = [
   'TechnicalFeatures',
   'IncludedInSubscription',
   'HandheldCompatibility',
+  'SpecialOffers',
 ];
 
 const DEFAULT_BROWSE_SORT = 'WishlistCountTotal desc';
@@ -285,6 +287,8 @@ export default function App() {
     setCurrentUser(null);
     setIsAdmin(false);
     window.dispatchEvent(new Event('auth-changed'));
+    closeMobileMenu();
+    navigate('/');
   };
 
   const handleProfileAction = () => {
@@ -462,9 +466,9 @@ export default function App() {
               Коды пополнения баланса
             </a>
 
-            <a className="top-nav-link" href="https://xboxportal.ru/rules">
+            <Link to="/help" className="top-nav-link">
               Помощь
-            </a>
+            </Link>
 
             {isAdmin && (
               <Link to="/admin" className="top-nav-link header-admin-btn" title="Админ-панель">
@@ -522,6 +526,7 @@ export default function App() {
           />
           <Route path="/favorites" element={<FavoritesPage />} />
           <Route path="/cart" element={<CartPage currentUser={currentUser} onLoginClick={() => setAuthModalOpen(true)} />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route
             path="/profile"
             element={(

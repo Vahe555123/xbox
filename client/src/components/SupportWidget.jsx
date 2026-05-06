@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { fetchSupportLinks } from '../services/api';
 
 const CONTACT_ITEMS = [
@@ -153,6 +154,10 @@ export default function SupportWidget() {
                 </a>
               ))}
             </div>
+
+            <Link className="support-modal-help-link" to="/help" onClick={() => setOpen(false)}>
+              Открыть раздел помощи
+            </Link>
           </div>
         </div>
       )}

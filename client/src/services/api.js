@@ -80,6 +80,11 @@ export async function fetchSupportLinks() {
   return data.links || {};
 }
 
+export async function fetchHelpContent() {
+  const { data } = await api.get('/site/content/help');
+  return data || {};
+}
+
 export async function registerUser(email, password) {
   const { data } = await api.post('/auth/register', { email, password });
   return data;
@@ -171,6 +176,11 @@ export async function fetchAdminUserDetail(userId) {
   return data;
 }
 
+export async function updateAdminUserAccess(userId, isAdmin) {
+  const { data } = await api.put(`/admin/users/${encodeURIComponent(userId)}/admin`, { isAdmin });
+  return data.user;
+}
+
 export async function fetchAdminNotifications({ page = 1, limit = 30 } = {}) {
   const params = { page, limit };
   const { data } = await api.get('/admin/notifications', { params });
@@ -198,6 +208,16 @@ export async function fetchAdminSupportLinks() {
 export async function updateAdminSupportLinks(payload) {
   const { data } = await api.put('/admin/support-links', payload);
   return data.links || {};
+}
+
+export async function fetchAdminHelpContent() {
+  const { data } = await api.get('/admin/help-content');
+  return data.content || {};
+}
+
+export async function updateAdminHelpContent(payload) {
+  const { data } = await api.put('/admin/help-content', payload);
+  return data.content || {};
 }
 
 export async function updateProductOverride(productId, payload) {

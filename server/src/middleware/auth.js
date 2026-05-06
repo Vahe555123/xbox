@@ -1,6 +1,7 @@
-const config = require('../config');
 const { AppError } = require('../utils/errorFormatter');
+const config = require('../config');
 const { verifyToken, findUserById } = require('../services/authService');
+const { isUserAdmin } = require('../services/adminAccessService');
 
 function readCookie(req, name) {
   const cookieHeader = req.headers.cookie || '';
@@ -72,25 +73,7 @@ async function requireAdmin(req, _res, next) {
       throw new AppError('Authentication required', 401);
     }
 
-    // Check admin access
-    const adminEmails = config.admin.emails;
-    const adminTgIds = config.admin.telegramIds;
-
-    const isAdminByEmail = user.email && adminEmails.includes(user.email.toLowerCase());
-
-    // Check if user has a telegram oauth account matching admin IDs
-    let isAdminByTg = false;
-    if (adminTgIds.length > 0) {
-      const pool = require('../db/pool');
-      const { rows } = await pool.query(
-        `SELECT provider_user_id FROM oauth_accounts
-         WHERE user_id = $1 AND provider = 'telegram'`,
-        [user.id],
-      );
-      isAdminByTg = rows.some((r) => adminTgIds.includes(r.provider_user_id));
-    }
-
-    if (!isAdminByEmail && !isAdminByTg) {
+    if (!await isUserAdmin(user)) {
       throw new AppError('Admin access required', 403);
     }
 
