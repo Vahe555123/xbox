@@ -255,6 +255,7 @@ export default function GameDetailPage() {
   const [purchaseResult, setPurchaseResult] = useState(null);
   const [copyMessage, setCopyMessage] = useState('');
   const [favoriteToast, setFavoriteToast] = useState('');
+  const [localizedDescription, setLocalizedDescription] = useState(null);
   const [localizedDescriptionLoading, setLocalizedDescriptionLoading] = useState(false);
   const scrollRefs = useRef({});
 
@@ -278,6 +279,7 @@ export default function GameDetailPage() {
     setPurchaseResult(null);
     setCopyMessage('');
     setFavoriteToast('');
+    setLocalizedDescription(null);
     setLocalizedDescriptionLoading(false);
 
     let cancelled = false;
@@ -311,22 +313,22 @@ export default function GameDetailPage() {
         const hasFetchedDescription = Boolean(description.fullDescription || description.shortDescription);
         if (!hasFetchedDescription) return;
 
-        setData((current) => {
-          if (!current || current.id !== data.id) return current;
-          if (current.descriptionOverride || current.descriptionSource === 'admin-override') return current;
+        const nextSource = String(description.source || '').toLowerCase();
+        const isRussianDescription = nextSource.startsWith('ru-');
+        const hasCurrentDescription = Boolean(data.fullDescription || data.shortDescription);
 
-          const nextSource = String(description.source || '').toLowerCase();
-          const isRussianDescription = nextSource.startsWith('ru-');
-          if (!isRussianDescription && (current.fullDescription || current.shortDescription)) {
-            return current;
-          }
+        if (!isRussianDescription && hasCurrentDescription) return;
 
-          return {
-            ...current,
-            fullDescription: description.fullDescription || current.fullDescription,
-            shortDescription: description.shortDescription || current.shortDescription,
-            descriptionSource: description.source || current.descriptionSource || null,
-          };
+        setLocalizedDescription({
+          fullDescription: description.fullDescription || null,
+          shortDescription: description.shortDescription || null,
+          source: description.source || null,
+        });
+        console.log('[GameDetailPage] localized description applied', {
+          productId: data.id,
+          source: description.source || null,
+          hasFullDescription: Boolean(description.fullDescription),
+          hasShortDescription: Boolean(description.shortDescription),
         });
       })
       .catch(() => {
@@ -458,7 +460,11 @@ export default function GameDetailPage() {
     () => capabilitiesById.has('XPA') || Boolean(data?.xbox?.xpa),
     [capabilitiesById, data?.xbox?.xpa],
   );
-  const detailDescriptionText = data?.fullDescription || data?.shortDescription || '';
+  const detailDescriptionText = localizedDescription?.fullDescription
+    || localizedDescription?.shortDescription
+    || data?.fullDescription
+    || data?.shortDescription
+    || '';
 
   useEffect(() => {
     if (!data?.id) return;
