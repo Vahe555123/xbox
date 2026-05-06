@@ -7,6 +7,7 @@ import {
   getPaymentPriceEntries,
   getPaymentPriceLine,
 } from '../utils/paymentPrices';
+import { hasValidReleaseDate } from '../utils/storeRelease';
 
 const CATALOG_PAYMENT_TITLES = {
   special_offer: 'СПЕЦПРЕДЛОЖЕНИЕ',
@@ -252,9 +253,13 @@ function getLanguageBadge(mode, hasRussian) {
 function getStorePriceLabel(price, releaseInfo, isUnavailablePrice) {
   if (isUnavailablePrice) return null;
   if (price?.value === 0) return 'Бесплатно';
-  if (price?.status === 'unreleased' || releaseInfo?.status === 'unreleased') {
+  if (
+    price?.status === 'unreleased'
+    || releaseInfo?.status === 'unreleased'
+    || releaseInfo?.status === 'comingSoon'
+  ) {
     const hasKnownPrice = price?.value != null && Number.isFinite(Number(price.value));
-    const hasKnownReleaseDate = Boolean(releaseInfo?.releaseDate);
+    const hasKnownReleaseDate = hasValidReleaseDate(releaseInfo?.releaseDate);
     if (!hasKnownPrice && !hasKnownReleaseDate) return null;
     return 'Еще не вышла';
   }

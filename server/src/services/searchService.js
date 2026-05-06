@@ -21,7 +21,14 @@ const SEARCH_RERANK_TOKEN_PREFIX = 'ranked-search:';
 const SEARCH_RERANK_CACHE_TTL_SECONDS = 10 * 60;
 const DEFAULT_BROWSE_SORT = 'WishlistCountTotal desc';
 const RATING_SORT = 'MostPopular desc';
-const STRONG_MATCH_SCORE = 5000;
+const SEARCH_MATCH_TIERS = {
+  EXACT: 0,
+  PHRASE_PREFIX: 1,
+  PHRASE_CONTAINS: 2,
+  ALL_TOKENS: 3,
+  SOME_TOKENS: 4,
+  NONE: 5,
+};
 const SEARCH_NOISE_TOKENS = new Set([
   'a',
   'an',
@@ -174,7 +181,7 @@ async function searchWithRelevanceRerank({
   const queryVariants = getSearchQueryVariants(query);
   let raw = null;
   let nextEncodedCT = null;
-  let bestScore = 0;
+  let bestMatchTier = SEARCH_MATCH_TIERS.NONE;
 
   for (const [index, searchQuery] of queryVariants.entries()) {
     const result = await collectSearchPagesForRerank({
@@ -183,20 +190,20 @@ async function searchWithRelevanceRerank({
       encodedFilters,
       channelId,
       returnFilters: index === 0,
-      maxPages: index === 0 && queryVariants.length > 1
-        ? Math.max(1, Math.ceil(SEARCH_RERANK_MAX_PAGES / 2))
-        : SEARCH_RERANK_MAX_PAGES,
+      maxPages: index === 0
+        ? SEARCH_RERANK_MAX_PAGES
+        : Math.max(1, Math.ceil(SEARCH_RERANK_MAX_PAGES / 2)),
     });
 
     collectedRawProducts.push(...result.rawProducts);
-    bestScore = Math.max(bestScore, result.bestScore);
+    bestMatchTier = Math.min(bestMatchTier, result.bestMatchTier);
 
     if (index === 0) {
       raw = result.raw;
       nextEncodedCT = result.nextEncodedCT;
     }
 
-    if (bestScore >= STRONG_MATCH_SCORE && !(index === 0 && queryVariants.length > 1)) break;
+    if (bestMatchTier === SEARCH_MATCH_TIERS.EXACT) break;
   }
 
   const mappedProducts = mapProducts(dedupeRawProducts(collectedRawProducts));
@@ -240,7 +247,7 @@ async function collectSearchPagesForRerank({
   let raw = null;
   let nextEncodedCT = '';
   let pagesFetched = 0;
-  let bestScore = 0;
+  let bestMatchTier = SEARCH_MATCH_TIERS.NONE;
 
   do {
     raw = await fetchCatalogPage({
@@ -254,18 +261,18 @@ async function collectSearchPagesForRerank({
     rawProducts.push(...(raw.products || []));
     nextEncodedCT = raw.encodedCT || '';
     pagesFetched += 1;
-    bestScore = Math.max(bestScore, bestRawSearchScore(rawProducts, scoreQuery));
+    bestMatchTier = Math.min(bestMatchTier, bestRawSearchMatchTier(rawProducts, scoreQuery));
 
     if (!nextEncodedCT) break;
     if (getMeaningfulSearchTokens(scoreQuery).length < 2) break;
-    if (bestScore >= STRONG_MATCH_SCORE) break;
+    if (bestMatchTier === SEARCH_MATCH_TIERS.EXACT) break;
   } while (pagesFetched < maxPages);
 
   return {
     raw,
     rawProducts,
     nextEncodedCT: nextEncodedCT || null,
-    bestScore,
+    bestMatchTier,
   };
 }
 
@@ -370,25 +377,50 @@ function dedupeRawProducts(rawProducts) {
   return deduped;
 }
 
-function bestRawSearchScore(rawProducts, query) {
-  return Math.max(
-    0,
-    ...(rawProducts || []).map((item, index) => scoreSearchTitle(item?.summary?.title, query, index)),
-  );
+function bestRawSearchMatchTier(rawProducts, query) {
+  return (rawProducts || []).reduce((bestTier, item) => (
+    Math.min(bestTier, getSearchMatchTier(item?.summary?.title, query))
+  ), SEARCH_MATCH_TIERS.NONE);
 }
 
 function rankProductsBySearchRelevance(products, query) {
   return [...products]
     .map((product, index) => ({
       product,
+      matchTier: getSearchMatchTier(product.title, query),
       score: scoreSearchTitle(product.title, query, index),
       index,
     }))
     .sort((a, b) => {
+      if (a.matchTier !== b.matchTier) return a.matchTier - b.matchTier;
       if (b.score !== a.score) return b.score - a.score;
       return a.index - b.index;
     })
     .map(({ product }) => product);
+}
+
+function getSearchMatchTier(title, query) {
+  const normalizedTitle = normalizeSearchText(title);
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedTitle || !normalizedQuery) return SEARCH_MATCH_TIERS.NONE;
+
+  const meaningfulTokens = getMeaningfulSearchTokens(query);
+  const titleCore = getMeaningfulSearchTokens(title).join(' ');
+  const queryCore = meaningfulTokens.join(' ');
+  const queryTokens = getSearchTokens(query);
+  const titleTokens = getComparableTokenSet(title);
+  const tokensToMatch = meaningfulTokens.length ? meaningfulTokens : queryTokens;
+  const matchedCount = tokensToMatch.filter((token) => titleTokens.has(toComparableToken(token))).length;
+  const hasAllQueryTokens = tokensToMatch.length > 0 && matchedCount === tokensToMatch.length;
+
+  if (normalizedTitle === normalizedQuery) return SEARCH_MATCH_TIERS.EXACT;
+  if (titleCore && queryCore && titleCore === queryCore) return SEARCH_MATCH_TIERS.EXACT;
+  if (queryCore && titleCore && titleCore.startsWith(queryCore)) return SEARCH_MATCH_TIERS.PHRASE_PREFIX;
+  if (queryCore && titleCore && titleCore.includes(queryCore)) return SEARCH_MATCH_TIERS.PHRASE_CONTAINS;
+  if (normalizedTitle.includes(normalizedQuery)) return SEARCH_MATCH_TIERS.PHRASE_CONTAINS;
+  if (hasAllQueryTokens) return SEARCH_MATCH_TIERS.ALL_TOKENS;
+  if (matchedCount > 0) return SEARCH_MATCH_TIERS.SOME_TOKENS;
+  return SEARCH_MATCH_TIERS.NONE;
 }
 
 function scoreSearchTitle(title, query, originalIndex = 0) {

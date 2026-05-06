@@ -26,6 +26,15 @@ function hasRussianLanguage(codes) {
   return codes.some((code) => RUSSIAN_LANGUAGE_CODES.has(code) || code.startsWith('ru-'));
 }
 
+function normalizeReleaseDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const year = date.getUTCFullYear();
+  if (year >= 9998 || year <= 1753) return null;
+  return value;
+}
+
 function extractLanguageInfo(displaySkuAvailabilities) {
   const supportedCodes = new Set();
   const packageCodes = new Set();
@@ -109,7 +118,7 @@ function mapRelatedProductCard(raw, relationshipType) {
   const isGamePass = merchTags.some((t) =>
     /gamepass|game\s*pass/i.test(typeof t === 'string' ? t : ''),
   );
-  const releaseDate = mp.OriginalReleaseDate || null;
+  const releaseDate = normalizeReleaseDate(mp.OriginalReleaseDate);
   const isFuture = releaseDate && new Date(releaseDate).getTime() > Date.now();
   const price = isFuture
     ? {
