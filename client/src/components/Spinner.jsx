@@ -4,7 +4,7 @@ export default function Spinner() {
   return (
     <div className="spinner-wrap">
       <div className="spinner" />
-      <p>Searching the Xbox catalog...</p>
+      <p>Поиск в каталоге Xbox…</p>
     </div>
   );
 }

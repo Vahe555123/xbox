@@ -1065,7 +1065,7 @@ export default function GameDetailPage() {
               <div className="accessibility-chips">
                 {featureCapabilities.map((capability) => (
                   <span key={capability.label} className="accessibility-chip">
-                    {capability.badge ? `${capability.badge} ` : ''}{capability.label}
+                    {capability.label}
                   </span>
                 ))}
               </div>
@@ -1325,7 +1325,12 @@ function SystemRequirements({ title, items, notes }) {
 function getStorePriceLabel(price, releaseInfo, isUnavailablePrice) {
   if (isUnavailablePrice) return null;
   if (price?.value === 0) return 'Бесплатно';
-  if (price?.status === 'unreleased' || releaseInfo?.status === 'unreleased') return 'Еще не вышла';
+  if (price?.status === 'unreleased' || releaseInfo?.status === 'unreleased') {
+    const hasKnownPrice = price?.value != null && Number.isFinite(Number(price.value));
+    const hasKnownReleaseDate = Boolean(releaseInfo?.releaseDate);
+    if (!hasKnownPrice && !hasKnownReleaseDate) return null;
+    return 'Еще не вышла';
+  }
   return price?.formatted || releaseInfo?.label || null;
 }
 

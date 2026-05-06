@@ -252,6 +252,11 @@ function getLanguageBadge(mode, hasRussian) {
 function getStorePriceLabel(price, releaseInfo, isUnavailablePrice) {
   if (isUnavailablePrice) return null;
   if (price?.value === 0) return 'Бесплатно';
-  if (price?.status === 'unreleased' || releaseInfo?.status === 'unreleased') return 'Еще не вышла';
+  if (price?.status === 'unreleased' || releaseInfo?.status === 'unreleased') {
+    const hasKnownPrice = price?.value != null && Number.isFinite(Number(price.value));
+    const hasKnownReleaseDate = Boolean(releaseInfo?.releaseDate);
+    if (!hasKnownPrice && !hasKnownReleaseDate) return null;
+    return 'Еще не вышла';
+  }
   return price?.formatted || releaseInfo?.label || null;
 }

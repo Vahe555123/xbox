@@ -73,10 +73,11 @@ function getDefaultFilters() {
       choices: [
         { id: 'DO_NOT_FILTER', title: 'Relevance' },
         { id: 'ReleaseDate desc', title: 'Release date: newest-oldest' },
-        { id: 'WishlistCountTotal desc', title: 'Popular' },
-        { id: 'MostPopular desc', title: 'Top rated' },
+        { id: 'MostPopular desc', title: 'Most Popular' },
         { id: 'Price asc', title: 'Price: low-high' },
         { id: 'Price desc', title: 'Price: high-low' },
+        { id: 'WishlistCountTotal desc', title: 'Most Wishlisted' },
+        { id: 'DiscountPercentage desc', title: 'Discount: high-low' },
         { id: 'Title Asc', title: 'Title: A-Z' },
         { id: 'Title Desc', title: 'Title: Z-A' },
       ],

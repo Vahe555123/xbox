@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-const SKIP_FILTER_KEYS = ['orderby', 'Accessibility', 'SupportedLanguages'];
+const SKIP_FILTER_KEYS = ['orderby'];
 const FILTER_ORDER = [
   'PlayWith',
+  'Accessibility',
   'Price',
   'Genre',
   'MaturityRating',
   'Multiplayer',
   'TechnicalFeatures',
+  'SupportedLanguages',
   'IncludedInSubscription',
   'HandheldCompatibility',
 ];
@@ -16,11 +18,13 @@ const AUTO_APPLY_DELAY_MS = 500;
 const FILTER_TITLES = {
   orderby: 'Сортировка',
   PlayWith: 'Платформы',
+  Accessibility: 'Доступность',
   Price: 'Цена',
   Genre: 'Жанр',
   MaturityRating: 'Возрастной рейтинг',
   Multiplayer: 'Мультиплеер',
   TechnicalFeatures: 'Технические характеристики',
+  SupportedLanguages: 'Поддерживаемые языки',
   IncludedInSubscription: 'Подписки',
   HandheldCompatibility: 'Совместимость с Handheld',
 };
@@ -28,10 +32,10 @@ const FILTER_TITLES = {
 const SORT_TITLES = {
   DO_NOT_FILTER: 'По релевантности',
   'ReleaseDate desc': 'Дата выхода: сначала новые',
-  'MostPopular desc': 'Самые популярные (по рейтингу)',
+  'MostPopular desc': 'Самые популярные',
   'Price asc': 'Цена: по возрастанию',
   'Price desc': 'Цена: по убыванию',
-  'WishlistCountTotal desc': 'Популярные',
+  'WishlistCountTotal desc': 'Больше всего в списке желаний',
   'DiscountPercentage desc': 'Скидка: сначала больше',
   'Title Asc': 'Название: А-Я',
   'Title Desc': 'Название: Я-А',
@@ -55,8 +59,10 @@ const MATURITY_TITLES = {
   'ESRB:T': 'Teen',
   'ESRB:M': 'Mature 17+',
   'ESRB:AO': 'Adults Only 18+',
-  'ESRB:UR': 'Rating Pending',
-  Unrated: 'Без рейтинга',
+  'ESRB:RPEveryone': 'Rating Pending',
+  'ESRB:RPMature': 'Rating Pending: вероятно Mature 17+',
+  'ESRB:RPTeen': 'Rating Pending: вероятно Teen 13+',
+  'ESRB:UR': 'Без рейтинга',
 };
 
 const GENRE_TITLES = {
@@ -92,14 +98,6 @@ const MULTIPLAYER_TITLES = {
   CoopSupportLocal: 'Локальный кооператив',
   LocalMultiplayer: 'Локальный мультиплеер',
 };
-
-const LANGUAGE_CHOICES = [
-  { id: '', title: 'Любой язык' },
-  { id: 'full_ru', title: 'Полностью на русском' },
-  { id: 'ru_subtitles', title: 'Русские субтитры' },
-  { id: 'no_ru', title: 'Без русского' },
-  { id: 'unknown', title: 'Язык не указан' },
-];
 
 function cloneFilters(filters) {
   return Object.fromEntries(
@@ -236,18 +234,6 @@ export default function FilterPanel({
     });
   };
 
-  const updateDraftSingleFilter = (key, valueId) => {
-    setDraftFilters((prev) => {
-      const next = cloneFilters(prev);
-      if (!valueId) {
-        delete next[key];
-      } else {
-        next[key] = [valueId];
-      }
-      return next;
-    });
-  };
-
   const applyFilters = () => {
     onApply({
       filters: draftFilters,
@@ -351,19 +337,6 @@ export default function FilterPanel({
                 />
               );
             })}
-
-            <label className="filter-field">
-              <span className="filter-field-label">Язык игры</span>
-              <select
-                value={draftFilters.LanguageMode?.[0] || ''}
-                onChange={(event) => updateDraftSingleFilter('LanguageMode', event.target.value)}
-                aria-label="Язык игры"
-              >
-                {LANGUAGE_CHOICES.map((choice) => (
-                  <option key={choice.id || 'all'} value={choice.id}>{choice.title}</option>
-                ))}
-              </select>
-            </label>
           </div>
 
           <div className="filter-actions">
