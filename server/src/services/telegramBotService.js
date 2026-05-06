@@ -308,6 +308,9 @@ async function pollOnce() {
       message: err.message,
       code: err.code || null,
       status: err.response?.status || err.status || null,
+      statusText: err.response?.statusText || null,
+      responseData: summarizeTelegramErrorPayload(err.response?.data),
+      requestUrl: apiUrl('getUpdates'),
       proxyConfigured: Boolean(proxyUrl),
       proxy: maskProxyUrl(proxyUrl),
     });
@@ -451,5 +454,17 @@ function maskProxyUrl(proxyUrl) {
     return `${parsed.protocol}//${auth}${parsed.host}`;
   } catch {
     return 'invalid-proxy-url';
+  }
+}
+
+function summarizeTelegramErrorPayload(payload) {
+  if (payload == null) return null;
+  if (typeof payload === 'string') {
+    return payload.slice(0, 500);
+  }
+  try {
+    return JSON.stringify(payload).slice(0, 1000);
+  } catch {
+    return '[unserializable-response]';
   }
 }
