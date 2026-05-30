@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Runs on the server after `git pull` during `pm2 deploy production update`.
-# Installs dependencies, builds the client, and reloads the API via PM2.
+# Pulls latest code, installs dependencies, builds the client, and reloads the API via PM2.
 
 set -e
 
 ROOT="/var/www/xbox"
 cd "$ROOT"
+
+echo "==> Pulling latest code"
+git pull origin main
 
 echo "==> Installing server deps"
 cd "$ROOT/server"
