@@ -214,7 +214,7 @@ export default function App() {
   const [authNotice, setAuthNotice] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(true);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [headerQuery, setHeaderQuery] = useState('');
   const location = useLocation();
   const navigate = useNavigate();
@@ -357,19 +357,6 @@ export default function App() {
   useEffect(() => {
     setHeaderQuery(urlCatalogState.query || '');
   }, [urlCatalogState.query]);
-
-  useEffect(() => {
-    let lastScrollY = window.scrollY;
-    function onScroll() {
-      const y = window.scrollY;
-      if (y > lastScrollY && y > 80) {
-        setFilterOpen(false);
-      }
-      lastScrollY = y;
-    }
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
 
   useEffect(() => {
     document.body.classList.toggle('mobile-menu-open', mobileMenuOpen);

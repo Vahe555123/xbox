@@ -1048,7 +1048,7 @@ img {
   border-color: var(--accent);
 }
 
-/* Hide filter search on mobile (it's in the header instead) */
+/* Mobile: filter panel hidden when closed, search/filter only in header */
 @media (max-width: 900px) {
   .filter-search-desktop-only {
     display: none !important;
@@ -1063,10 +1063,15 @@ img {
     min-width: 0;
   }
 
-  /* Filter panel becomes non-sticky on mobile to avoid conflict with sticky header */
+  /* Filter panel becomes non-sticky on mobile */
   .filter-panel {
     position: relative;
     top: auto;
+  }
+
+  /* Hide entire filter panel on mobile when closed — header controls are enough */
+  .filter-panel:not(.filter-panel-open) {
+    display: none;
   }
 }
 
