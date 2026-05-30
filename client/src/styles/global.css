@@ -1063,15 +1063,72 @@ img {
     min-width: 0;
   }
 
-  /* Filter panel becomes non-sticky on mobile */
-  .filter-panel {
-    position: relative;
-    top: auto;
-  }
-
   /* Hide entire filter panel on mobile when closed — header controls are enough */
   .filter-panel:not(.filter-panel-open) {
     display: none;
+  }
+
+  /* Fixed full-screen overlay when open */
+  .filter-panel.filter-panel-open {
+    position: fixed;
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 115;
+    margin: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Smaller fields to fit more content */
+  .filter-field select,
+  .filter-field input,
+  .filter-dropdown summary {
+    height: 42px;
+    font-size: 0.85rem;
+  }
+
+  .filter-search-wrap input,
+  .filter-count-pill,
+  .filter-toggle-btn {
+    height: 42px;
+    font-size: 0.85rem;
+  }
+
+  .filter-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.55rem;
+  }
+
+  .filter-expanded {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+  }
+
+  /* Hide auto-apply hint on mobile */
+  .filter-auto-hint {
+    display: none !important;
+  }
+
+  /* Reset + Apply on same row */
+  .filter-actions {
+    flex-direction: row !important;
+    align-items: stretch;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .filter-reset-btn,
+  .filter-apply-btn {
+    flex: 1 !important;
+    width: auto !important;
+    min-width: 0;
+    height: 46px;
   }
 }
 
