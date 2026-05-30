@@ -167,8 +167,20 @@ export default function FilterPanel({
   sort,
   sortFilter,
   total,
+  isOpen,
+  onToggle,
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [internalExpanded, setInternalExpanded] = useState(true);
+  const expanded = isOpen !== undefined ? isOpen : internalExpanded;
+
+  function handleToggle() {
+    if (onToggle) {
+      onToggle((v) => !v);
+    } else {
+      setInternalExpanded((v) => !v);
+    }
+  }
+
   const [draftFilters, setDraftFilters] = useState(() => cloneFilters(activeFilters));
   const [draftSort, setDraftSort] = useState(sort || '');
   const [draftQuery, setDraftQuery] = useState(query || '');
@@ -255,7 +267,11 @@ export default function FilterPanel({
       filters: draftFilters,
       sort: draftSort,
     });
-    setExpanded(false);
+    if (onToggle) {
+      onToggle(false);
+    } else {
+      setInternalExpanded(false);
+    }
   };
 
   const resetFilters = () => {
@@ -268,7 +284,7 @@ export default function FilterPanel({
   return (
     <section className={`filter-panel ${expanded ? 'filter-panel-open' : ''}`}>
       <div className="filter-top-row">
-        <div className="filter-search-wrap">
+        <div className="filter-search-wrap filter-search-desktop-only">
           <svg className="filter-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -321,7 +337,7 @@ export default function FilterPanel({
         <button
           className="filter-toggle-btn"
           type="button"
-          onClick={() => setExpanded((value) => !value)}
+          onClick={handleToggle}
           aria-expanded={expanded}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">

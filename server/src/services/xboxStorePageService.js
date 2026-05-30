@@ -7,6 +7,10 @@ const LANGUAGE_CACHE_TTL = 12 * 3600;
 const STORE_PAGE_CACHE_TTL = 12 * 3600;
 const DESCRIPTION_CACHE_TTL = 12 * 3600;
 const inflight = new Map();
+const XBOX_RETRY_OPTIONS = {
+  retries: config.xbox.requestRetryCount,
+  delay: config.axios.retryDelay,
+};
 
 const RELATED_CHANNELS = [
   { prefix: 'PRODUCTADDONS', relationshipType: 'ProductAddOns', limit: 24 },
@@ -163,7 +167,7 @@ async function fetchStoreStateForLocale(storeUrl, locale = 'en-US') {
         'Accept-Language': locale,
       },
     }),
-  );
+  XBOX_RETRY_OPTIONS);
   return extractPreloadedState(String(response.data || ''));
 }
 

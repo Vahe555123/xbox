@@ -37,23 +37,51 @@ function createAxiosClient(baseURL = config.xbox.catalogBaseUrl) {
   return client;
 }
 
-async function withRetry(fn, retries = config.axios.retryCount, delay = config.axios.retryDelay) {
+function isRetryableRequestError(err) {
+  const status = err?.response?.status;
+  return !status || status >= 500 || status === 429;
+}
+
+function normalizeRetryOptions(optionsOrRetries, legacyDelay) {
+  if (typeof optionsOrRetries === 'object' && optionsOrRetries !== null) {
+    return {
+      retries: Math.max(0, Number(optionsOrRetries.retries) || 0),
+      delay: Math.max(0, Number(optionsOrRetries.delay) || 0),
+      shouldRetry: typeof optionsOrRetries.shouldRetry === 'function'
+        ? optionsOrRetries.shouldRetry
+        : isRetryableRequestError,
+    };
+  }
+
+  return {
+    retries: Math.max(0, Number(optionsOrRetries) || 0),
+    delay: Math.max(0, Number(legacyDelay) || 0),
+    shouldRetry: isRetryableRequestError,
+  };
+}
+
+async function withRetry(
+  fn,
+  optionsOrRetries = config.axios.retryCount,
+  legacyDelay = config.axios.retryDelay,
+) {
+  const { retries, delay, shouldRetry } = normalizeRetryOptions(optionsOrRetries, legacyDelay);
   let lastError;
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
       return await fn();
     } catch (err) {
       lastError = err;
-      const status = err.response?.status;
-      const isRetryable = !status || status >= 500 || status === 429;
-      if (attempt < retries && isRetryable) {
+      if (attempt < retries && shouldRetry(err)) {
         const wait = delay * Math.pow(2, attempt);
         logger.warn(`Retry ${attempt + 1}/${retries} in ${wait}ms`);
         await new Promise((r) => setTimeout(r, wait));
+      } else {
+        break;
       }
     }
   }
   throw lastError;
 }
 
-module.exports = { createAxiosClient, withRetry };
+module.exports = { createAxiosClient, withRetry, isRetryableRequestError };

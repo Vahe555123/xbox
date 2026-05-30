@@ -220,6 +220,21 @@ export async function updateAdminHelpContent(payload) {
   return data.content || {};
 }
 
+export async function fetchAdminCacheSettings() {
+  const { data } = await api.get('/admin/cache');
+  return data || {};
+}
+
+export async function updateAdminCacheSettings(payload) {
+  const { data } = await api.put('/admin/cache', payload);
+  return data.settings || {};
+}
+
+export async function clearAdminCache() {
+  const { data } = await api.post('/admin/cache/clear');
+  return data;
+}
+
 export async function updateProductOverride(productId, payload) {
   const { data } = await api.put(`/admin/product-overrides/${encodeURIComponent(productId)}`, payload);
   return data.override;

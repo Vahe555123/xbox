@@ -449,7 +449,18 @@ async function loadOverrideKeywordProducts(query, existingProducts, { languageMo
 
   if (!missingIds.length) return [];
 
-  const rawProducts = await getProductsByIds(missingIds);
+  const rawProducts = await getProductsByIds(missingIds, {
+    allowPartial: true,
+    context: 'search-keyword-overrides',
+  }).catch((err) => {
+    logger.warn('Failed to load override keyword products', {
+      count: missingIds.length,
+      message: err.message,
+    });
+    return [];
+  });
+  if (!rawProducts.length) return [];
+
   const mappedProducts = mapRelatedProducts(rawProducts, {});
   const enrichedProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(mappedProducts)),

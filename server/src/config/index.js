@@ -6,6 +6,11 @@ function parseBool(value, fallback = false) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
 }
 
+function parseIntWithFallback(value, fallback) {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 const config = {
   port: parseInt(process.env.PORT, 10) || 4000,
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -17,11 +22,15 @@ const config = {
     language: process.env.XBOX_CATALOG_LANGUAGE || 'en-US',
     locale: process.env.XBOX_CATALOG_LOCALE || 'en-US',
     pageSize: parseInt(process.env.XBOX_PAGE_SIZE, 10) || 25,
+    requestRetryCount: parseIntWithFallback(process.env.XBOX_UPSTREAM_RETRY_COUNT, 0),
   },
 
   cache: {
     ttl: parseInt(process.env.CACHE_TTL, 10) || 300,
     mainCatalogTtl: parseInt(process.env.MAIN_CATALOG_CACHE_TTL, 10) || 900,
+    staleTtl: parseIntWithFallback(process.env.CACHE_STALE_TTL, 3600),
+    mainCatalogStaleTtl: parseIntWithFallback(process.env.MAIN_CATALOG_STALE_TTL, 21600),
+    displayCatalogStaleTtl: parseIntWithFallback(process.env.DISPLAY_CATALOG_STALE_TTL, 21600),
   },
 
   rateLimit: {

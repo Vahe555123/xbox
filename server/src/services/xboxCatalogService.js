@@ -5,6 +5,11 @@ const cache = require('../utils/cache');
 const logger = require('../utils/logger');
 
 const client = createAxiosClient(config.xbox.emeraldBaseUrl);
+const inflight = new Map();
+const XBOX_RETRY_OPTIONS = {
+  retries: config.xbox.requestRetryCount,
+  delay: config.axios.retryDelay,
+};
 
 function makeCV() {
   return crypto.randomBytes(12).toString('base64') + '.0';
@@ -14,6 +19,35 @@ const COMMON_HEADERS = {
   'Content-Type': 'application/json',
   'X-MS-API-Version': '1.1',
 };
+
+function createInflightRequest(cacheKey, fetcher, ttlSeconds, staleTtlSeconds) {
+  const existing = inflight.get(cacheKey);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      const value = await fetcher();
+      cache.set(cacheKey, value, ttlSeconds, staleTtlSeconds);
+      return value;
+    } finally {
+      inflight.delete(cacheKey);
+    }
+  })();
+
+  inflight.set(cacheKey, promise);
+  return promise;
+}
+
+function refreshInBackground(cacheKey, fetcher, ttlSeconds, staleTtlSeconds, logMeta) {
+  if (inflight.has(cacheKey)) return;
+
+  createInflightRequest(cacheKey, fetcher, ttlSeconds, staleTtlSeconds).catch((err) => {
+    logger.warn('Catalog background refresh failed', {
+      ...logMeta,
+      message: err.message,
+    });
+  });
+}
 
 /**
  * Browse all games with optional filters and pagination.
@@ -28,21 +62,37 @@ async function browseGames({ encodedFilters = '', encodedCT = '', returnFilters 
     return cached;
   }
 
-  const response = await withRetry(() =>
-    client.post(`/browse?locale=${config.xbox.locale}`, {
-      Filters: encodedFilters,
-      ReturnFilters: returnFilters,
-      ChannelKeyToBeUsedInResponse: 'BROWSE',
-      EncodedCT: encodedCT,
-      ChannelId: channelId,
-    }, {
-      headers: { ...COMMON_HEADERS, 'MS-CV': makeCV() },
-    }),
-  );
+  const ttlSeconds = getBrowseCacheTtlSeconds({ encodedCT, channelId });
+  const staleTtlSeconds = getBrowseStaleCacheTtlSeconds({ encodedCT, channelId });
+  const logMeta = {
+    encodedCT: Boolean(encodedCT),
+    hasFilters: Boolean(encodedFilters),
+    channelId: channelId || '',
+  };
+  const fetcher = async () => {
+    const response = await withRetry(() =>
+      client.post(`/browse?locale=${config.xbox.locale}`, {
+        Filters: encodedFilters,
+        ReturnFilters: returnFilters,
+        ChannelKeyToBeUsedInResponse: 'BROWSE',
+        EncodedCT: encodedCT,
+        ChannelId: channelId,
+      }, {
+        headers: { ...COMMON_HEADERS, 'MS-CV': makeCV() },
+      }),
+    XBOX_RETRY_OPTIONS);
 
-  const result = normalizeResponse(response.data, 'BROWSE');
-  cache.set(cacheKey, result, getBrowseCacheTtlSeconds({ encodedCT, channelId }));
-  return result;
+    return normalizeResponse(response.data, 'BROWSE');
+  };
+  const stale = cache.getStale(cacheKey);
+
+  if (stale) {
+    logger.warn('Serving stale browse cache', logMeta);
+    refreshInBackground(cacheKey, fetcher, ttlSeconds, staleTtlSeconds, logMeta);
+    return stale;
+  }
+
+  return createInflightRequest(cacheKey, fetcher, ttlSeconds, staleTtlSeconds);
 }
 
 /**
@@ -57,22 +107,38 @@ async function searchGames({ query, encodedFilters = '', encodedCT = '', returnF
     return cached;
   }
 
-  const response = await withRetry(() =>
-    client.post(`/search/games?locale=${config.xbox.locale}`, {
-      Query: query,
-      Filters: encodedFilters,
-      ReturnFilters: returnFilters,
-      ChannelKeyToBeUsedInResponse: 'SEARCH',
-      EncodedCT: encodedCT,
-      ChannelId: 'games',
-    }, {
-      headers: { ...COMMON_HEADERS, 'MS-CV': makeCV() },
-    }),
-  );
+  const fetcher = async () => {
+    const response = await withRetry(() =>
+      client.post(`/search/games?locale=${config.xbox.locale}`, {
+        Query: query,
+        Filters: encodedFilters,
+        ReturnFilters: returnFilters,
+        ChannelKeyToBeUsedInResponse: 'SEARCH',
+        EncodedCT: encodedCT,
+        ChannelId: 'games',
+      }, {
+        headers: { ...COMMON_HEADERS, 'MS-CV': makeCV() },
+      }),
+    XBOX_RETRY_OPTIONS);
 
-  const result = normalizeResponse(response.data, 'SEARCH');
-  cache.set(cacheKey, result);
-  return result;
+    return normalizeResponse(response.data, 'SEARCH');
+  };
+  const stale = cache.getStale(cacheKey);
+  const ttlSeconds = config.cache.ttl;
+  const staleTtlSeconds = config.cache.staleTtl;
+  const logMeta = {
+    query: String(query || '').slice(0, 80),
+    encodedCT: Boolean(encodedCT),
+    hasFilters: Boolean(encodedFilters),
+  };
+
+  if (stale) {
+    logger.warn('Serving stale search cache', logMeta);
+    refreshInBackground(cacheKey, fetcher, ttlSeconds, staleTtlSeconds, logMeta);
+    return stale;
+  }
+
+  return createInflightRequest(cacheKey, fetcher, ttlSeconds, staleTtlSeconds);
 }
 
 /**
@@ -129,6 +195,11 @@ function normalizeResponse(data, channelKey) {
 function getBrowseCacheTtlSeconds({ encodedCT, channelId }) {
   const isMainCatalogRequest = !encodedCT && !channelId;
   return isMainCatalogRequest ? config.cache.mainCatalogTtl : config.cache.ttl;
+}
+
+function getBrowseStaleCacheTtlSeconds({ encodedCT, channelId }) {
+  const isMainCatalogRequest = !encodedCT && !channelId;
+  return isMainCatalogRequest ? config.cache.mainCatalogStaleTtl : config.cache.staleTtl;
 }
 
 module.exports = { browseGames, searchGames, loadMore };

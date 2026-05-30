@@ -214,6 +214,8 @@ export default function App() {
   const [authNotice, setAuthNotice] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(true);
+  const [headerQuery, setHeaderQuery] = useState('');
   const location = useLocation();
   const navigate = useNavigate();
   const isCatalogRoute = location.pathname === '/';
@@ -353,6 +355,23 @@ export default function App() {
   }, [location.pathname, location.search]);
 
   useEffect(() => {
+    setHeaderQuery(urlCatalogState.query || '');
+  }, [urlCatalogState.query]);
+
+  useEffect(() => {
+    let lastScrollY = window.scrollY;
+    function onScroll() {
+      const y = window.scrollY;
+      if (y > lastScrollY && y > 80) {
+        setFilterOpen(false);
+      }
+      lastScrollY = y;
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
     document.body.classList.toggle('mobile-menu-open', mobileMenuOpen);
 
     return () => {
@@ -384,6 +403,19 @@ export default function App() {
     };
   }, [mobileMenuOpen]);
 
+  function handleMobileSearchSubmit() {
+    if (headerQuery !== (urlCatalogState.query || '')) {
+      handleGlobalQueryChange(headerQuery);
+    }
+  }
+
+  function handleMobileSearchKeyDown(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleMobileSearchSubmit();
+    }
+  }
+
   return (
     <div className={`app ${mobileMenuOpen ? 'app-mobile-menu-open' : ''}`}>
       <header className="app-header">
@@ -394,6 +426,39 @@ export default function App() {
               <span className="logo-text">Xbox Game Search</span>
             </Link>
           </h1>
+
+          {isCatalogRoute && (
+            <div className="header-mobile-catalog-row">
+              <label className="header-mobile-search-label" aria-label="Поиск по каталогу">
+                <svg className="header-mobile-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="search"
+                  value={headerQuery}
+                  onChange={(event) => setHeaderQuery(event.target.value)}
+                  onKeyDown={handleMobileSearchKeyDown}
+                  onBlur={handleMobileSearchSubmit}
+                  placeholder="Поиск игр..."
+                />
+              </label>
+              <button
+                type="button"
+                className={`header-mobile-filter-btn ${filterOpen ? 'active' : ''}`}
+                onClick={() => setFilterOpen((v) => !v)}
+                aria-label="Фильтры"
+                aria-pressed={filterOpen}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <line x1="4" y1="6" x2="20" y2="6" />
+                  <line x1="4" y1="18" x2="20" y2="18" />
+                  <circle cx="9" cy="6" r="2" />
+                  <circle cx="15" cy="18" r="2" />
+                </svg>
+              </button>
+            </div>
+          )}
 
           <button
             type="button"
@@ -511,6 +576,8 @@ export default function App() {
           sort={searchState.sort}
           sortFilter={sortFilter}
           total={searchState.total}
+          isOpen={filterOpen}
+          onToggle={setFilterOpen}
         />
 
         <Routes>

@@ -20,6 +20,11 @@ const {
   isUserAdmin,
   setUserAdminAccess,
 } = require('../services/adminAccessService');
+const {
+  clearApplicationCache,
+  getCacheSettings,
+  updateCacheSettings,
+} = require('../services/cacheSettingsService');
 const { getHelpContent, updateHelpContent } = require('../services/helpContentService');
 const { getSupportLinks, updateSupportLinks } = require('../services/supportLinksService');
 const logger = require('../utils/logger');
@@ -378,6 +383,32 @@ router.put('/help-content', requireAdmin, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+router.get('/cache', requireAdmin, async (_req, res, next) => {
+  try {
+    const settings = await getCacheSettings();
+    res.json(settings);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/cache', requireAdmin, async (req, res, next) => {
+  try {
+    const settings = await updateCacheSettings(req.body || {});
+    res.json({ success: true, settings });
+  } catch (err) {
+    if (err.message === 'ttl must be a positive integer' || err.message === 'mainCatalogTtl must be a positive integer') {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next(err);
+  }
+});
+
+router.post('/cache/clear', requireAdmin, (_req, res) => {
+  const result = clearApplicationCache();
+  res.json({ success: true, ...result });
 });
 
 // Scheduler settings

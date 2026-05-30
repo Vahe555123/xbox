@@ -9,18 +9,36 @@ class MemoryCache {
   get(key) {
     const entry = this._store.get(key);
     if (!entry) return null;
-    if (Date.now() > entry.expiresAt) {
+    const now = Date.now();
+    if (now > (entry.staleUntil ?? entry.expiresAt)) {
+      this._store.delete(key);
+      return null;
+    }
+    if (now > entry.expiresAt) {
+      return null;
+    }
+    return entry.value;
+  }
+
+  getStale(key) {
+    const entry = this._store.get(key);
+    if (!entry) return null;
+    const now = Date.now();
+    if (now > (entry.staleUntil ?? entry.expiresAt)) {
       this._store.delete(key);
       return null;
     }
     return entry.value;
   }
 
-  set(key, value, ttlSeconds) {
+  set(key, value, ttlSeconds, staleTtlSeconds = 0) {
     const ttl = (ttlSeconds ?? this._defaultTtl / 1000) * 1000;
+    const staleTtl = Math.max(0, Number(staleTtlSeconds) || 0) * 1000;
+    const expiresAt = Date.now() + ttl;
     this._store.set(key, {
       value,
-      expiresAt: Date.now() + ttl,
+      expiresAt,
+      staleUntil: expiresAt + staleTtl,
     });
   }
 
@@ -40,7 +58,7 @@ class MemoryCache {
   _prune() {
     const now = Date.now();
     for (const [key, entry] of this._store) {
-      if (now > entry.expiresAt) this._store.delete(key);
+      if (now > (entry.staleUntil ?? entry.expiresAt)) this._store.delete(key);
     }
   }
 }

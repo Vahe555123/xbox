@@ -5,6 +5,7 @@ const logger = require('./utils/logger');
 const { initDb } = require('./db/schema');
 const dealScheduler = require('./services/dealScheduler');
 const telegramBotService = require('./services/telegramBotService');
+const { initCacheSettings } = require('./services/cacheSettingsService');
 
 let server;
 
@@ -15,6 +16,9 @@ try {
 }
 
 initDb()
+  .then(() => {
+    return initCacheSettings();
+  })
   .then(() => {
     server = app.listen(config.port, () => {
       logger.info(`Server running on http://localhost:${config.port} [${config.nodeEnv}]`);

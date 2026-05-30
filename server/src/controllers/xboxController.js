@@ -602,12 +602,39 @@ async function getRelatedProducts(req, res, next) {
 
     logger.info('Related products request', { count: productIds.length });
 
-    const rawProducts = await getProductsByIds(productIds);
+    const rawProducts = await getProductsByIds(productIds, {
+      allowPartial: true,
+      context: 'related-products',
+    }).catch((err) => {
+      logger.warn('Related products fallback to empty list', {
+        count: productIds.length,
+        message: err.message,
+      });
+      return [];
+    });
+
+    if (!rawProducts.length) {
+      return res.json({
+        success: true,
+        products: [],
+      });
+    }
+
     const products = mapRelatedProducts(rawProducts, relationMap);
     sortProductsByRequestedIds(products, productIds);
-    await applyProductOverrides(products);
+    await applyProductOverrides(products).catch((err) => {
+      logger.warn('Related products override enrichment failed', {
+        count: products.length,
+        message: err.message,
+      });
+    });
 
-    await enrichAndAssignProducts(products);
+    await enrichAndAssignProducts(products).catch((err) => {
+      logger.warn('Related products enrichment failed', {
+        count: products.length,
+        message: err.message,
+      });
+    });
 
     res.json({
       success: true,

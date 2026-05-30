@@ -9,11 +9,14 @@ import {
   fetchAdminNotifications,
   fetchAdminSupportLinks,
   fetchAdminHelpContent,
+  fetchAdminCacheSettings,
   searchAdminProducts,
   fetchProductOverrides,
   updateProductOverride,
   updateAdminSupportLinks,
   updateAdminHelpContent,
+  updateAdminCacheSettings,
+  clearAdminCache,
   deleteProductOverride,
   fetchSchedulerState,
   updateSchedulerInterval,
@@ -182,6 +185,14 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [helpContentForm, setHelpContentForm] = useState(() => helpContentToForm({}));
   const [helpContentMessage, setHelpContentMessage] = useState('');
   const [helpContentSaving, setHelpContentSaving] = useState(false);
+  const [cacheSettingsForm, setCacheSettingsForm] = useState({
+    ttl: '',
+    mainCatalogTtl: '',
+  });
+  const [cacheSettingsEntries, setCacheSettingsEntries] = useState(0);
+  const [cacheSettingsMessage, setCacheSettingsMessage] = useState('');
+  const [cacheSettingsSaving, setCacheSettingsSaving] = useState(false);
+  const [cacheClearLoading, setCacheClearLoading] = useState(false);
 
   // Users
   const [users, setUsers] = useState([]);
@@ -278,6 +289,17 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadCacheSettings = useCallback(async () => {
+    try {
+      const settings = await fetchAdminCacheSettings();
+      setCacheSettingsForm({
+        ttl: String(settings.ttl || ''),
+        mainCatalogTtl: String(settings.mainCatalogTtl || ''),
+      });
+      setCacheSettingsEntries(Number(settings.entries) || 0);
+    } catch { /* ignore */ }
+  }, []);
+
   const loadUsers = useCallback(async (page = 1, search = '') => {
     try {
       const data = await fetchAdminUsers({ page, limit: 20, search });
@@ -338,6 +360,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     if (tab === 'dashboard') {
       loadDashboard();
       loadSupportLinks();
+      loadCacheSettings();
     }
     else if (tab === 'users') loadUsers(1, usersSearch);
     else if (tab === 'notifications') loadNotifications(1);
@@ -348,7 +371,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     else if (tab === 'help') loadHelpContent();
     else if (tab === 'digiseller') loadDigiseller();
     else if (tab === 'topup') loadTopupCards();
-  }, [tab, authorized, loadDashboard, loadSupportLinks, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards]);
+  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards]);
 
   const handleUserSearch = (e) => {
     e.preventDefault();
@@ -385,6 +408,44 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setSupportLinksMessage('Ошибка: ' + (err.response?.data?.error || err.message));
     } finally {
       setSupportLinksSaving(false);
+    }
+  };
+
+  const handleCacheSettingsSave = async (event) => {
+    event.preventDefault();
+    setCacheSettingsSaving(true);
+    setCacheSettingsMessage('');
+
+    try {
+      const settings = await updateAdminCacheSettings({
+        ttl: parseInt(cacheSettingsForm.ttl, 10),
+        mainCatalogTtl: parseInt(cacheSettingsForm.mainCatalogTtl, 10),
+      });
+      setCacheSettingsForm({
+        ttl: String(settings.ttl || ''),
+        mainCatalogTtl: String(settings.mainCatalogTtl || ''),
+      });
+      setCacheSettingsEntries(Number(settings.entries) || 0);
+      setCacheSettingsMessage('Настройки кэша сохранены');
+    } catch (err) {
+      setCacheSettingsMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setCacheSettingsSaving(false);
+    }
+  };
+
+  const handleCacheClear = async () => {
+    setCacheClearLoading(true);
+    setCacheSettingsMessage('');
+
+    try {
+      const result = await clearAdminCache();
+      setCacheSettingsEntries(Number(result.sizeAfter) || 0);
+      setCacheSettingsMessage(`Кэш очищен: ${result.sizeBefore || 0} -> ${result.sizeAfter || 0}`);
+    } catch (err) {
+      setCacheSettingsMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setCacheClearLoading(false);
     }
   };
 
@@ -792,6 +853,54 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 </button>
               </div>
               {supportLinksMessage && <p className="admin-scheduler-result">{supportLinksMessage}</p>}
+            </form>
+          </div>
+
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <div>
+                <h3>Кэш сайта</h3>
+                <p className="admin-card-desc">
+                  Можно изменить время кэширования и сразу очистить текущий кэш без правки `.env`.
+                </p>
+              </div>
+            </div>
+            <form className="admin-override-form" onSubmit={handleCacheSettingsSave}>
+              <div className="admin-grid-2col">
+                <label className="admin-field">
+                  <span>Обычный кэш (сек)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cacheSettingsForm.ttl}
+                    onChange={(e) => setCacheSettingsForm((current) => ({ ...current, ttl: e.target.value }))}
+                    placeholder="300"
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>Главный каталог (сек)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cacheSettingsForm.mainCatalogTtl}
+                    onChange={(e) => setCacheSettingsForm((current) => ({ ...current, mainCatalogTtl: e.target.value }))}
+                    placeholder="900"
+                  />
+                </label>
+              </div>
+
+              <p className="admin-card-desc">Сейчас записей в памяти: {cacheSettingsEntries}</p>
+
+              <div className="admin-override-actions">
+                <button className="admin-btn admin-btn-primary" type="submit" disabled={cacheSettingsSaving}>
+                  {cacheSettingsSaving ? 'Сохраняем...' : 'Сохранить TTL'}
+                </button>
+                <button className="admin-btn admin-btn-secondary" type="button" onClick={handleCacheClear} disabled={cacheClearLoading}>
+                  {cacheClearLoading ? 'Очищаем...' : 'Сбросить кэш'}
+                </button>
+              </div>
+              {cacheSettingsMessage && <p className="admin-scheduler-result">{cacheSettingsMessage}</p>}
             </form>
           </div>
         </div>
