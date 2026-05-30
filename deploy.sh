@@ -25,6 +25,7 @@ cp -r "$ROOT/client/dist" "$ROOT/dist"
 
 echo "==> Reloading PM2"
 cd "$ROOT"
+mkdir -p "$ROOT/logs"
 pm2 startOrRestart ecosystem.config.js --env production
 pm2 save
 

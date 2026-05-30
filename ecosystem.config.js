@@ -11,8 +11,8 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
       },
-      error_file: '/var/log/pm2/xbox-api.err.log',
-      out_file: '/var/log/pm2/xbox-api.out.log',
+      error_file: '/var/www/xbox/logs/xbox-api.err.log',
+      out_file: '/var/www/xbox/logs/xbox-api.out.log',
       merge_logs: true,
       time: true,
     },
