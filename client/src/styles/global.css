@@ -2263,31 +2263,30 @@ img {
 }
 
 .payment-price-list--detail .payment-price-row {
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding: 0.6rem 0.75rem;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.85rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
 }
 
 .payment-price-list--detail .payment-price-row > span {
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 800;
   color: var(--text-muted);
   text-transform: uppercase;
-  margin-bottom: 0.25rem;
 }
 
 .payment-price-list--detail .payment-price-row strong {
   font-size: 1.05rem;
-  text-align: left;
+  text-align: right;
 }
 
 .payment-price-list--detail .payment-price-amount {
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 0.1rem;
 }
 
