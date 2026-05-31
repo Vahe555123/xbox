@@ -3810,6 +3810,8 @@ img {
   align-items: flex-start;
   gap: 0.35rem;
   flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .ps-price-main {
