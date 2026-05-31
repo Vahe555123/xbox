@@ -534,9 +534,12 @@ router.get('/purchases', requireAdmin, async (req, res, next) => {
 
     if (sort === 'recent') {
       const result = await pool.query(
-        `SELECT id, product_id, product_title, payment_mode, price_usd, price_rub, user_id, status, created_at
-         FROM purchases
-         ORDER BY created_at DESC
+        `SELECT p.id, p.product_id, p.product_title, p.payment_mode, p.price_usd, p.price_rub,
+                p.user_id, p.status, p.created_at,
+                u.email AS user_email, u.name AS user_name
+         FROM purchases p
+         LEFT JOIN users u ON u.id = p.user_id
+         ORDER BY p.created_at DESC
          LIMIT $1 OFFSET $2`,
         [limit, offset],
       );

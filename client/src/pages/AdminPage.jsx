@@ -1850,14 +1850,30 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <h2>Покупки</h2>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
-                  className={purchasesSort === 'count' ? 'active' : ''}
                   onClick={() => { setPurchasesSort('count'); loadPurchases('count'); }}
+                  style={{
+                    background: purchasesSort === 'count' ? '#fff' : 'rgba(255,255,255,0.08)',
+                    color: purchasesSort === 'count' ? '#05080c' : '#fff',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    borderRadius: '8px',
+                    padding: '0.35rem 0.9rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
                 >
                   По популярности
                 </button>
                 <button
-                  className={purchasesSort === 'recent' ? 'active' : ''}
                   onClick={() => { setPurchasesSort('recent'); loadPurchases('recent'); }}
+                  style={{
+                    background: purchasesSort === 'recent' ? '#fff' : 'rgba(255,255,255,0.08)',
+                    color: purchasesSort === 'recent' ? '#05080c' : '#fff',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    borderRadius: '8px',
+                    padding: '0.35rem 0.9rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
                 >
                   Последние
                 </button>
@@ -1882,6 +1898,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                         <>
                           <th>Дата</th>
                           <th>Игра</th>
+                          <th>Покупатель</th>
                           <th>Способ</th>
                           <th>Цена USD</th>
                           <th>Цена RUB</th>
@@ -1923,6 +1940,11 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                             >
                               {p.product_title}
                             </a>
+                          </td>
+                          <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                            {p.user_email || p.user_name ? (
+                              <span title={p.user_email || ''}>{p.user_name || p.user_email}</span>
+                            ) : 'Гость'}
                           </td>
                           <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{p.payment_mode}</td>
                           <td style={{ fontSize: '0.85rem' }}>{p.price_usd != null ? `$${p.price_usd}` : '—'}</td>
