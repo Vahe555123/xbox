@@ -2247,26 +2247,37 @@ img {
 
 .payment-price-list--detail {
   width: min(100%, 520px);
-  gap: 0.45rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
   margin-top: 0.2rem;
 }
 
 .payment-price-list--detail .payment-price-row {
-  padding: 0.45rem 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .payment-price-list--detail .payment-price-row > span {
-  font-size: 0.86rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
 }
 
 .payment-price-list--detail .payment-price-row strong {
-  font-size: 1rem;
+  font-size: 1.05rem;
+  text-align: left;
 }
 
 .payment-price-list--detail .payment-price-amount {
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 0.1rem;
 }
 
@@ -3827,7 +3838,7 @@ img {
 
 .ps-buy-button {
   min-height: 42px;
-  min-width: 136px;
+  width: 100%;
   padding: 0 1.1rem;
   border-radius: 8px;
   border: 0;
@@ -3854,11 +3865,9 @@ img {
 }
 
 .ps-buy-actions {
-  display: inline-flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.55rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .ps-buy-note {
@@ -6762,7 +6771,7 @@ code {
   .ps-buy-actions {
     width: 100%;
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 
   .ps-buy-note {
@@ -6772,6 +6781,11 @@ code {
 
   .ps-follow-button,
   .ps-gamepass-button {
+    width: 100%;
+  }
+
+  .payment-price-list--detail {
+    grid-template-columns: 1fr;
     width: 100%;
   }
 

@@ -775,14 +775,6 @@ export default function GameDetailPage() {
               >
                 {purchaseLoading ? 'Готовим ссылку...' : 'Купить'}
               </button>
-              <button
-                className={`ps-cart-button ${isInCart ? 'ps-cart-button--active' : ''}`}
-                type="button"
-                onClick={handleToggleCart}
-                disabled={!canAddToCart}
-              >
-                {isInCart ? 'В корзине' : 'Добавить в корзину'}
-              </button>
               <a
                 className="ps-gamepass-button"
                 href="https://www.oplata.info/asp2/pay_wm.asp?id_d=4687274&ai=1279033&_ow=0"
@@ -791,6 +783,14 @@ export default function GameDetailPage() {
               >
                 Купить Game Pass
               </a>
+              <button
+                className={`ps-cart-button ${isInCart ? 'ps-cart-button--active' : ''}`}
+                type="button"
+                onClick={handleToggleCart}
+                disabled={!canAddToCart}
+              >
+                {isInCart ? 'В корзине' : 'Добавить в корзину'}
+              </button>
               <button
                 className={`ps-follow-button ${inFavorites ? 'ps-follow-button--active' : ''}`}
                 type="button"
