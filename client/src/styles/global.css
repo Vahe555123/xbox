@@ -1093,14 +1093,14 @@ img {
   .filter-field select,
   .filter-field input,
   .filter-dropdown summary {
-    height: 42px;
+    height: 40.5px;
     font-size: 0.85rem;
   }
 
   .filter-search-wrap input,
   .filter-count-pill,
   .filter-toggle-btn {
-    height: 42px;
+    height: 40.5px;
     font-size: 0.85rem;
   }
 
@@ -1132,7 +1132,7 @@ img {
     flex: 1 !important;
     width: auto !important;
     min-width: 0;
-    height: 46px;
+    height: 44.5px;
   }
 }
 
@@ -2262,6 +2262,12 @@ img {
 
 .payment-price-list--detail .payment-price-row strong {
   font-size: 1rem;
+}
+
+.payment-price-list--detail .payment-price-amount {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
 }
 
 .payment-price-list--related {
@@ -3869,6 +3875,30 @@ img {
 
 .ps-buy-note strong {
   color: #ffb2b2;
+}
+
+.ps-gamepass-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 0.9rem;
+  font-size: 0.94rem;
+  border-radius: 8px;
+  border: 1px solid rgba(16, 124, 16, 0.55);
+  background: rgba(16, 124, 16, 0.22);
+  color: #a8f0a8;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform var(--transition), background var(--transition), border-color var(--transition);
+}
+
+.ps-gamepass-button:hover {
+  transform: translateY(-2px);
+  background: rgba(16, 124, 16, 0.38);
+  border-color: rgba(45, 189, 116, 0.7);
+  color: #c8ffc8;
 }
 
 .ps-follow-button {
@@ -6740,7 +6770,8 @@ code {
     margin: 0 0 1rem;
   }
 
-  .ps-follow-button {
+  .ps-follow-button,
+  .ps-gamepass-button {
     width: 100%;
   }
 

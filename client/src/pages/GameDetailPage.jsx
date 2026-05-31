@@ -15,6 +15,7 @@ import { useFavorites } from '../context/FavoritesContext';
 import { useCart } from '../context/CartContext';
 import {
   PAYMENT_PRICE_ORDER,
+  formatRub,
   getPaymentOriginalPriceText,
   getPaymentPrice,
   getPaymentPriceEntries,
@@ -782,6 +783,14 @@ export default function GameDetailPage() {
               >
                 {isInCart ? 'В корзине' : 'Добавить в корзину'}
               </button>
+              <a
+                className="ps-gamepass-button"
+                href="https://www.oplata.info/asp2/pay_wm.asp?id_d=4687274&ai=1279033&_ow=0"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Купить Game Pass
+              </a>
               <button
                 className={`ps-follow-button ${inFavorites ? 'ps-follow-button--active' : ''}`}
                 type="button"
@@ -1327,13 +1336,60 @@ export default function GameDetailPage() {
 }
 
 function PaymentPriceAmount({ price, fallback }) {
-  const originalPriceText = getPaymentOriginalPriceText(price);
+  const display = getDetailPaymentPriceDisplay(price, fallback);
   return (
     <strong className="payment-price-amount">
-      <span className="payment-price-current">{getPaymentPriceLine(price, fallback)}</span>
-      {originalPriceText && <span className="payment-price-original">{originalPriceText}</span>}
+      <span className="payment-price-current">{display.current}</span>
+      {display.original && <span className="payment-price-original">{display.original}</span>}
+      {display.meta && <span className="payment-price-balance">({display.meta})</span>}
     </strong>
   );
+}
+
+function getDetailPaymentPriceDisplay(price, fallback) {
+  if (price?.id !== 'topup_cards') {
+    return {
+      current: getPaymentPriceLine(price, fallback),
+      original: getPaymentOriginalPriceText(price),
+      meta: null,
+    };
+  }
+
+  const totalRub = Number(price.value);
+  const totalUsd = Number(price.totalUsd);
+  const priceUsd = Number(price.priceUsd);
+  if (!Number.isFinite(totalRub) || !Number.isFinite(totalUsd) || !Number.isFinite(priceUsd) || totalRub <= 0 || totalUsd <= 0 || priceUsd <= 0) {
+    return {
+      current: getPaymentPriceLine(price, fallback),
+      original: null,
+      meta: null,
+    };
+  }
+
+  const effectiveRub = Math.ceil((totalRub / totalUsd) * priceUsd);
+  const balanceUsd = Math.max(0, Math.round((totalUsd - priceUsd) * 100) / 100);
+  const originalText = getTopupDetailOriginalText(price, effectiveRub);
+
+  return {
+    current: formatRub(effectiveRub),
+    original: originalText,
+    meta: balanceUsd <= 0.01 ? null : `${formatRub(totalRub)} / ${formatUsdBalanceDetail(balanceUsd)} на баланс`,
+  };
+}
+
+function getTopupDetailOriginalText(price, currentEffectiveRub) {
+  const totalRub = Number(price?.originalValue);
+  const totalUsd = Number(price?.originalTotalUsd);
+  const priceUsd = Number(price?.originalPriceUsd);
+  if (!Number.isFinite(totalRub) || !Number.isFinite(totalUsd) || !Number.isFinite(priceUsd) || totalRub <= 0 || totalUsd <= 0 || priceUsd <= 0) return null;
+  const effectiveRub = Math.ceil((totalRub / totalUsd) * priceUsd);
+  if (Number.isFinite(currentEffectiveRub) && effectiveRub <= currentEffectiveRub) return null;
+  return formatRub(effectiveRub);
+}
+
+function formatUsdBalanceDetail(value) {
+  const rounded = Math.round((Number(value) || 0) * 100) / 100;
+  return `${rounded.toFixed(2)}$`;
 }
 
 function getGamePassSavingsText(percent) {

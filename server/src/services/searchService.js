@@ -866,6 +866,7 @@ async function countLanguageFilteredProducts(rawProducts, languageMode, specialO
 function applyPostFilters(products, { languageMode, specialOffersOnly }) {
   return products.filter((product) => {
     if (product.notAvailableSeparately) return false;
+    if (product.price?.value === 0) return false;
     if (languageMode && languageMode !== 'all' && product.russianLanguageMode !== languageMode) return false;
     if (specialOffersOnly && !product.specialOfferUrl) return false;
     return true;
