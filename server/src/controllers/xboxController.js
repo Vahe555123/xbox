@@ -23,6 +23,7 @@ const {
   resolvePurchaseDeliveryTarget,
 } = require('../services/purchaseDeliveryService');
 const { applyProductOverrides } = require('../services/productOverrideService');
+const { logPurchase } = require('../services/purchaseLogService');
 const config = require('../config');
 
 function assignKeyActivationUrl(product) {
@@ -533,6 +534,15 @@ async function createProductPurchase(req, res, next) {
       });
     }
 
+    logPurchase({
+      productId: product.id,
+      productTitle: product.title,
+      paymentMode: finalPaymentMode,
+      priceUsd: product.price?.value ?? null,
+      priceRub: payment.priceRub ?? payment.totalRub ?? null,
+      userId: req.user?.id ?? null,
+    });
+
     const delivery = await notifyPurchaseCreated({
       target: deliveryTarget,
       product,
@@ -1010,6 +1020,15 @@ async function createCartPurchase(req, res, next) {
       cartUid: cart.cartUid,
       payment,
     });
+
+    products.forEach((p) => logPurchase({
+      productId: p.id,
+      productTitle: p.title || p.name || '',
+      paymentMode: finalPaymentMode,
+      priceUsd: p.price?.value ?? null,
+      priceRub: null,
+      userId: req.user?.id ?? null,
+    }));
 
     const delivery = await notifyPurchaseCreated({
       target: deliveryTarget,

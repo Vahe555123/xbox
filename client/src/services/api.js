@@ -289,3 +289,8 @@ export async function previewTopupCombo(priceUsd) {
   const { data } = await api.get('/admin/topup-cards/preview', { params: { priceUsd } });
   return data;
 }
+
+export async function fetchAdminPurchases({ sort = 'count', page = 1, limit = 50 } = {}) {
+  const { data } = await api.get('/admin/purchases', { params: { sort, page, limit } });
+  return data;
+}

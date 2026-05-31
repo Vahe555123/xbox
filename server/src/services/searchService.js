@@ -868,7 +868,7 @@ function applyPostFilters(products, { languageMode, specialOffersOnly }) {
     if (product.notAvailableSeparately) return false;
     if (product.price?.value === 0) return false;
     if (languageMode && languageMode !== 'all' && product.russianLanguageMode !== languageMode) return false;
-    if (specialOffersOnly && !product.specialOfferUrl) return false;
+    if (specialOffersOnly && !(product.price?.discountPercent > 0) && !product.specialOfferUrl) return false;
     return true;
   });
 }

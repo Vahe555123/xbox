@@ -218,6 +218,23 @@ async function initDb() {
     INSERT INTO xbox_topup_cards (usd_value, enabled) VALUES
       (5, TRUE), (10, TRUE), (25, TRUE), (50, TRUE)
     ON CONFLICT (usd_value) DO NOTHING;
+
+    CREATE TABLE IF NOT EXISTS purchases (
+      id BIGSERIAL PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      product_title TEXT NOT NULL,
+      payment_mode TEXT NOT NULL DEFAULT 'oplata',
+      price_usd NUMERIC,
+      price_rub NUMERIC,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'initiated',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_purchases_product_id
+      ON purchases (product_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_purchases_created_at
+      ON purchases (created_at DESC);
   `);
 
   logger.info('PostgreSQL schema ready');

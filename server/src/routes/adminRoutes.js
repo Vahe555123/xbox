@@ -522,4 +522,49 @@ router.get('/topup-cards/preview', requireAdmin, async (req, res, next) => {
   }
 });
 
+// ==================== Purchases ====================
+router.get('/purchases', requireAdmin, async (req, res, next) => {
+  try {
+    const sort = req.query.sort === 'recent' ? 'recent' : 'count';
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const offset = (page - 1) * limit;
+
+    let rows, total;
+
+    if (sort === 'recent') {
+      const result = await pool.query(
+        `SELECT id, product_id, product_title, payment_mode, price_usd, price_rub, user_id, status, created_at
+         FROM purchases
+         ORDER BY created_at DESC
+         LIMIT $1 OFFSET $2`,
+        [limit, offset],
+      );
+      const countResult = await pool.query('SELECT COUNT(*)::int AS count FROM purchases');
+      rows = result.rows;
+      total = countResult.rows[0].count;
+    } else {
+      const result = await pool.query(
+        `SELECT product_id, product_title,
+                COUNT(*)::int AS total_count,
+                MAX(created_at) AS last_purchased_at
+         FROM purchases
+         GROUP BY product_id, product_title
+         ORDER BY total_count DESC, last_purchased_at DESC
+         LIMIT $1 OFFSET $2`,
+        [limit, offset],
+      );
+      const countResult = await pool.query(
+        'SELECT COUNT(*)::int AS count FROM (SELECT DISTINCT product_id FROM purchases) t',
+      );
+      rows = result.rows;
+      total = countResult.rows[0].count;
+    }
+
+    res.json({ purchases: rows, total, page, limit });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

@@ -26,6 +26,7 @@ import {
   fetchTopupCards,
   refreshTopupCards,
   updateTopupCard,
+  fetchAdminPurchases,
 } from '../services/api';
 
 function formatDate(d) {
@@ -249,6 +250,11 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [topupLoading, setTopupLoading] = useState(false);
   const [topupMessage, setTopupMessage] = useState('');
 
+  // Purchases
+  const [purchasesData, setPurchasesData] = useState({ purchases: [], total: 0 });
+  const [purchasesSort, setPurchasesSort] = useState('count');
+  const [purchasesLoading, setPurchasesLoading] = useState(false);
+
   // Auth check
   useEffect(() => {
     if (!currentUser) {
@@ -355,6 +361,15 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadPurchases = useCallback(async (sort = 'count') => {
+    setPurchasesLoading(true);
+    try {
+      const result = await fetchAdminPurchases({ sort, limit: 100 });
+      setPurchasesData(result || { purchases: [], total: 0 });
+    } catch { /* ignore */ }
+    finally { setPurchasesLoading(false); }
+  }, []);
+
   useEffect(() => {
     if (!authorized) return;
     if (tab === 'dashboard') {
@@ -371,7 +386,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     else if (tab === 'help') loadHelpContent();
     else if (tab === 'digiseller') loadDigiseller();
     else if (tab === 'topup') loadTopupCards();
-  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards]);
+    else if (tab === 'purchases') loadPurchases(purchasesSort);
+  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort]);
 
   const handleUserSearch = (e) => {
     e.preventDefault();
@@ -707,6 +723,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
           ['help', 'Помощь'],
           ['digiseller', 'Digiseller'],
           ['topup', 'Карты пополнения'],
+          ['purchases', 'Покупки'],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -1821,6 +1838,112 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== Purchases ==================== */}
+      {tab === 'purchases' && (
+        <div className="admin-panel">
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <h2>Покупки</h2>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  className={purchasesSort === 'count' ? 'active' : ''}
+                  onClick={() => { setPurchasesSort('count'); loadPurchases('count'); }}
+                >
+                  По популярности
+                </button>
+                <button
+                  className={purchasesSort === 'recent' ? 'active' : ''}
+                  onClick={() => { setPurchasesSort('recent'); loadPurchases('recent'); }}
+                >
+                  Последние
+                </button>
+              </div>
+            </div>
+
+            {purchasesLoading && <p className="admin-loading">Загрузка...</p>}
+
+            {!purchasesLoading && (
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      {purchasesSort === 'count' ? (
+                        <>
+                          <th>#</th>
+                          <th>Игра</th>
+                          <th>Покупок</th>
+                          <th>Последняя</th>
+                        </>
+                      ) : (
+                        <>
+                          <th>Дата</th>
+                          <th>Игра</th>
+                          <th>Способ</th>
+                          <th>Цена USD</th>
+                          <th>Цена RUB</th>
+                        </>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {purchasesData.purchases.map((p, i) => (
+                      purchasesSort === 'count' ? (
+                        <tr key={p.product_id}>
+                          <td style={{ color: 'var(--text-muted)', width: '2rem' }}>{i + 1}</td>
+                          <td>
+                            <a
+                              href={`/game/${p.product_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--accent)', textDecoration: 'none' }}
+                            >
+                              {p.product_title}
+                            </a>
+                          </td>
+                          <td><strong style={{ color: '#8ff0a4' }}>{p.total_count}</strong></td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                            {formatDate(p.last_purchased_at)}
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr key={p.id}>
+                          <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                            {formatDate(p.created_at)}
+                          </td>
+                          <td>
+                            <a
+                              href={`/game/${p.product_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--accent)', textDecoration: 'none' }}
+                            >
+                              {p.product_title}
+                            </a>
+                          </td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{p.payment_mode}</td>
+                          <td style={{ fontSize: '0.85rem' }}>{p.price_usd != null ? `$${p.price_usd}` : '—'}</td>
+                          <td style={{ fontSize: '0.85rem' }}>{p.price_rub != null ? `${p.price_rub} ₽` : '—'}</td>
+                        </tr>
+                      )
+                    ))}
+                    {purchasesData.purchases.length === 0 && (
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          Покупок пока нет
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                <p style={{ marginTop: '0.75rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  Всего записей: {purchasesData.total}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

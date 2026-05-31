@@ -32,3 +32,4 @@ pm2 startOrRestart ecosystem.config.js --env production
 pm2 save
 
 echo "==> Done"
+
