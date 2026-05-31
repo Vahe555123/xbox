@@ -2257,7 +2257,7 @@ img {
 
 .payment-price-list--detail {
   width: min(100%, 520px);
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 0.5rem;
   margin-top: 0.2rem;
 }
@@ -6795,7 +6795,6 @@ code {
   }
 
   .payment-price-list--detail {
-    grid-template-columns: 1fr;
     width: 100%;
   }
 
