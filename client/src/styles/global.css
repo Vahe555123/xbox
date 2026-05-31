@@ -1116,7 +1116,7 @@ img {
 
   .filter-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 0.55rem;
+    gap: 2px;
   }
 
   .filter-expanded {
