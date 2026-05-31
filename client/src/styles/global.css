@@ -1093,15 +1093,25 @@ img {
   .filter-field select,
   .filter-field input,
   .filter-dropdown summary {
-    height: 40.5px;
+    height: 38.5px;
     font-size: 0.85rem;
+    padding: 0 0.6rem;
   }
 
   .filter-search-wrap input,
   .filter-count-pill,
   .filter-toggle-btn {
-    height: 40.5px;
+    height: 38.5px;
     font-size: 0.85rem;
+    padding: 0 0.6rem;
+  }
+
+  .filter-search-icon {
+    left: 0.6rem;
+  }
+
+  .filter-search-wrap input {
+    padding-left: 2rem;
   }
 
   .filter-grid {
@@ -1132,7 +1142,7 @@ img {
     flex: 1 !important;
     width: auto !important;
     min-width: 0;
-    height: 44.5px;
+    height: 42.5px;
   }
 }
 
