@@ -138,7 +138,8 @@ export function FavoritesProvider({ children }) {
     ));
 
     if (serverReady) {
-      const request = exists ? deleteFavorite(id) : addFavorite(id);
+      const releaseStatus = typeof product === 'object' ? product?.releaseInfo?.status : undefined;
+      const request = exists ? deleteFavorite(id) : addFavorite(id, releaseStatus);
       request.catch(() => {
         fetchFavorites()
           .then((remoteItems) => setFavoriteIds(uniqueIds(remoteItems)))

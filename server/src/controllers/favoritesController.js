@@ -23,7 +23,12 @@ async function addFavorite(req, res, next) {
       throw new AppError('Favorite product is required', 400);
     }
 
-    const item = await upsertFavorite(req.user.id, product);
+    const releaseStatus = req.body?.releaseStatus;
+    const snapshot = releaseStatus && (releaseStatus === 'unreleased' || releaseStatus === 'comingSoon')
+      ? { releaseStatus }
+      : {};
+
+    const item = await upsertFavorite(req.user.id, product, snapshot);
     res.status(201).json({ success: true, item });
   } catch (err) {
     next(err);

@@ -27,7 +27,7 @@ async function listFavorites(userId) {
   return rows.map((row) => favoriteItem(row.product_id));
 }
 
-async function upsertFavorite(userId, input) {
+async function upsertFavorite(userId, input, snapshot = {}) {
   const productId = normalizeProductId(input);
   if (!productId) {
     throw new Error('Invalid favorite product');
@@ -35,10 +35,10 @@ async function upsertFavorite(userId, input) {
 
   await pool.query(
     `INSERT INTO favorites (user_id, product_id, snapshot)
-     VALUES ($1, $2, '{}'::jsonb)
+     VALUES ($1, $2, $3::jsonb)
      ON CONFLICT (user_id, product_id)
-     DO UPDATE SET snapshot = '{}'::jsonb, updated_at = NOW()`,
-    [userId, productId],
+     DO UPDATE SET updated_at = NOW()`,
+    [userId, productId, JSON.stringify(snapshot)],
   );
 
   return favoriteItem(productId);

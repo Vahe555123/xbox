@@ -1052,9 +1052,22 @@ async function runDealNotifications() {
     }
   }
 
-  // 6. Cleanup old notification records (older than 30 days)
+  // 6. Run release + special-offer notifications
   try {
-    await pool.query(`DELETE FROM deal_notifications WHERE notified_at < NOW() - INTERVAL '30 days'`);
+    await runReleaseAndSpecialOfferNotifications(users, productsById);
+  } catch (err) {
+    logger.error('[DealNotifier] Release/SpecialOffer notifications failed', { message: err.message });
+    report.errors.push({ stage: 'release_special_offer', message: err.message });
+  }
+
+  // 7. Cleanup old notification records (older than 30 days; preserve permanent keys)
+  try {
+    await pool.query(`
+      DELETE FROM deal_notifications
+      WHERE notified_at < NOW() - INTERVAL '30 days'
+        AND deal_key NOT LIKE 'released:%'
+        AND deal_key NOT LIKE 'special_offer:%'
+    `);
   } catch (err) {
     logger.error('[DealNotifier] Cleanup failed', { message: err.message });
     report.errors.push({ stage: 'cleanup', message: err.message });
@@ -1071,6 +1084,275 @@ async function runDealNotifications() {
   });
 
   return finishRunReport(report, report.totals.failed > 0 || report.errors.length > 0 ? 'partial' : 'success');
+}
+
+// ---------------------------------------------------------------------------
+// Release & Special-Offer notifications
+// ---------------------------------------------------------------------------
+
+async function getUnreleasedFavoritesUsers() {
+  const { rows } = await pool.query(`
+    SELECT
+      u.id       AS user_id,
+      u.email,
+      u.name,
+      u.last_provider,
+      array_agg(f.product_id ORDER BY f.updated_at DESC) AS product_ids
+    FROM users u
+    JOIN favorites f ON f.user_id = u.id
+    WHERE f.snapshot->>'releaseStatus' IN ('unreleased', 'comingSoon')
+    GROUP BY u.id
+  `);
+  return rows;
+}
+
+async function getProductsWithSpecialOffer() {
+  const { rows } = await pool.query(`
+    SELECT product_id, special_offer_url
+    FROM product_overrides
+    WHERE special_offer_url IS NOT NULL AND special_offer_url <> ''
+  `);
+  return rows;
+}
+
+function specialOfferDealKey(url) {
+  return `special_offer:${String(url || '').slice(0, 60)}`;
+}
+
+async function runReleaseAndSpecialOfferNotifications(allUsers, productsById) {
+  // ---- Release notifications ----
+  const unreleasedUsers = await getUnreleasedFavoritesUsers();
+  if (unreleasedUsers.length > 0) {
+    logger.info(`[DealNotifier] Checking release notifications for ${unreleasedUsers.length} users`);
+    for (const user of unreleasedUsers) {
+      try {
+        const releasedProducts = user.product_ids
+          .map((pid) => productsById.get(normalizeProductId(pid)))
+          .filter((p) => p && p.releaseInfo?.status !== 'unreleased' && p.releaseInfo?.status !== 'comingSoon'
+            && p.releaseInfo?.status !== 'unknown' && p.price?.value > 0);
+
+        if (!releasedProducts.length) continue;
+
+        const pairs = releasedProducts.map((p) => [normalizeProductId(p.id), 'released:v1']);
+        const alreadyNotified = await getAlreadyNotified(user.user_id, pairs);
+        const newReleases = releasedProducts.filter((p) => {
+          const key = `${normalizeProductId(p.id)}::released:v1`;
+          return !alreadyNotified.has(key);
+        });
+
+        if (!newReleases.length) continue;
+
+        const items = newReleases.map((p) => ({
+          productId: p.id,
+          title: p.title,
+          image: p.image || null,
+          siteUrl: `${config.clientOrigin}/game/${p.id}`,
+          paymentPrices: p.notificationPaymentPrices || null,
+        }));
+
+        const sent = await sendEventNotification(user, items, 'release');
+        if (sent) {
+          await markNotified(user.user_id, newReleases.map((p) => [normalizeProductId(p.id), 'released:v1']));
+          logger.info('[DealNotifier] Release notification sent', { userId: user.user_id, count: newReleases.length });
+        }
+      } catch (err) {
+        logger.error('[DealNotifier] Release notify error', { userId: user.user_id, message: err.message });
+      }
+    }
+  }
+
+  // ---- Special-offer notifications ----
+  const specialOfferRows = await getProductsWithSpecialOffer();
+  if (!specialOfferRows.length) return;
+
+  const specialOfferMap = new Map(
+    specialOfferRows.map((r) => [normalizeProductId(r.product_id), r.special_offer_url]),
+  );
+
+  for (const user of allUsers) {
+    try {
+      const matchedProducts = user.product_ids
+        .map((pid) => {
+          const nid = normalizeProductId(pid);
+          const url = specialOfferMap.get(nid);
+          if (!url) return null;
+          const product = productsById.get(nid);
+          return product ? { ...product, specialOfferUrl: url } : null;
+        })
+        .filter(Boolean);
+
+      if (!matchedProducts.length) continue;
+
+      const pairs = matchedProducts.map((p) => [normalizeProductId(p.id), specialOfferDealKey(p.specialOfferUrl)]);
+      const alreadyNotified = await getAlreadyNotified(user.user_id, pairs);
+      const newSpecialOffers = matchedProducts.filter((p) => {
+        const key = `${normalizeProductId(p.id)}::${specialOfferDealKey(p.specialOfferUrl)}`;
+        return !alreadyNotified.has(key);
+      });
+
+      if (!newSpecialOffers.length) continue;
+
+      const items = newSpecialOffers.map((p) => ({
+        productId: p.id,
+        title: p.title,
+        image: p.image || null,
+        siteUrl: `${config.clientOrigin}/game/${p.id}`,
+        paymentPrices: p.notificationPaymentPrices || null,
+      }));
+
+      const sent = await sendEventNotification(user, items, 'special_offer');
+      if (sent) {
+        await markNotified(
+          user.user_id,
+          newSpecialOffers.map((p) => [normalizeProductId(p.id), specialOfferDealKey(p.specialOfferUrl)]),
+        );
+        logger.info('[DealNotifier] Special-offer notification sent', { userId: user.user_id, count: newSpecialOffers.length });
+      }
+    } catch (err) {
+      logger.error('[DealNotifier] Special-offer notify error', { userId: user.user_id, message: err.message });
+    }
+  }
+}
+
+async function sendEventNotification(user, items, type) {
+  const isTelegramUser = user.last_provider === 'telegram';
+  if (isTelegramUser) {
+    const chatId = await getTelegramChatId(user.user_id);
+    if (chatId) {
+      const text = buildEventTelegramMessage(user.name, items, type);
+      await sendBotMessage(chatId, text, { parseMode: 'HTML', disableWebPagePreview: true });
+      return true;
+    }
+  }
+  if (user.email) {
+    const transporter = createSmtpTransport();
+    await transporter.sendMail({
+      from: getFromAddress(),
+      to: user.email,
+      subject: buildEventEmailSubject(items, type),
+      html: buildEventEmailHtml(user.name, items, type),
+    });
+    return true;
+  }
+  return false;
+}
+
+function buildEventTelegramMessage(userName, items, type) {
+  const header = type === 'release'
+    ? `🎉 <b>Вышли игры из вашего Избранного!</b>`
+    : `🎯 <b>Спецпредложение на игры из Избранного!</b>`;
+
+  const subHeader = type === 'release'
+    ? `Игры, которые вы ждали, теперь доступны для покупки:`
+    : `На эти игры появились специальные предложения:`;
+
+  const lines = [
+    header,
+    `<a href="${favoritesUrl()}">Открыть избранное</a>`,
+    '',
+    subHeader,
+    '',
+  ];
+
+  for (const item of items.slice(0, 10)) {
+    lines.push(`➬ <a href="${item.siteUrl}"><b>${escapeHtml(item.title)}</b></a>`);
+    if (item.paymentPrices) {
+      const payLine = buildTelegramPaymentLine({ paymentPrices: item.paymentPrices });
+      if (payLine) lines.push(payLine);
+    }
+    lines.push('');
+  }
+
+  if (items.length > 10) lines.push(`<i>Еще ${items.length - 10} игр в избранном</i>`, '');
+
+  lines.push('<b>·••• Открыть мое ИЗБРАННОЕ •••·</b>');
+  lines.push(`<a href="${favoritesUrl()}">${favoritesUrl()}</a>`);
+  return lines.join('\n');
+}
+
+function buildEventEmailSubject(items, type) {
+  if (type === 'release') {
+    return items.length === 1
+      ? `«${items[0].title}» вышла и доступна для покупки!`
+      : `${items.length} ожидаемых игр теперь доступны`;
+  }
+  return items.length === 1
+    ? `Спецпредложение на «${items[0].title}»`
+    : `Спецпредложения на ${items.length} игр из избранного`;
+}
+
+function buildEventEmailHtml(userName, items, type) {
+  const heading = type === 'release' ? 'Вышли ваши ожидаемые игры!' : 'Спецпредложения на игры!';
+  const emoji = type === 'release' ? '🎉' : '🎯';
+  const intro = type === 'release'
+    ? `Игры, которые вы добавили в Избранное, теперь доступны для покупки:`
+    : `На игры из вашего Избранного появились специальные предложения:`;
+
+  const itemsHtml = items.slice(0, 10).map((item) => {
+    const payHtml = item.paymentPrices
+      ? `<div style="margin-top:4px;">${buildPaymentPairsHtml({ paymentPrices: item.paymentPrices })}</div>`
+      : '';
+    return `
+      <tr><td style="padding:14px 0;border-bottom:1px solid #1e1e1e;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%">
+          <tr>
+            <td width="90" style="vertical-align:top;">
+              <a href="${item.siteUrl}" style="display:block;">
+                <img src="${item.image || ''}" alt="${escapeHtml(item.title)}" width="80" height="107"
+                     style="border-radius:8px;object-fit:cover;display:block;background:#1a1a1a;" />
+              </a>
+            </td>
+            <td style="vertical-align:top;padding-left:14px;">
+              <a href="${item.siteUrl}" style="color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;display:block;margin-bottom:6px;">
+                ${escapeHtml(item.title)}
+              </a>
+              <span style="background:#107c10;color:#fff;font-weight:800;font-size:13px;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:6px;">
+                ${emoji} ${type === 'release' ? 'Вышла!' : 'Спецпредложение'}
+              </span>
+              ${payHtml}
+            </td>
+          </tr>
+        </table>
+      </td></tr>`;
+  }).join('');
+
+  return `
+<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0d0d0d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0d0d0d;">
+    <tr><td align="center" style="padding:24px 16px;">
+      <table cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;width:100%;">
+        <tr><td style="padding:24px 24px 16px;background:linear-gradient(135deg,#0b1a0d,#0d1117);border-radius:16px 16px 0 0;border:1px solid #1e1e1e;border-bottom:none;">
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+            <tr>
+              <td><span style="display:inline-block;width:40px;height:40px;border-radius:10px;background:#107c10;text-align:center;line-height:40px;font-size:18px;font-weight:800;color:#fff;">XB</span></td>
+              <td style="padding-left:12px;">
+                <span style="color:#20d66b;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Xbox Store</span><br/>
+                <span style="color:#ffffff;font-size:20px;font-weight:800;">${heading}</span>
+              </td>
+            </tr>
+          </table>
+          <p style="color:#aaa;font-size:14px;margin:12px 0 0;">Привет${userName ? ', ' + escapeHtml(userName) : ''}! ${intro}</p>
+        </td></tr>
+        <tr><td style="padding:0 24px 24px;background:#111114;border:1px solid #1e1e1e;border-top:none;border-bottom:none;">
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">${itemsHtml}</table>
+        </td></tr>
+        <tr><td style="padding:20px 24px;background:#111114;border-radius:0 0 16px 16px;border:1px solid #1e1e1e;border-top:none;text-align:center;">
+          <a href="${favoritesUrl()}"
+             style="display:inline-block;padding:12px 28px;background:#107c10;color:#fff;font-weight:700;border-radius:8px;text-decoration:none;font-size:14px;">
+            Открыть избранное
+          </a>
+          <p style="color:#666;font-size:11px;margin:16px 0 0;">
+            Вы получили это письмо, потому что добавили эти игры в избранное на Xbox Store.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
 
 module.exports = { runDealNotifications };

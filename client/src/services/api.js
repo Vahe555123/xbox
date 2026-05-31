@@ -138,8 +138,10 @@ export async function fetchFavorites() {
   return data.items || [];
 }
 
-export async function addFavorite(productId) {
-  const { data } = await api.post('/favorites', { productId });
+export async function addFavorite(productId, releaseStatus) {
+  const body = { productId };
+  if (releaseStatus) body.releaseStatus = releaseStatus;
+  const { data } = await api.post('/favorites', body);
   return data.item;
 }
 
