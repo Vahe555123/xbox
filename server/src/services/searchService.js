@@ -21,7 +21,6 @@ const LANGUAGE_FILTER_PREFETCH_MAX_PAGES = Math.max(1, Number(process.env.SEARCH
 const SEARCH_RERANK_TOKEN_PREFIX = 'ranked-search:';
 const SEARCH_RERANK_CACHE_TTL_SECONDS = 10 * 60;
 const DEFAULT_BROWSE_SORT = 'WishlistCountTotal desc';
-const RATING_SORT = 'MostPopular desc';
 const SPECIAL_OFFERS_FILTER_KEY = 'SpecialOffers';
 const SPECIAL_OFFERS_FILTER_VALUE = 'Available';
 const KEYWORD_MATCH_TIER_OFFSET = 3;
@@ -79,25 +78,6 @@ async function search({
 
   let raw;
   try {
-    if (!countOnly && shouldUseBufferedRatingSort({ sort: effectiveSort, encodedCT })) {
-      const initialRaw = await fetchCatalogPage({
-        query,
-        encodedFilters,
-        encodedCT: '',
-        returnFilters: true,
-        channelId,
-      });
-
-      return searchWithBufferedRatingSort({
-        raw: initialRaw,
-        query,
-        encodedFilters,
-        channelId,
-        languageMode,
-        specialOffersOnly,
-      });
-    }
-
     if (!countOnly && shouldUseSearchRerank({ query, sort: effectiveSort, encodedCT })) {
       return await searchWithRelevanceRerank({
         query,
@@ -162,10 +142,10 @@ async function search({
   }
 
   const products = mapProducts(rawProducts);
-  const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(products)), {
-    languageMode,
-    specialOffersOnly,
-  });
+  const enrichedProducts = applyPostFilters(
+    await applyProductOverrides(await enrichProducts(products, { fetchStoreLanguages: languageFilterActive })),
+    { languageMode, specialOffersOnly },
+  );
   const extraKeywordProducts = query
     ? await loadOverrideKeywordProducts(query, enrichedProducts, { languageMode, specialOffersOnly })
     : [];
@@ -463,7 +443,7 @@ async function loadOverrideKeywordProducts(query, existingProducts, { languageMo
 
   const mappedProducts = mapRelatedProducts(rawProducts, {});
   const enrichedProducts = applyPostFilters(
-    await applyProductOverrides(await enrichProducts(mappedProducts)),
+    await applyProductOverrides(await enrichProducts(mappedProducts, { fetchStoreLanguages: isLanguageFilterActive(languageMode) })),
     { languageMode, specialOffersOnly },
   );
   const productsById = new Map(
@@ -670,10 +650,6 @@ function resolveSort({ query, sort }) {
   return sort;
 }
 
-function shouldUseBufferedRatingSort({ sort, encodedCT }) {
-  return sort === RATING_SORT && !encodedCT;
-}
-
 function isLanguageFilterActive(languageMode) {
   return Boolean(languageMode && languageMode !== 'all');
 }
@@ -769,7 +745,7 @@ async function countFilteredSearchResults({
 
   const mappedProducts = mapProducts(dedupeRawProducts(collected.rawProducts));
   const filteredProducts = applyPostFilters(
-    await applyProductOverrides(await enrichProducts(mappedProducts)),
+    await applyProductOverrides(await enrichProducts(mappedProducts, { fetchStoreLanguages: isLanguageFilterActive(languageMode) })),
     { languageMode, specialOffersOnly },
   );
   const extraKeywordProducts = query
@@ -788,76 +764,10 @@ async function countFilteredSearchResults({
   };
 }
 
-async function searchWithBufferedRatingSort({
-  raw,
-  query,
-  encodedFilters,
-  channelId,
-  languageMode,
-  specialOffersOnly,
-}) {
-  const collected = await collectAllCatalogPages({
-    query,
-    encodedFilters,
-    rawProducts: raw.products || [],
-    nextEncodedCT: raw.encodedCT,
-    channelId,
-  });
-
-  const mappedProducts = mapProducts(dedupeRawProducts(collected.rawProducts));
-  const filteredProducts = applyPostFilters(
-    await applyProductOverrides(await enrichProducts(mappedProducts)),
-    { languageMode, specialOffersOnly },
-  );
-  const extraKeywordProducts = query
-    ? await loadOverrideKeywordProducts(query, filteredProducts, { languageMode, specialOffersOnly })
-    : [];
-  const rankedProducts = sortProductsByRating(mergeProductsById(filteredProducts, extraKeywordProducts));
-  const pageProducts = rankedProducts.slice(0, config.xbox.pageSize);
-  const remainingProducts = rankedProducts.slice(config.xbox.pageSize);
-  const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
-    ? mapFilters(raw.filters)
-    : null;
-  const bufferedToken = remainingProducts.length
-    ? writeRankedSearchBuffer({
-        products: remainingProducts,
-        nextExternalEncodedCT: null,
-        totalItems: rankedProducts.length,
-        totalIsApproximate: false,
-      })
-    : null;
-
-  return {
-    products: pageProducts,
-    totalItems: rankedProducts.length,
-    totalIsApproximate: false,
-    totalPending: false,
-    encodedCT: bufferedToken,
-    filters: mappedFilters,
-    hasMorePages: Boolean(bufferedToken),
-  };
-}
-
-function sortProductsByRating(products) {
-  return [...products].sort((a, b) => {
-    const aAverage = Number.isFinite(a?.rating?.average) ? a.rating.average : -1;
-    const bAverage = Number.isFinite(b?.rating?.average) ? b.rating.average : -1;
-    if (bAverage !== aAverage) return bAverage - aAverage;
-
-    const aCount = Number.isFinite(a?.rating?.count) ? a.rating.count : -1;
-    const bCount = Number.isFinite(b?.rating?.count) ? b.rating.count : -1;
-    if (bCount !== aCount) return bCount - aCount;
-
-    const aTitle = String(a?.title || '');
-    const bTitle = String(b?.title || '');
-    return aTitle.localeCompare(bTitle, 'en');
-  });
-}
-
 async function countLanguageFilteredProducts(rawProducts, languageMode, specialOffersOnly = false) {
   const mappedProducts = mapProducts(dedupeRawProducts(rawProducts));
   const filteredProducts = applyPostFilters(
-    await applyProductOverrides(await enrichProducts(mappedProducts)),
+    await applyProductOverrides(await enrichProducts(mappedProducts, { fetchStoreLanguages: isLanguageFilterActive(languageMode) })),
     { languageMode, specialOffersOnly },
   );
   return filteredProducts.length;
@@ -873,19 +783,40 @@ function applyPostFilters(products, { languageMode, specialOffersOnly }) {
   });
 }
 
-async function fetchStorePageLanguageMap(products) {
+/**
+ * Build a productId -> store-page language info map.
+ *
+ * The store page is a heavy full-HTML fetch, so on the hot browse/search path
+ * (no language filter) we only read what is already cached and warm the rest in
+ * the background. The display-catalog batch (fetched in enrichProducts) already
+ * provides a reliable Russian badge, so blocking on store pages is unnecessary.
+ * When the language filter is active we fetch synchronously for accurate filtering.
+ */
+async function fetchStorePageLanguageMap(products, { fetchUncached = false } = {}) {
   const map = new Map();
-  await Promise.allSettled(products.map(async (product) => {
+  const uncached = [];
+
+  for (const product of products) {
     const id = String(product.id || '').toUpperCase();
-    if (!id) return;
+    if (!id) continue;
     const cached = getCachedLanguageInfo(id);
     if (cached) {
       map.set(id, cached);
-      return;
+    } else if (product.storeUrl) {
+      uncached.push({ id, storeUrl: product.storeUrl });
     }
-    if (!product.storeUrl) return;
+  }
+
+  if (!uncached.length) return map;
+
+  if (!fetchUncached) {
+    warmStoreLanguageCache(uncached);
+    return map;
+  }
+
+  await Promise.allSettled(uncached.map(async ({ id, storeUrl }) => {
     try {
-      const data = await getStorePageProductData({ productId: id, storeUrl: product.storeUrl, languageOnly: true });
+      const data = await getStorePageProductData({ productId: id, storeUrl, languageOnly: true });
       if (data.languageInfo) map.set(id, data.languageInfo);
     } catch (err) {
       logger.debug('Store page language fetch failed for catalog product', { productId: id, message: err.message });
@@ -894,7 +825,15 @@ async function fetchStorePageLanguageMap(products) {
   return map;
 }
 
-async function enrichProducts(products) {
+function warmStoreLanguageCache(entries) {
+  for (const { id, storeUrl } of entries) {
+    getStorePageProductData({ productId: id, storeUrl, languageOnly: true }).catch((err) => {
+      logger.debug('Background store language warm failed', { productId: id, message: err.message });
+    });
+  }
+}
+
+async function enrichProducts(products, { fetchStoreLanguages = false } = {}) {
   const productIds = products.map((product) => product.id).filter(Boolean);
   if (!productIds.length) return products;
 
@@ -903,7 +842,7 @@ async function enrichProducts(products) {
       logger.warn('Failed to enrich products with display catalog data', { message: err.message });
       return [];
     }),
-    fetchStorePageLanguageMap(products),
+    fetchStorePageLanguageMap(products, { fetchUncached: fetchStoreLanguages }),
   ]);
 
   const enriched = enrichProductsWithCatalogDetails(products, catalogProducts);

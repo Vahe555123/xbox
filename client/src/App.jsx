@@ -253,9 +253,12 @@ export default function App() {
   };
 
   const handleGlobalQueryChange = (value) => {
+    const hasQuery = Boolean(value && value.trim());
     navigateToCatalog({
       ...currentCatalogState,
       query: value,
+      // When a search starts, switch sorting to Relevance (like Xbox search).
+      sort: hasQuery ? '' : currentCatalogState.sort,
     });
   };
 

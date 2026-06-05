@@ -1,12 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-const SKIP_FILTER_KEYS = ['orderby'];
+const SKIP_FILTER_KEYS = ['orderby', 'MaturityRating', 'Accessibility'];
 const FILTER_ORDER = [
   'PlayWith',
-  'Accessibility',
   'Price',
   'Genre',
-  'MaturityRating',
   'Multiplayer',
   'TechnicalFeatures',
   'SupportedLanguages',
