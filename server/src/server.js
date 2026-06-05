@@ -4,6 +4,7 @@ const config = require('./config');
 const logger = require('./utils/logger');
 const { initDb } = require('./db/schema');
 const dealScheduler = require('./services/dealScheduler');
+const russianLanguageIndexScheduler = require('./services/russianLanguageIndexScheduler');
 const telegramBotService = require('./services/telegramBotService');
 const { initCacheSettings } = require('./services/cacheSettingsService');
 
@@ -25,6 +26,7 @@ initDb()
     });
 
     dealScheduler.start();
+    russianLanguageIndexScheduler.start();
     telegramBotService.startPolling();
   })
   .catch((err) => {
@@ -42,6 +44,7 @@ process.on('unhandledRejection', (err) => {
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received — shutting down');
   dealScheduler.stop();
+  russianLanguageIndexScheduler.stop();
   telegramBotService.stopPolling();
   if (server) {
     server.close(() => process.exit(0));

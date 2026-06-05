@@ -30,7 +30,7 @@ export async function searchProducts({ q, sort, filters, encodedCT, countOnly, s
     for (const [key, values] of Object.entries(filters)) {
       if (Array.isArray(values) && values.length > 0) {
         if (key === 'LanguageMode') {
-          params.set('languageMode', values[0]);
+          params.set('languageMode', values.join(','));
           continue;
         }
         values.forEach((value) => params.append(key, value));
@@ -234,6 +234,16 @@ export async function updateAdminCacheSettings(payload) {
 
 export async function clearAdminCache() {
   const { data } = await api.post('/admin/cache/clear');
+  return data;
+}
+
+export async function fetchRussianIndexState() {
+  const { data } = await api.get('/admin/russian-index');
+  return data || {};
+}
+
+export async function refreshRussianIndex({ deep = false } = {}) {
+  const { data } = await api.post('/admin/russian-index/refresh', { deep });
   return data;
 }
 

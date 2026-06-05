@@ -25,6 +25,13 @@ const config = {
     requestRetryCount: parseIntWithFallback(process.env.XBOX_UPSTREAM_RETRY_COUNT, 0),
   },
 
+  russianIndex: {
+    refreshIntervalHours: parseFloat(process.env.RUSSIAN_INDEX_REFRESH_HOURS) || 12,
+    storeFetchConcurrency: parseInt(process.env.RUSSIAN_INDEX_STORE_CONCURRENCY, 10) || 6,
+    maxStoreFetches: parseInt(process.env.RUSSIAN_INDEX_MAX_STORE_FETCHES, 10) || 9000,
+    maxBrowsePages: parseInt(process.env.RUSSIAN_INDEX_MAX_BROWSE_PAGES, 10) || 1200,
+  },
+
   cache: {
     ttl: parseInt(process.env.CACHE_TTL, 10) || 300,
     mainCatalogTtl: parseInt(process.env.MAIN_CATALOG_CACHE_TTL, 10) || 900,

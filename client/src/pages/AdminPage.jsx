@@ -17,6 +17,8 @@ import {
   updateAdminHelpContent,
   updateAdminCacheSettings,
   clearAdminCache,
+  fetchRussianIndexState,
+  refreshRussianIndex,
   deleteProductOverride,
   fetchSchedulerState,
   updateSchedulerInterval,
@@ -194,6 +196,9 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [cacheSettingsMessage, setCacheSettingsMessage] = useState('');
   const [cacheSettingsSaving, setCacheSettingsSaving] = useState(false);
   const [cacheClearLoading, setCacheClearLoading] = useState(false);
+  const [russianIndexState, setRussianIndexState] = useState(null);
+  const [russianIndexMessage, setRussianIndexMessage] = useState('');
+  const [russianIndexRefreshing, setRussianIndexRefreshing] = useState(false);
 
   // Users
   const [users, setUsers] = useState([]);
@@ -306,6 +311,12 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadRussianIndex = useCallback(async () => {
+    try {
+      setRussianIndexState(await fetchRussianIndexState());
+    } catch { /* ignore */ }
+  }, []);
+
   const loadUsers = useCallback(async (page = 1, search = '') => {
     try {
       const data = await fetchAdminUsers({ page, limit: 20, search });
@@ -376,6 +387,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       loadDashboard();
       loadSupportLinks();
       loadCacheSettings();
+      loadRussianIndex();
     }
     else if (tab === 'users') loadUsers(1, usersSearch);
     else if (tab === 'notifications') loadNotifications(1);
@@ -387,7 +399,15 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     else if (tab === 'digiseller') loadDigiseller();
     else if (tab === 'topup') loadTopupCards();
     else if (tab === 'purchases') loadPurchases(purchasesSort);
-  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort]);
+  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadRussianIndex, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort]);
+
+  // While a Russian-index build is running, poll its status.
+  useEffect(() => {
+    if (!authorized || tab !== 'dashboard') return undefined;
+    if (!russianIndexState?.isBuilding) return undefined;
+    const timer = setInterval(loadRussianIndex, 5000);
+    return () => clearInterval(timer);
+  }, [authorized, tab, russianIndexState?.isBuilding, loadRussianIndex]);
 
   const handleUserSearch = (e) => {
     e.preventDefault();
@@ -462,6 +482,26 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setCacheSettingsMessage('Ошибка: ' + (err.response?.data?.error || err.message));
     } finally {
       setCacheClearLoading(false);
+    }
+  };
+
+  const handleRussianIndexRefresh = async () => {
+    setRussianIndexRefreshing(true);
+    setRussianIndexMessage('');
+
+    try {
+      const result = await refreshRussianIndex();
+      if (result?.alreadyRunning) {
+        setRussianIndexMessage('Обновление уже выполняется');
+      } else {
+        setRussianIndexMessage('Обновление запущено — индекс собирается в фоне');
+      }
+      if (result?.state) setRussianIndexState(result.state);
+      await loadRussianIndex();
+    } catch (err) {
+      setRussianIndexMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setRussianIndexRefreshing(false);
     }
   };
 
@@ -919,6 +959,56 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               </div>
               {cacheSettingsMessage && <p className="admin-scheduler-result">{cacheSettingsMessage}</p>}
             </form>
+          </div>
+
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <div>
+                <h3>Фильтр «Язык» (русские игры)</h3>
+                <p className="admin-card-desc">
+                  Список игр с русским языком собирается заранее, чтобы фильтр работал быстро.
+                  Обновляется автоматически каждые {russianIndexState?.intervalHours || '—'} ч,
+                  либо вручную кнопкой ниже.
+                </p>
+              </div>
+            </div>
+
+            <div className="admin-stats-grid">
+              <div className="admin-stat-card">
+                <div className="admin-stat-value">{russianIndexState?.counts?.russian ?? 0}</div>
+                <div className="admin-stat-label">С русским</div>
+              </div>
+              <div className="admin-stat-card">
+                <div className="admin-stat-value">{russianIndexState?.counts?.fullRu ?? 0}</div>
+                <div className="admin-stat-label">Полностью на русском</div>
+              </div>
+              <div className="admin-stat-card">
+                <div className="admin-stat-value">{russianIndexState?.counts?.subtitles ?? 0}</div>
+                <div className="admin-stat-label">Только субтитры</div>
+              </div>
+              <div className="admin-stat-card">
+                <div className="admin-stat-value">{russianIndexState?.counts?.scanned ?? 0}</div>
+                <div className="admin-stat-label">Просканировано</div>
+              </div>
+            </div>
+
+            <p className="admin-card-desc">
+              Последнее обновление: {formatDate(russianIndexState?.builtAt)}
+              {russianIndexState?.isBuilding && ' • идёт сборка...'}
+              {russianIndexState?.lastError && ` • ошибка: ${russianIndexState.lastError}`}
+            </p>
+
+            <div className="admin-override-actions">
+              <button
+                className="admin-btn admin-btn-primary"
+                type="button"
+                onClick={handleRussianIndexRefresh}
+                disabled={russianIndexRefreshing || russianIndexState?.isBuilding}
+              >
+                {russianIndexState?.isBuilding ? 'Собирается...' : (russianIndexRefreshing ? 'Запуск...' : 'Обновить сейчас')}
+              </button>
+            </div>
+            {russianIndexMessage && <p className="admin-scheduler-result">{russianIndexMessage}</p>}
           </div>
         </div>
       )}

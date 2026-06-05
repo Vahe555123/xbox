@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-const SKIP_FILTER_KEYS = ['orderby', 'MaturityRating', 'Accessibility'];
+const SKIP_FILTER_KEYS = ['orderby', 'MaturityRating', 'Accessibility', 'SupportedLanguages'];
 const FILTER_ORDER = [
+  'LanguageMode',
   'PlayWith',
   'Price',
   'Genre',
   'Multiplayer',
   'TechnicalFeatures',
-  'SupportedLanguages',
   'IncludedInSubscription',
   'HandheldCompatibility',
   'SpecialOffers',
@@ -16,6 +16,7 @@ const AUTO_APPLY_DELAY_MS = 250;
 
 const FILTER_TITLES = {
   orderby: 'Сортировка',
+  LanguageMode: 'Язык',
   PlayWith: 'Платформы',
   Accessibility: 'Доступность',
   Price: 'Цена',
@@ -100,6 +101,15 @@ const MULTIPLAYER_TITLES = {
 };
 
 const CUSTOM_FILTERS = {
+  LanguageMode: {
+    id: 'LanguageMode',
+    title: 'Язык',
+    isMultiSelect: true,
+    choices: [
+      { id: 'full_ru', title: 'Полностью на русском', isLabelOnly: false },
+      { id: 'ru_subtitles', title: 'Русские субтитры', isLabelOnly: false },
+    ],
+  },
   SpecialOffers: {
     id: 'SpecialOffers',
     title: 'Спецпредложения',

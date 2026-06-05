@@ -5,7 +5,7 @@ const { mapProducts, enrichProductsWithCatalogDetails } = require('../mappers/pr
 const { mapRelatedProducts } = require('../mappers/relatedProductMapper');
 const { mapFilters, encodeFilters } = require('../mappers/filtersMapper');
 const { applyProductOverrides, listSearchableProductOverrides } = require('./productOverrideService');
-const { getCachedLanguageInfo, getStorePageProductData } = require('./xboxStorePageService');
+const russianIndex = require('./russianLanguageIndexService');
 const config = require('../config');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
@@ -23,6 +23,8 @@ const SEARCH_RERANK_CACHE_TTL_SECONDS = 10 * 60;
 const DEFAULT_BROWSE_SORT = 'WishlistCountTotal desc';
 const SPECIAL_OFFERS_FILTER_KEY = 'SpecialOffers';
 const SPECIAL_OFFERS_FILTER_VALUE = 'Available';
+const RUSSIAN_INDEX_TOKEN_PREFIX = 'rulang:';
+const VALID_LANGUAGE_MODES = new Set(['full_ru', 'ru_subtitles']);
 const KEYWORD_MATCH_TIER_OFFSET = 3;
 const SEARCH_MATCH_TIERS = {
   EXACT: 0,
@@ -68,12 +70,28 @@ async function search({
 }) {
   const effectiveSort = resolveSort({ query, sort });
   const encodedFilters = buildEncodedFilters(filters, effectiveSort);
-  const languageFilterActive = isLanguageFilterActive(languageMode);
+  const languageModes = parseLanguageModes(languageMode);
+  const languageFilterActive = languageModes.size > 0;
   const specialOffersOnly = isSpecialOfferFilterActive(filters);
 
   if (isRankedSearchToken(encodedCT)) {
     const buffered = await readRankedSearchBuffer(encodedCT);
     if (buffered) return buffered;
+  }
+
+  // Fast path: a Russian-language-only browse is served from the precomputed index.
+  if (isRussianIndexToken(encodedCT)) {
+    return serveRussianIndexPage({ offset: parseRussianIndexOffset(encodedCT), languageModes, specialOffersOnly });
+  }
+
+  const canUseRussianIndex = languageFilterActive
+    && !query
+    && !hasApiSideFilters(filters)
+    && russianIndex.isReady();
+
+  if (canUseRussianIndex) {
+    if (countOnly) return countRussianIndexResults(languageModes);
+    return serveRussianIndexPage({ offset: 0, languageModes, specialOffersOnly, includeFilters: true });
   }
 
   let raw;
@@ -143,7 +161,7 @@ async function search({
 
   const products = mapProducts(rawProducts);
   const enrichedProducts = applyPostFilters(
-    await applyProductOverrides(await enrichProducts(products, { fetchStoreLanguages: languageFilterActive })),
+    await applyProductOverrides(await enrichProducts(products)),
     { languageMode, specialOffersOnly },
   );
   const extraKeywordProducts = query
@@ -443,7 +461,7 @@ async function loadOverrideKeywordProducts(query, existingProducts, { languageMo
 
   const mappedProducts = mapRelatedProducts(rawProducts, {});
   const enrichedProducts = applyPostFilters(
-    await applyProductOverrides(await enrichProducts(mappedProducts, { fetchStoreLanguages: isLanguageFilterActive(languageMode) })),
+    await applyProductOverrides(await enrichProducts(mappedProducts)),
     { languageMode, specialOffersOnly },
   );
   const productsById = new Map(
@@ -651,7 +669,40 @@ function resolveSort({ query, sort }) {
 }
 
 function isLanguageFilterActive(languageMode) {
-  return Boolean(languageMode && languageMode !== 'all');
+  return parseLanguageModes(languageMode).size > 0;
+}
+
+function parseLanguageModes(languageMode) {
+  const modes = new Set();
+  const source = Array.isArray(languageMode) ? languageMode : String(languageMode || '').split(',');
+  for (const part of source) {
+    const value = String(part || '').trim();
+    if (VALID_LANGUAGE_MODES.has(value)) modes.add(value);
+  }
+  return modes;
+}
+
+function hasApiSideFilters(filters) {
+  if (!filters || typeof filters !== 'object') return false;
+  return Object.entries(filters).some(([key, values]) => {
+    if (key === 'LanguageMode' || key === SPECIAL_OFFERS_FILTER_KEY) return false;
+    return Array.isArray(values) ? values.length > 0 : Boolean(values);
+  });
+}
+
+function resolveProductRussianMode(product) {
+  // A manual admin override is authoritative.
+  if (product.languageOverride && product.russianLanguageMode) return product.russianLanguageMode;
+  const indexMode = russianIndex.getModeForProduct(product.id);
+  if (indexMode) return indexMode;
+  return product.russianLanguageMode || 'unknown';
+}
+
+function matchesLanguageModes(product, modes) {
+  const mode = resolveProductRussianMode(product);
+  if (modes.has('ru_subtitles') && (mode === 'ru_subtitles' || mode === 'full_ru')) return true;
+  if (modes.has('full_ru') && mode === 'full_ru') return true;
+  return false;
 }
 
 function getLanguageFilterTargetCount() {
@@ -745,7 +796,7 @@ async function countFilteredSearchResults({
 
   const mappedProducts = mapProducts(dedupeRawProducts(collected.rawProducts));
   const filteredProducts = applyPostFilters(
-    await applyProductOverrides(await enrichProducts(mappedProducts, { fetchStoreLanguages: isLanguageFilterActive(languageMode) })),
+    await applyProductOverrides(await enrichProducts(mappedProducts)),
     { languageMode, specialOffersOnly },
   );
   const extraKeywordProducts = query
@@ -767,90 +818,129 @@ async function countFilteredSearchResults({
 async function countLanguageFilteredProducts(rawProducts, languageMode, specialOffersOnly = false) {
   const mappedProducts = mapProducts(dedupeRawProducts(rawProducts));
   const filteredProducts = applyPostFilters(
-    await applyProductOverrides(await enrichProducts(mappedProducts, { fetchStoreLanguages: isLanguageFilterActive(languageMode) })),
+    await applyProductOverrides(await enrichProducts(mappedProducts)),
     { languageMode, specialOffersOnly },
   );
   return filteredProducts.length;
 }
 
+function isRussianIndexToken(value) {
+  return typeof value === 'string' && value.startsWith(RUSSIAN_INDEX_TOKEN_PREFIX);
+}
+
+function makeRussianIndexToken(offset) {
+  return `${RUSSIAN_INDEX_TOKEN_PREFIX}${offset}`;
+}
+
+function parseRussianIndexOffset(token) {
+  const parsed = parseInt(String(token || '').slice(RUSSIAN_INDEX_TOKEN_PREFIX.length), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function countRussianIndexResults(languageModes) {
+  const ids = russianIndex.getServingIds(languageModes);
+  return {
+    products: [],
+    totalItems: ids.length,
+    totalIsApproximate: false,
+    totalPending: false,
+    encodedCT: null,
+    filters: null,
+    hasMorePages: false,
+  };
+}
+
+async function serveRussianIndexPage({ offset = 0, languageModes, specialOffersOnly, includeFilters = false }) {
+  const ids = russianIndex.getServingIds(languageModes);
+  const pageSize = config.xbox.pageSize;
+  const slice = ids.slice(offset, offset + pageSize);
+  const nextOffset = offset + pageSize;
+  const hasMore = nextOffset < ids.length;
+
+  let products = [];
+  if (slice.length) {
+    const rawProducts = await getProductsByIds(slice, { allowPartial: true, context: 'russian-index-page' })
+      .catch((err) => {
+        logger.warn('Russian index page fetch failed', { count: slice.length, message: err.message });
+        return [];
+      });
+    const mapped = mapRelatedProducts(rawProducts, {});
+    await applyProductOverrides(mapped).catch(() => {});
+    for (const product of mapped) {
+      const mode = russianIndex.getModeForProduct(product.id);
+      if (mode) {
+        product.russianLanguageMode = mode;
+        product.hasRussianLanguage = true;
+      }
+    }
+    const order = new Map(slice.map((id, index) => [String(id).toUpperCase(), index]));
+    products = applyPostFilters(mapped, {
+      languageMode: [...languageModes].join(','),
+      specialOffersOnly,
+    }).sort((a, b) => (
+      (order.get(String(a.id).toUpperCase()) ?? 0) - (order.get(String(b.id).toUpperCase()) ?? 0)
+    ));
+  }
+
+  let filters = null;
+  if (includeFilters) {
+    const filterRaw = await fetchCatalogPage({
+      query: '',
+      encodedFilters: '',
+      encodedCT: '',
+      returnFilters: true,
+      channelId: '',
+    }).catch(() => null);
+    filters = filterRaw?.filters && Object.keys(filterRaw.filters).length > 0
+      ? mapFilters(filterRaw.filters)
+      : null;
+  }
+
+  return {
+    products,
+    totalItems: ids.length,
+    totalIsApproximate: true,
+    totalPending: false,
+    encodedCT: hasMore ? makeRussianIndexToken(nextOffset) : null,
+    filters,
+    hasMorePages: hasMore,
+  };
+}
+
 function applyPostFilters(products, { languageMode, specialOffersOnly }) {
+  const languageModes = parseLanguageModes(languageMode);
   return products.filter((product) => {
     if (product.notAvailableSeparately) return false;
     if (product.price?.value === 0) return false;
-    if (languageMode && languageMode !== 'all' && product.russianLanguageMode !== languageMode) return false;
+    if (languageModes.size && !matchesLanguageModes(product, languageModes)) return false;
     if (specialOffersOnly && !(product.price?.discountPercent > 0) && !product.specialOfferUrl) return false;
     return true;
   });
 }
 
 /**
- * Build a productId -> store-page language info map.
- *
- * The store page is a heavy full-HTML fetch, so on the hot browse/search path
- * (no language filter) we only read what is already cached and warm the rest in
- * the background. The display-catalog batch (fetched in enrichProducts) already
- * provides a reliable Russian badge, so blocking on store pages is unnecessary.
- * When the language filter is active we fetch synchronously for accurate filtering.
+ * Enrich browse/search products with display-catalog details and the precomputed
+ * Russian-language index. The index (built in the background) is authoritative for
+ * the "Полностью на русском" vs "Русские субтитры" distinction, so we never need a
+ * slow per-product xbox.com store-page fetch on the hot path.
  */
-async function fetchStorePageLanguageMap(products, { fetchUncached = false } = {}) {
-  const map = new Map();
-  const uncached = [];
-
-  for (const product of products) {
-    const id = String(product.id || '').toUpperCase();
-    if (!id) continue;
-    const cached = getCachedLanguageInfo(id);
-    if (cached) {
-      map.set(id, cached);
-    } else if (product.storeUrl) {
-      uncached.push({ id, storeUrl: product.storeUrl });
-    }
-  }
-
-  if (!uncached.length) return map;
-
-  if (!fetchUncached) {
-    warmStoreLanguageCache(uncached);
-    return map;
-  }
-
-  await Promise.allSettled(uncached.map(async ({ id, storeUrl }) => {
-    try {
-      const data = await getStorePageProductData({ productId: id, storeUrl, languageOnly: true });
-      if (data.languageInfo) map.set(id, data.languageInfo);
-    } catch (err) {
-      logger.debug('Store page language fetch failed for catalog product', { productId: id, message: err.message });
-    }
-  }));
-  return map;
-}
-
-function warmStoreLanguageCache(entries) {
-  for (const { id, storeUrl } of entries) {
-    getStorePageProductData({ productId: id, storeUrl, languageOnly: true }).catch((err) => {
-      logger.debug('Background store language warm failed', { productId: id, message: err.message });
-    });
-  }
-}
-
-async function enrichProducts(products, { fetchStoreLanguages = false } = {}) {
+async function enrichProducts(products) {
   const productIds = products.map((product) => product.id).filter(Boolean);
   if (!productIds.length) return products;
 
-  const [catalogProducts, storePageLangMap] = await Promise.all([
-    getProductsByIds(productIds).catch((err) => {
-      logger.warn('Failed to enrich products with display catalog data', { message: err.message });
-      return [];
-    }),
-    fetchStorePageLanguageMap(products, { fetchUncached: fetchStoreLanguages }),
-  ]);
+  const catalogProducts = await getProductsByIds(productIds).catch((err) => {
+    logger.warn('Failed to enrich products with display catalog data', { message: err.message });
+    return [];
+  });
 
   const enriched = enrichProductsWithCatalogDetails(products, catalogProducts);
-  return enriched.map((product) => {
-    const storeLang = storePageLangMap.get(String(product.id || '').toUpperCase());
-    if (!storeLang) return product;
-    return { ...product, ...storeLang };
-  });
+  return enriched.map(applyIndexLanguageMode);
+}
+
+function applyIndexLanguageMode(product) {
+  const mode = russianIndex.getModeForProduct(product.id);
+  if (!mode) return product;
+  return { ...product, russianLanguageMode: mode, hasRussianLanguage: true };
 }
 
 function fetchCatalogPage({ query, encodedFilters, encodedCT, returnFilters, channelId = '' }) {

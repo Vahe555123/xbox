@@ -83,9 +83,12 @@ function readCatalogState(searchString = '') {
     }
   });
 
-  const languageMode = String(params.get('languageMode') || '').trim();
-  if (languageMode) {
-    filters.LanguageMode = [languageMode];
+  const languageModes = String(params.get('languageMode') || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (languageModes.length > 0) {
+    filters.LanguageMode = languageModes;
   }
 
   // Keep legacy links working, but do not serialize them back to the URL.
@@ -124,9 +127,11 @@ function buildCatalogUrl({ query = '', sort = '', filters = {} } = {}) {
     values.forEach((value) => params.append(key, value));
   });
 
-  const languageMode = normalizedFilters.LanguageMode?.[0];
-  if (languageMode) {
-    params.set('languageMode', languageMode);
+  const languageModes = Array.isArray(normalizedFilters.LanguageMode)
+    ? normalizedFilters.LanguageMode.filter(Boolean)
+    : [];
+  if (languageModes.length > 0) {
+    params.set('languageMode', languageModes.join(','));
   }
 
   const search = params.toString();

@@ -2,6 +2,7 @@ const { Router } = require('express');
 const { requireAdmin, requireAuth } = require('../middleware/auth');
 const pool = require('../db/pool');
 const dealScheduler = require('../services/dealScheduler');
+const russianLanguageIndexScheduler = require('../services/russianLanguageIndexScheduler');
 const digisellerService = require('../services/digisellerService');
 const topupCardService = require('../services/topupCardService');
 const { search } = require('../services/searchService');
@@ -409,6 +410,28 @@ router.put('/cache', requireAdmin, async (req, res, next) => {
 router.post('/cache/clear', requireAdmin, (_req, res) => {
   const result = clearApplicationCache();
   res.json({ success: true, ...result });
+});
+
+// Russian-language index (powers the "Язык" filter)
+router.get('/russian-index', requireAdmin, (_req, res) => {
+  res.json(russianLanguageIndexScheduler.getState());
+});
+
+router.post('/russian-index/refresh', requireAdmin, (req, res) => {
+  const deep = Boolean(req.body?.deep);
+  const state = russianLanguageIndexScheduler.getState();
+
+  if (state.isBuilding) {
+    return res.json({ started: false, alreadyRunning: true, state });
+  }
+
+  // The build can take a while (it scans the whole catalog), so run it in the
+  // background and let the admin poll the status endpoint.
+  russianLanguageIndexScheduler.runNow({ deep }).catch((err) => {
+    logger.error('Russian index manual build failed', { message: err.message });
+  });
+
+  res.json({ started: true, state: russianLanguageIndexScheduler.getState() });
 });
 
 // Scheduler settings
