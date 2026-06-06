@@ -208,6 +208,16 @@ async function deleteProductOverride(productId) {
   return { productId: id };
 }
 
+async function listSpecialOfferProductIds() {
+  const { rows } = await pool.query(
+    `SELECT product_id
+     FROM product_overrides
+     WHERE special_offer_url IS NOT NULL AND special_offer_url <> ''
+     ORDER BY updated_at DESC`,
+  );
+  return rows.map((row) => normalizeProductId(row.product_id)).filter(Boolean);
+}
+
 async function listSearchableProductOverrides() {
   const { rows } = await pool.query(
     `SELECT *
@@ -225,5 +235,6 @@ module.exports = {
   getProductOverride,
   listProductOverrides,
   listSearchableProductOverrides,
+  listSpecialOfferProductIds,
   upsertProductOverride,
 };

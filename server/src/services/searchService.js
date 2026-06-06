@@ -4,7 +4,7 @@ const { getProductsByIds } = require('./displayCatalogService');
 const { mapProducts, enrichProductsWithCatalogDetails } = require('../mappers/productMapper');
 const { mapRelatedProducts } = require('../mappers/relatedProductMapper');
 const { mapFilters, encodeFilters } = require('../mappers/filtersMapper');
-const { applyProductOverrides, listSearchableProductOverrides } = require('./productOverrideService');
+const { applyProductOverrides, listSearchableProductOverrides, listSpecialOfferProductIds } = require('./productOverrideService');
 const russianIndex = require('./russianLanguageIndexService');
 const config = require('../config');
 const cache = require('../utils/cache');
@@ -24,6 +24,7 @@ const DEFAULT_BROWSE_SORT = 'WishlistCountTotal desc';
 const SPECIAL_OFFERS_FILTER_KEY = 'SpecialOffers';
 const SPECIAL_OFFERS_FILTER_VALUE = 'Available';
 const RUSSIAN_INDEX_TOKEN_PREFIX = 'rulang:';
+const SPECIAL_OFFERS_TOKEN_PREFIX = 'specialoffers:';
 const VALID_LANGUAGE_MODES = new Set(['full_ru', 'ru_subtitles']);
 const KEYWORD_MATCH_TIER_OFFSET = 3;
 const SEARCH_MATCH_TIERS = {
@@ -81,7 +82,38 @@ async function search({
 
   // Fast path: a Russian-language-only browse is served from the precomputed index.
   if (isRussianIndexToken(encodedCT)) {
-    return serveRussianIndexPage({ offset: parseRussianIndexOffset(encodedCT), languageModes, specialOffersOnly });
+    return serveCuratedIdsPage({
+      ids: russianIndex.getServingIds(languageModes),
+      offset: parseCuratedOffset(encodedCT, RUSSIAN_INDEX_TOKEN_PREFIX),
+      tokenPrefix: RUSSIAN_INDEX_TOKEN_PREFIX,
+      languageModes,
+      specialOffersOnly: false,
+      applyIndexMode: true,
+    });
+  }
+
+  // Fast path: the "Спецпредложения" filter serves only games with a configured
+  // special offer (from product overrides), straight from that list.
+  if (isSpecialOffersToken(encodedCT)) {
+    return serveCuratedIdsPage({
+      ids: await listSpecialOfferProductIds(),
+      offset: parseCuratedOffset(encodedCT, SPECIAL_OFFERS_TOKEN_PREFIX),
+      tokenPrefix: SPECIAL_OFFERS_TOKEN_PREFIX,
+      languageModes,
+    });
+  }
+
+  const onlySpecialOffers = specialOffersOnly && !languageFilterActive && !query && !hasApiSideFilters(filters);
+  if (onlySpecialOffers) {
+    const ids = await listSpecialOfferProductIds();
+    if (countOnly) return countCuratedResults(ids);
+    return serveCuratedIdsPage({
+      ids,
+      offset: 0,
+      tokenPrefix: SPECIAL_OFFERS_TOKEN_PREFIX,
+      languageModes,
+      includeFilters: true,
+    });
   }
 
   const canUseRussianIndex = languageFilterActive
@@ -90,8 +122,17 @@ async function search({
     && russianIndex.isReady();
 
   if (canUseRussianIndex) {
-    if (countOnly) return countRussianIndexResults(languageModes);
-    return serveRussianIndexPage({ offset: 0, languageModes, specialOffersOnly, includeFilters: true });
+    const ids = russianIndex.getServingIds(languageModes);
+    if (countOnly) return countCuratedResults(ids);
+    return serveCuratedIdsPage({
+      ids,
+      offset: 0,
+      tokenPrefix: RUSSIAN_INDEX_TOKEN_PREFIX,
+      languageModes,
+      specialOffersOnly,
+      applyIndexMode: true,
+      includeFilters: true,
+    });
   }
 
   let raw;
@@ -828,17 +869,16 @@ function isRussianIndexToken(value) {
   return typeof value === 'string' && value.startsWith(RUSSIAN_INDEX_TOKEN_PREFIX);
 }
 
-function makeRussianIndexToken(offset) {
-  return `${RUSSIAN_INDEX_TOKEN_PREFIX}${offset}`;
+function isSpecialOffersToken(value) {
+  return typeof value === 'string' && value.startsWith(SPECIAL_OFFERS_TOKEN_PREFIX);
 }
 
-function parseRussianIndexOffset(token) {
-  const parsed = parseInt(String(token || '').slice(RUSSIAN_INDEX_TOKEN_PREFIX.length), 10);
+function parseCuratedOffset(token, prefix) {
+  const parsed = parseInt(String(token || '').slice(prefix.length), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-function countRussianIndexResults(languageModes) {
-  const ids = russianIndex.getServingIds(languageModes);
+function countCuratedResults(ids) {
   return {
     products: [],
     totalItems: ids.length,
@@ -850,8 +890,20 @@ function countRussianIndexResults(languageModes) {
   };
 }
 
-async function serveRussianIndexPage({ offset = 0, languageModes, specialOffersOnly, includeFilters = false }) {
-  const ids = russianIndex.getServingIds(languageModes);
+/**
+ * Serve a page of products from a precomputed list of product IDs (Russian-language
+ * index, or special-offer overrides). Paginated via an offset token. Fast: one
+ * display-catalog batch per page, exact total.
+ */
+async function serveCuratedIdsPage({
+  ids,
+  offset = 0,
+  tokenPrefix,
+  languageModes,
+  specialOffersOnly = false,
+  applyIndexMode = false,
+  includeFilters = false,
+}) {
   const pageSize = config.xbox.pageSize;
   const slice = ids.slice(offset, offset + pageSize);
   const nextOffset = offset + pageSize;
@@ -859,23 +911,25 @@ async function serveRussianIndexPage({ offset = 0, languageModes, specialOffersO
 
   let products = [];
   if (slice.length) {
-    const rawProducts = await getProductsByIds(slice, { allowPartial: true, context: 'russian-index-page' })
+    const rawProducts = await getProductsByIds(slice, { allowPartial: true, context: 'curated-ids-page' })
       .catch((err) => {
-        logger.warn('Russian index page fetch failed', { count: slice.length, message: err.message });
+        logger.warn('Curated ids page fetch failed', { count: slice.length, message: err.message });
         return [];
       });
     const mapped = mapRelatedProducts(rawProducts, {});
     await applyProductOverrides(mapped).catch(() => {});
-    for (const product of mapped) {
-      const mode = russianIndex.getModeForProduct(product.id);
-      if (mode) {
-        product.russianLanguageMode = mode;
-        product.hasRussianLanguage = true;
+    if (applyIndexMode) {
+      for (const product of mapped) {
+        const mode = russianIndex.getModeForProduct(product.id);
+        if (mode) {
+          product.russianLanguageMode = mode;
+          product.hasRussianLanguage = true;
+        }
       }
     }
     const order = new Map(slice.map((id, index) => [String(id).toUpperCase(), index]));
     products = applyPostFilters(mapped, {
-      languageMode: [...languageModes].join(','),
+      languageMode: languageModes ? [...languageModes].join(',') : '',
       specialOffersOnly,
     }).sort((a, b) => (
       (order.get(String(a.id).toUpperCase()) ?? 0) - (order.get(String(b.id).toUpperCase()) ?? 0)
@@ -901,7 +955,7 @@ async function serveRussianIndexPage({ offset = 0, languageModes, specialOffersO
     totalItems: ids.length,
     totalIsApproximate: true,
     totalPending: false,
-    encodedCT: hasMore ? makeRussianIndexToken(nextOffset) : null,
+    encodedCT: hasMore ? `${tokenPrefix}${nextOffset}` : null,
     filters,
     hasMorePages: hasMore,
   };
@@ -913,7 +967,8 @@ function applyPostFilters(products, { languageMode, specialOffersOnly }) {
     if (product.notAvailableSeparately) return false;
     if (product.price?.value === 0) return false;
     if (languageModes.size && !matchesLanguageModes(product, languageModes)) return false;
-    if (specialOffersOnly && !(product.price?.discountPercent > 0) && !product.specialOfferUrl) return false;
+    // "Спецпредложения": only games that actually have a configured special offer.
+    if (specialOffersOnly && !product.specialOfferUrl) return false;
     return true;
   });
 }

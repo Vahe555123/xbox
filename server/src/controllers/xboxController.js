@@ -16,6 +16,7 @@ const {
   isGameCurrencyProduct,
 } = require('../services/digisellerService');
 const topupCardService = require('../services/topupCardService');
+const { getPriceFilterRubBoundaries } = require('../services/priceRateService');
 const { buildCartPayment } = require('../services/cartPurchaseService');
 const {
   buildBuyerEmailForPayment,
@@ -1081,6 +1082,15 @@ function getHealth(_req, res) {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 }
 
+async function getPriceFilterRates(_req, res, next) {
+  try {
+    const data = await getPriceFilterRubBoundaries();
+    res.json({ success: true, ...data });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   searchXbox,
   getProductDetail,
@@ -1088,5 +1098,6 @@ module.exports = {
   createProductPurchase,
   createCartPurchase,
   getRelatedProducts,
+  getPriceFilterRates,
   getHealth,
 };

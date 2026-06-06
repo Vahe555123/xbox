@@ -10,9 +10,18 @@ const FILTER_ORDER = [
   'TechnicalFeatures',
   'IncludedInSubscription',
   'HandheldCompatibility',
-  'SpecialOffers',
 ];
 const AUTO_APPLY_DELAY_MS = 250;
+
+// Скидки / Бесплатно / Спецпредложения — shown as quick chips under the search
+// bar (PS-style); only one can be active at a time.
+const QUICK_CHIPS = [
+  { id: 'sale', label: 'Скидки', filterKey: 'Price', value: 'OnSale' },
+  { id: 'free', label: 'Бесплатно', filterKey: 'Price', value: 'Free' },
+  { id: 'special', label: 'Спецпредложения', filterKey: 'SpecialOffers', value: 'Available' },
+];
+// These values are surfaced as chips, so we hide them from the dropdown filters.
+const HIDDEN_PRICE_CHOICES = new Set(['OnSale', 'Free']);
 
 const FILTER_TITLES = {
   orderby: 'Сортировка',
@@ -110,15 +119,28 @@ const CUSTOM_FILTERS = {
       { id: 'ru_subtitles', title: 'Русские субтитры', isLabelOnly: false },
     ],
   },
-  SpecialOffers: {
-    id: 'SpecialOffers',
-    title: 'Спецпредложения',
-    isMultiSelect: true,
-    choices: [
-      { id: 'Available', title: 'Есть спецпредложение', isLabelOnly: false },
-    ],
-  },
 };
+
+function formatRubShort(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return numeric.toLocaleString('ru-RU');
+}
+
+// Convert a USD price-bucket id to a rubles label using the best-rate boundaries.
+function getPriceRubLabel(choiceId, boundaries) {
+  if (!boundaries) return null;
+  const r = (usd) => formatRubShort(boundaries[usd]);
+  switch (choiceId) {
+    case '<$5': return r(5) ? `До ${r(5)} ₽` : null;
+    case '$5-$10': return r(5) && r(10) ? `${r(5)} – ${r(10)} ₽` : null;
+    case '$10-$20': return r(10) && r(20) ? `${r(10)} – ${r(20)} ₽` : null;
+    case '$20-$40': return r(20) && r(40) ? `${r(20)} – ${r(40)} ₽` : null;
+    case '$40-$60': return r(40) && r(60) ? `${r(40)} – ${r(60)} ₽` : null;
+    case '$60+': return r(60) ? `От ${r(60)} ₽` : null;
+    default: return null;
+  }
+}
 
 function cloneFilters(filters) {
   return Object.fromEntries(
@@ -177,6 +199,7 @@ export default function FilterPanel({
   total,
   isOpen,
   onToggle,
+  priceRubBoundaries,
 }) {
   const [internalExpanded, setInternalExpanded] = useState(true);
   const expanded = isOpen !== undefined ? isOpen : internalExpanded;
@@ -270,11 +293,7 @@ export default function FilterPanel({
     });
   };
 
-  const applyFilters = () => {
-    onApply({
-      filters: draftFilters,
-      sort: draftSort,
-    });
+  const closePanel = () => {
     if (onToggle) {
       onToggle(false);
     } else {
@@ -282,12 +301,55 @@ export default function FilterPanel({
     }
   };
 
+  const applyFilters = () => {
+    onApply({
+      filters: draftFilters,
+      sort: draftSort,
+    });
+    closePanel();
+  };
+
   const resetFilters = () => {
+    // Note: do NOT reset draftSort to '' here — the canonical default sort is
+    // resolved from the URL after onClear(); forcing '' caused an apply loop.
     setDraftFilters({});
-    setDraftSort('');
     setDraftQuery('');
     onClear();
+    closePanel();
   };
+
+  const isChipActive = (chip) => (draftFilters[chip.filterKey] || []).includes(chip.value);
+
+  const toggleChip = (chip) => {
+    const wasActive = isChipActive(chip);
+    setDraftFilters((prev) => {
+      const next = cloneFilters(prev);
+      // Only one quick chip can be active at a time — clear all chip values first.
+      for (const item of QUICK_CHIPS) {
+        const remaining = (next[item.filterKey] || []).filter((value) => value !== item.value);
+        if (remaining.length > 0) next[item.filterKey] = remaining;
+        else delete next[item.filterKey];
+      }
+      if (!wasActive) {
+        next[chip.filterKey] = [...(next[chip.filterKey] || []), chip.value];
+      }
+      return next;
+    });
+  };
+
+  const choiceTitle = (key, choice) => {
+    if (key === 'Price') {
+      const rubLabel = getPriceRubLabel(choice.id, priceRubBoundaries);
+      if (rubLabel) return rubLabel;
+    }
+    return getChoiceTitle(key, choice);
+  };
+
+  const getDropdownChoices = (key, filter) => (
+    key === 'Price'
+      ? filter.choices.filter((choice) => !HIDDEN_PRICE_CHOICES.has(choice.id))
+      : filter.choices
+  );
 
   return (
     <section className={`filter-panel ${expanded ? 'filter-panel-open' : ''}`}>
@@ -338,10 +400,6 @@ export default function FilterPanel({
           </label>
         )}
 
-        <div className="filter-count-pill">
-          <strong>{Number(total || 0).toLocaleString('ru-RU')}</strong> товаров
-        </div>
-
         <button
           className="filter-toggle-btn"
           type="button"
@@ -359,6 +417,26 @@ export default function FilterPanel({
         </button>
       </div>
 
+      <div className="filter-quick-row">
+        <div className="filter-quick-chips">
+          {QUICK_CHIPS.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              className={`filter-quick-chip ${isChipActive(chip) ? 'active' : ''}`}
+              onClick={() => toggleChip(chip)}
+              aria-pressed={isChipActive(chip)}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="filter-count-pill">
+          <strong>{Number(total || 0).toLocaleString('ru-RU')}</strong> товаров
+        </div>
+      </div>
+
       {expanded && (
         <div className="filter-expanded">
           <div className="filter-grid">
@@ -366,13 +444,16 @@ export default function FilterPanel({
               const filter = filters?.[key] || CUSTOM_FILTERS[key];
               if (!filter) return null;
 
+              const choices = getDropdownChoices(key, filter);
+              if (!choices.some((choice) => !choice.isLabelOnly)) return null;
+
               return (
                 <FilterDropdown
                   key={key}
                   title={getFilterTitle(key, filter.title)}
-                  choices={filter.choices}
+                  choices={choices}
                   activeValues={draftFilters[key] || []}
-                  getTitle={(choice) => getChoiceTitle(key, choice)}
+                  getTitle={(choice) => choiceTitle(key, choice)}
                   onToggle={(valueId) => updateDraftFilter(key, valueId)}
                 />
               );

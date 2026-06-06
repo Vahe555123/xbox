@@ -13,7 +13,7 @@ import { useFavorites } from './context/FavoritesContext';
 import { useCart } from './context/CartContext';
 import CartPage from './pages/CartPage';
 import { useSearch } from './hooks/useSearch';
-import { consumeOAuthSession, checkAdmin } from './services/api';
+import { consumeOAuthSession, checkAdmin, fetchPriceFilterRates } from './services/api';
 
 const FILTER_QUERY_KEYS = [
   'PlayWith',
@@ -27,7 +27,6 @@ const FILTER_QUERY_KEYS = [
   'SpecialOffers',
 ];
 
-const DEFAULT_BROWSE_SORT = 'WishlistCountTotal desc';
 const DEALS_FILTER_KEY = 'Price';
 const DEALS_FILTER_VALUE = 'OnSale';
 
@@ -58,13 +57,11 @@ function getParamValues(params, key) {
   return fallbackValue ? parseFilterValues(fallbackValue) : [];
 }
 
-function resolveDefaultCatalogSort({ query, sort }) {
-  const normalizedQuery = String(query || '').trim();
-  const normalizedSort = String(sort || '').trim();
-
-  if (normalizedSort) return normalizedSort;
-  if (normalizedQuery) return '';
-  return DEFAULT_BROWSE_SORT;
+function resolveDefaultCatalogSort({ sort }) {
+  // Keep '' as the canonical "default" sort on the client. The server applies the
+  // real browse default (most-wishlisted) when no sort is sent. Materializing a
+  // concrete default here desynced the sort dropdown and caused an apply loop.
+  return String(sort || '').trim();
 }
 
 function readCatalogState(searchString = '') {
@@ -112,13 +109,13 @@ function buildCatalogUrl({ query = '', sort = '', filters = {} } = {}) {
   const normalizedFilters = cloneFilters(filters);
   const normalizedQuery = String(query || '').trim();
   const normalizedSort = String(sort || '').trim();
-  const effectiveSort = resolveDefaultCatalogSort({ query: normalizedQuery, sort: normalizedSort });
+  const effectiveSort = resolveDefaultCatalogSort({ sort: normalizedSort });
 
   if (normalizedQuery) {
     params.set('q', normalizedQuery);
   }
 
-  if (effectiveSort && !(effectiveSort === DEFAULT_BROWSE_SORT && !normalizedQuery)) {
+  if (effectiveSort) {
     params.set('sort', effectiveSort);
   }
 
@@ -221,6 +218,7 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [headerQuery, setHeaderQuery] = useState('');
+  const [priceRubBoundaries, setPriceRubBoundaries] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   const isCatalogRoute = location.pathname === '/';
@@ -252,6 +250,28 @@ export default function App() {
     if (!isCatalogRoute) return;
     searchState.replaceSearchState(urlCatalogState);
   }, [isCatalogRoute, searchState.replaceSearchState, urlCatalogState]);
+
+  // Load best-rate ruble boundaries for the "Цена" filter labels.
+  useEffect(() => {
+    let active = true;
+    fetchPriceFilterRates()
+      .then((boundaries) => { if (active) setPriceRubBoundaries(boundaries); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  // Collapse the expanded filter while scrolling down (PS-style).
+  useEffect(() => {
+    if (!isCatalogRoute) return undefined;
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y > lastY + 12 && y > 220) setFilterOpen(false);
+      lastY = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [isCatalogRoute]);
 
   const navigateToCatalog = (nextState) => {
     navigate(buildCatalogUrl(nextState));
@@ -561,19 +581,22 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        <FilterPanel
-          filters={searchState.filterOptions}
-          activeFilters={searchState.filters}
-          onApply={handleGlobalApplyFilters}
-          onClear={handleGlobalClearFilters}
-          query={searchState.query}
-          onQueryChange={handleGlobalQueryChange}
-          sort={searchState.sort}
-          sortFilter={sortFilter}
-          total={searchState.total}
-          isOpen={filterOpen}
-          onToggle={setFilterOpen}
-        />
+        {isCatalogRoute && (
+          <FilterPanel
+            filters={searchState.filterOptions}
+            activeFilters={searchState.filters}
+            onApply={handleGlobalApplyFilters}
+            onClear={handleGlobalClearFilters}
+            query={searchState.query}
+            onQueryChange={handleGlobalQueryChange}
+            sort={searchState.sort}
+            sortFilter={sortFilter}
+            total={searchState.total}
+            isOpen={filterOpen}
+            onToggle={setFilterOpen}
+            priceRubBoundaries={priceRubBoundaries}
+          />
+        )}
 
         <Routes>
           <Route

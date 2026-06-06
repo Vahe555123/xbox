@@ -42,6 +42,11 @@ export async function searchProducts({ q, sort, filters, encodedCT, countOnly, s
   return data;
 }
 
+export async function fetchPriceFilterRates() {
+  const { data } = await api.get('/xbox/price-rate');
+  return data?.boundaries || {};
+}
+
 export async function fetchProductDetail(productId) {
   const { data } = await api.get(`/xbox/product/${encodeURIComponent(productId)}`);
   return data;

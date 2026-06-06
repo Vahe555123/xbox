@@ -717,8 +717,44 @@ img {
 .filter-quick-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.65rem;
-  margin-bottom: 0.85rem;
+  margin-top: 0.85rem;
+}
+
+.filter-quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.filter-quick-chip {
+  min-height: 42px;
+  padding: 0 1.05rem;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 220, 255, 0.16);
+  background: rgba(27, 37, 52, 0.72);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+
+.filter-quick-chip:hover {
+  border-color: rgba(125, 220, 255, 0.45);
+  color: #fff;
+}
+
+.filter-quick-chip.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.filter-quick-row .filter-count-pill {
+  height: 42px;
 }
 
 .filter-toggle-check {

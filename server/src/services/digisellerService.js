@@ -497,6 +497,21 @@ async function getRubPriceForProduct(product, digisellerId, mode = RATE_MODE_OPL
   return fetchRubPrice(digisellerId, usdValue, { optionXml: rateMode.optionXml });
 }
 
+/**
+ * Estimate the RUB cost of a given USD amount for a payment method, using the
+ * latest probed rate table. Returns a numeric RUB value (or null). Used to label
+ * the "Цена" filter buckets in rubles. `mode`: 'oplata' | 'key_activation'.
+ */
+async function getUsdToRubEstimate(usdValue, mode = RATE_MODE_OPLATA) {
+  const usd = Number(usdValue);
+  if (!Number.isFinite(usd) || usd <= 0) return null;
+  const rateMode = getRateMode(mode);
+  if (!rateMode.digisellerId) return null;
+  const samples = await getLatestRateSamples(rateMode.digisellerId, rateMode.id).catch(() => []);
+  const estimated = estimateRubFromSamples(samples, usd);
+  return estimated?.value ?? null;
+}
+
 async function getKeyActivationRubPriceForProduct(product) {
   if (!config.digiseller.keyActivationProductId || isGameCurrencyProduct(product)) return null;
   return getRubPriceForProduct(
@@ -909,6 +924,7 @@ module.exports = {
   getMappingsByProductIds,
   fetchRubPrice,
   getRubPriceForProduct,
+  getUsdToRubEstimate,
   getKeyActivationRubPriceForProduct,
   createPurchasePaymentUrl,
   enrichProductWithRub,
