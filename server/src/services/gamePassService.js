@@ -6,10 +6,11 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
 let cache = { data: null, expiresAt: 0 };
 
-// Returns the text content of the FIRST matching tag (leaf-level only)
+// Returns the text content of the FIRST matching tag (handles CDATA and plain text)
 function leaf(xml, tag) {
-  const m = xml.match(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`));
-  return m ? m[1].trim() : '';
+  const m = xml.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([^<]*))</${tag}>`));
+  if (!m) return '';
+  return (m[1] !== undefined ? m[1] : m[2] || '').trim();
 }
 
 // Returns inner contents of ALL matching top-level tags (handles nested tags correctly)
