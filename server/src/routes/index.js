@@ -5,6 +5,7 @@ const favoritesRoutes = require('./favoritesRoutes');
 const adminRoutes = require('./adminRoutes');
 const supportRoutes = require('./supportRoutes');
 const siteContentRoutes = require('./siteContentRoutes');
+const gamePassRoutes = require('./gamePassRoutes');
 const { getHealth } = require('../controllers/xboxController');
 
 const router = Router();
@@ -16,5 +17,6 @@ router.use('/favorites', favoritesRoutes);
 router.use('/admin', adminRoutes);
 router.use('/support-links', supportRoutes);
 router.use('/site/content', siteContentRoutes);
+router.use('/gamepass', gamePassRoutes);
 
 module.exports = router;

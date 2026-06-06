@@ -8218,3 +8218,249 @@ body.mobile-menu-open {
   align-items: center;
 }
 .cart-modal-total-row--na strong { color: var(--text-muted); font-weight: 600; }
+
+/* ── Game Pass Modal ── */
+.gp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  backdrop-filter: blur(4px);
+}
+
+.gp-modal {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 18px;
+  background: linear-gradient(160deg, #0d1f35 0%, #0a1525 100%);
+  border: 1px solid rgba(125, 220, 255, 0.15);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  padding: 1.8rem 1.8rem 1.4rem;
+}
+
+.gp-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition), color var(--transition);
+}
+
+.gp-close:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+
+.gp-header { margin-bottom: 1.4rem; }
+
+.gp-badge {
+  display: inline-block;
+  padding: 0.2rem 0.7rem;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #107c10, #0ea50e);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.6rem;
+}
+
+.gp-title {
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin: 0 0 0.4rem;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.gp-subtitle {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.gp-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 1.5rem 0;
+}
+
+.gp-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(125, 220, 255, 0.2);
+  border-top-color: #7ddcff;
+  border-radius: 50%;
+  animation: gp-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes gp-spin { to { transform: rotate(360deg); } }
+
+.gp-error {
+  padding: 1rem;
+  border-radius: 10px;
+  background: rgba(216, 59, 1, 0.1);
+  border: 1px solid rgba(216, 59, 1, 0.2);
+  color: #ff9f7a;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.gp-error-link {
+  display: inline-block;
+  margin-top: 0.5rem;
+  color: #7ddcff;
+  font-weight: 600;
+}
+
+.gp-options { display: flex; flex-direction: column; gap: 1.2rem; }
+
+.gp-option-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 0.55rem;
+}
+
+.gp-radio-list { display: flex; flex-direction: column; gap: 0.3rem; }
+
+.gp-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.gp-radio-row:hover { border-color: rgba(125, 220, 255, 0.25); background: rgba(125, 220, 255, 0.05); }
+
+.gp-radio-row.selected {
+  border-color: rgba(125, 220, 255, 0.45);
+  background: rgba(125, 220, 255, 0.08);
+}
+
+.gp-radio-row input[type="radio"] { accent-color: #7ddcff; flex-shrink: 0; }
+
+.gp-radio-text { flex: 1; font-size: 0.9rem; color: var(--text); }
+
+.gp-radio-price {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #7ddcff;
+  white-space: nowrap;
+}
+
+.gp-checkbox-list { display: flex; flex-direction: column; gap: 0.3rem; }
+
+.gp-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.gp-checkbox-row:hover { border-color: rgba(125, 220, 255, 0.25); background: rgba(125, 220, 255, 0.05); }
+
+.gp-checkbox-row.selected {
+  border-color: rgba(125, 220, 255, 0.45);
+  background: rgba(125, 220, 255, 0.08);
+}
+
+.gp-checkbox-row input[type="checkbox"] { accent-color: #7ddcff; flex-shrink: 0; }
+
+.gp-checkbox-text { flex: 1; font-size: 0.9rem; color: var(--text); }
+
+.gp-checkbox-add {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #a3e8a0;
+  white-space: nowrap;
+}
+
+.gp-footer {
+  margin-top: 1.4rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.gp-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 1rem;
+}
+
+.gp-total span { font-size: 0.9rem; color: var(--text-muted); }
+
+.gp-total strong {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.gp-buy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.9rem 1.5rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #107c10, #15a515);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  text-decoration: none;
+  letter-spacing: 0.01em;
+  transition: filter 0.15s, transform 0.15s;
+  margin-bottom: 0.75rem;
+}
+
+.gp-buy-btn:hover { filter: brightness(1.12); transform: translateY(-1px); }
+
+.gp-pay-note {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.gp-pay-note strong { color: rgba(255, 255, 255, 0.6); }
+
+@media (max-width: 480px) {
+  .gp-modal { padding: 1.4rem 1.2rem 1rem; border-radius: 14px; }
+  .gp-title { font-size: 1.2rem; }
+}

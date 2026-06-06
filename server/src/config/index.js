@@ -110,6 +110,10 @@ const config = {
     maxUrl: process.env.SUPPORT_MAX_URL || '',
   },
 
+  gamePass: {
+    productId: parseInt(process.env.GAMEPASS_PRODUCT_ID, 10) || 4687274,
+  },
+
   digiseller: {
     sellerId: process.env.DIGISELLER_SELLER_ID || '1279033',
     payBaseUrl: process.env.DIGISELLER_PAY_BASE_URL || 'https://www.oplata.info/asp2/pay_wm.asp',

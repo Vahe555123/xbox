@@ -135,6 +135,11 @@ export async function linkTelegramAccount(payload) {
   return data;
 }
 
+export async function fetchGamePass() {
+  const { data } = await api.get('/gamepass');
+  return data;
+}
+
 export function getOAuthLinkUrl(provider) {
   const base = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
   return `${base}/auth/oauth/${encodeURIComponent(provider)}/link`;
