@@ -1683,20 +1683,20 @@ img {
   margin: 0;
   padding: 0 0 2.5rem;
   display: grid;
-  gap: 1.25rem;
+  gap: 0.5rem;
 }
 
 .favorites-title {
   font-size: clamp(1.5rem, 3vw, 2rem);
   font-weight: 700;
-  margin: 0 0 1rem;
+  margin: 0 0 0.35rem;
   letter-spacing: -0.02em;
 }
 
 .favorites-count-bar {
   width: 100%;
-  padding: 0.85rem 1.1rem;
-  margin-bottom: 1.5rem;
+  padding: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--border);
@@ -6574,6 +6574,19 @@ code {
   margin-top: 0.75rem;
 }
 
+.admin-help-items > .admin-btn {
+  align-self: flex-start;
+  height: 36px;
+  padding: 0 1.1rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.admin-help-items > .admin-btn:hover {
+  background: rgba(255, 255, 255, 0.17);
+}
+
 .admin-help-item {
   display: flex;
   gap: 0.7rem;
@@ -8053,9 +8066,9 @@ body.mobile-menu-open {
 .favorites-toolbar {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.75rem;
 }
 
 .favorites-sale-toggle {
@@ -8090,6 +8103,11 @@ body.mobile-menu-open {
 .favorites-sort-select:focus {
   outline: none;
   border-color: rgba(125, 220, 255, 0.4);
+}
+
+.favorites-sort-select option {
+  background: #0f1923;
+  color: #fff;
 }
 
 /* ── Profile providers (Feature 17) ── */

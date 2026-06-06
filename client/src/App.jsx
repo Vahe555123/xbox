@@ -263,7 +263,6 @@ export default function App() {
 
   // Collapse the expanded filter while scrolling down (PS-style).
   useEffect(() => {
-    if (!isCatalogRoute) return undefined;
     let lastY = window.scrollY;
     const onScroll = () => {
       const y = window.scrollY;
@@ -272,7 +271,8 @@ export default function App() {
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [isCatalogRoute]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const navigateToCatalog = (nextState) => {
     navigate(buildCatalogUrl(nextState));
@@ -450,8 +450,7 @@ export default function App() {
             </Link>
           </h1>
 
-          {isCatalogRoute && (
-            <div className="header-mobile-catalog-row">
+          <div className="header-mobile-catalog-row">
               <label className="header-mobile-search-label" aria-label="Поиск по каталогу">
                 <svg className="header-mobile-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <circle cx="11" cy="11" r="8" />
@@ -481,7 +480,6 @@ export default function App() {
                 </svg>
               </button>
             </div>
-          )}
 
           <button
             type="button"
@@ -588,23 +586,21 @@ export default function App() {
         </div>
       </header>
 
-      <main className={`app-main${isCatalogRoute ? ' app-main--catalog' : ''}`}>
-        {isCatalogRoute && (
-          <FilterPanel
-            filters={searchState.filterOptions}
-            activeFilters={searchState.filters}
-            onApply={handleGlobalApplyFilters}
-            onClear={handleGlobalClearFilters}
-            query={searchState.query}
-            onQueryChange={handleGlobalQueryChange}
-            sort={searchState.sort}
-            sortFilter={sortFilter}
-            total={searchState.total}
-            isOpen={filterOpen}
-            onToggle={setFilterOpen}
-            priceRubBoundaries={priceRubBoundaries}
-          />
-        )}
+      <main className="app-main app-main--catalog">
+        <FilterPanel
+          filters={searchState.filterOptions}
+          activeFilters={searchState.filters}
+          onApply={handleGlobalApplyFilters}
+          onClear={handleGlobalClearFilters}
+          query={searchState.query}
+          onQueryChange={handleGlobalQueryChange}
+          sort={searchState.sort}
+          sortFilter={sortFilter}
+          total={isCatalogRoute ? searchState.total : null}
+          isOpen={filterOpen}
+          onToggle={setFilterOpen}
+          priceRubBoundaries={priceRubBoundaries}
+        />
 
         <Routes>
           <Route
