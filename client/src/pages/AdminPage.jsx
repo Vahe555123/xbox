@@ -217,6 +217,68 @@ const DIG_RATE_MODES = [
   },
 ];
 
+function RichTextarea({ value, onChange, rows = 3, placeholder = '' }) {
+  const ref = React.useRef(null);
+  const [linkMode, setLinkMode] = React.useState(false);
+  const [linkUrl, setLinkUrl] = React.useState('');
+  const [savedSel, setSavedSel] = React.useState({ start: 0, end: 0 });
+
+  const openLink = () => {
+    const el = ref.current;
+    setSavedSel({ start: el?.selectionStart ?? value.length, end: el?.selectionEnd ?? value.length });
+    setLinkUrl('');
+    setLinkMode(true);
+  };
+
+  const insertLink = () => {
+    const url = linkUrl.trim();
+    if (!url) { setLinkMode(false); return; }
+    const { start, end } = savedSel;
+    const selected = value.slice(start, end);
+    const insert = `[${selected || 'текст'}](${url})`;
+    const next = value.slice(0, start) + insert + value.slice(end);
+    onChange({ target: { value: next } });
+    setLinkMode(false);
+    requestAnimationFrame(() => {
+      if (ref.current) {
+        const pos = start + insert.length;
+        ref.current.setSelectionRange(pos, pos);
+        ref.current.focus();
+      }
+    });
+  };
+
+  return (
+    <div className="admin-rich-wrap">
+      <textarea ref={ref} value={value} onChange={onChange} rows={rows} placeholder={placeholder} />
+      <div className="admin-rich-bar">
+        {linkMode ? (
+          <>
+            <input
+              autoFocus
+              type="text"
+              className="admin-rich-url-input"
+              placeholder="https://..."
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); insertLink(); }
+                if (e.key === 'Escape') setLinkMode(false);
+              }}
+            />
+            <button type="button" className="admin-btn admin-btn-sm" onClick={insertLink}>ОК</button>
+            <button type="button" className="admin-btn admin-btn-sm" onClick={() => setLinkMode(false)}>✕</button>
+          </>
+        ) : (
+          <button type="button" className="admin-rich-link-btn" onClick={openLink} title="Выделите слово и нажмите, чтобы добавить ссылку">
+            🔗 Ссылка
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage({ currentUser, onLoginClick }) {
   const navigate = useNavigate();
   const [authorized, setAuthorized] = useState(null); // null=loading, true/false
@@ -1492,7 +1554,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
                 <label className="admin-field">
                   <span>Подзаголовок</span>
-                  <textarea
+                  <RichTextarea
                     value={helpContentForm.subtitle}
                     onChange={(e) => setHelpContentForm((current) => ({ ...current, subtitle: e.target.value }))}
                     rows={5}
@@ -1522,7 +1584,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
                 <label className="admin-field">
                   <span>Описание поддержки</span>
-                  <textarea
+                  <RichTextarea
                     value={helpContentForm.supportDescription}
                     onChange={(e) => setHelpContentForm((current) => ({ ...current, supportDescription: e.target.value }))}
                     rows={4}
@@ -1559,7 +1621,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
                 <label className="admin-field">
                   <span>Описание блока покупки</span>
-                  <textarea
+                  <RichTextarea
                     value={helpContentForm.purchasesDescription}
                     onChange={(e) => setHelpContentForm((current) => ({ ...current, purchasesDescription: e.target.value }))}
                     rows={4}
@@ -1605,8 +1667,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                         return { ...cur, steps };
                       })}
                     />
-                    <textarea
-                      placeholder="Описание шага (поддерживает [текст](url))"
+                    <RichTextarea
+                      placeholder="Описание шага"
                       rows={2}
                       value={step.body}
                       onChange={(e) => setHelpContentForm((cur) => {
@@ -1652,8 +1714,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                         return { ...cur, faqItems };
                       })}
                     />
-                    <textarea
-                      placeholder="Ответ (поддерживает [текст](url))"
+                    <RichTextarea
+                      placeholder="Ответ"
                       rows={3}
                       value={item.answer}
                       onChange={(e) => setHelpContentForm((cur) => {

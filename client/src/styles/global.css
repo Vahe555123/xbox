@@ -6644,6 +6644,66 @@ code {
   color: #fff;
 }
 
+/* ── RichTextarea (link helper) ── */
+.admin-rich-wrap {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.admin-rich-wrap textarea {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-bottom: 0;
+}
+
+.admin-rich-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  min-height: 32px;
+}
+
+.admin-rich-link-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  line-height: 1.4;
+  transition: background 0.15s, color 0.15s;
+}
+
+.admin-rich-link-btn:hover {
+  background: rgba(125, 220, 255, 0.12);
+  color: #7ddcff;
+}
+
+.admin-rich-url-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.82rem;
+  min-width: 0;
+}
+
+.admin-rich-url-input::placeholder { color: rgba(255,255,255,0.35); }
+.admin-rich-url-input:focus { outline: none; border-color: rgba(125,220,255,0.45); }
+
+.admin-help-item-fields .admin-rich-wrap textarea {
+  border-radius: 6px 6px 0 0;
+}
+
 .admin-scheduler-action {
   display: flex;
   align-items: center;
