@@ -74,6 +74,7 @@ async function search({
   const languageModes = parseLanguageModes(languageMode);
   const languageFilterActive = languageModes.size > 0;
   const specialOffersOnly = isSpecialOfferFilterActive(filters);
+  const freeOnly = isFreeFilterActive(filters);
 
   if (isRankedSearchToken(encodedCT)) {
     const buffered = await readRankedSearchBuffer(encodedCT);
@@ -144,6 +145,7 @@ async function search({
         languageMode,
         channelId,
         specialOffersOnly,
+        freeOnly,
       });
     }
 
@@ -179,6 +181,7 @@ async function search({
       channelId,
       languageMode,
       specialOffersOnly,
+      freeOnly,
     });
   }
 
@@ -194,6 +197,7 @@ async function search({
       channelId,
       languageMode,
       specialOffersOnly,
+      freeOnly,
     });
 
     rawProducts = collected.rawProducts;
@@ -203,10 +207,10 @@ async function search({
   const products = mapProducts(rawProducts);
   const enrichedProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(products)),
-    { languageMode, specialOffersOnly },
+    { languageMode, specialOffersOnly, freeOnly },
   );
   const extraKeywordProducts = query
-    ? await loadOverrideKeywordProducts(query, enrichedProducts, { languageMode, specialOffersOnly })
+    ? await loadOverrideKeywordProducts(query, enrichedProducts, { languageMode, specialOffersOnly, freeOnly })
     : [];
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)
@@ -235,6 +239,7 @@ async function searchWithRelevanceRerank({
   languageMode,
   channelId,
   specialOffersOnly,
+  freeOnly,
 }) {
   const collectedRawProducts = [];
   const queryVariants = getSearchQueryVariants(query);
@@ -269,10 +274,12 @@ async function searchWithRelevanceRerank({
   const enrichedProducts = applyPostFilters(await applyProductOverrides(await enrichProducts(mappedProducts)), {
     languageMode,
     specialOffersOnly,
+    freeOnly,
   });
   const extraKeywordProducts = await loadOverrideKeywordProducts(query, enrichedProducts, {
     languageMode,
     specialOffersOnly,
+    freeOnly,
   });
   const rankedProducts = rankProductsBySearchRelevance(
     mergeProductsById(enrichedProducts, extraKeywordProducts),
@@ -460,7 +467,7 @@ function bestRawSearchMatchTier(rawProducts, query) {
   ), SEARCH_MATCH_TIERS.NONE);
 }
 
-async function loadOverrideKeywordProducts(query, existingProducts, { languageMode, specialOffersOnly }) {
+async function loadOverrideKeywordProducts(query, existingProducts, { languageMode, specialOffersOnly, freeOnly }) {
   const overrides = await listSearchableProductOverrides();
   if (!overrides.length) return [];
 
@@ -503,7 +510,7 @@ async function loadOverrideKeywordProducts(query, existingProducts, { languageMo
   const mappedProducts = mapRelatedProducts(rawProducts, {});
   const enrichedProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(mappedProducts)),
-    { languageMode, specialOffersOnly },
+    { languageMode, specialOffersOnly, freeOnly },
   );
   const productsById = new Map(
     enrichedProducts.map((product) => [String(product?.id || '').toUpperCase(), product]),
@@ -758,6 +765,7 @@ async function collectRawProductsForLanguage({
   channelId,
   languageMode,
   specialOffersOnly,
+  freeOnly,
 }) {
   const targetCount = getLanguageFilterTargetCount();
   let collectedRawProducts = [...rawProducts];
@@ -765,7 +773,7 @@ async function collectRawProductsForLanguage({
   let attempts = 0;
 
   while (
-    await countLanguageFilteredProducts(collectedRawProducts, languageMode, specialOffersOnly) < targetCount
+    await countLanguageFilteredProducts(collectedRawProducts, languageMode, specialOffersOnly, freeOnly) < targetCount
     && collectedNextEncodedCT
     && attempts < LANGUAGE_FILTER_PREFETCH_MAX_PAGES
   ) {
@@ -826,6 +834,7 @@ async function countFilteredSearchResults({
   channelId,
   languageMode,
   specialOffersOnly,
+  freeOnly,
 }) {
   const collected = await collectAllCatalogPages({
     query,
@@ -838,10 +847,10 @@ async function countFilteredSearchResults({
   const mappedProducts = mapProducts(dedupeRawProducts(collected.rawProducts));
   const filteredProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(mappedProducts)),
-    { languageMode, specialOffersOnly },
+    { languageMode, specialOffersOnly, freeOnly },
   );
   const extraKeywordProducts = query
-    ? await loadOverrideKeywordProducts(query, filteredProducts, { languageMode, specialOffersOnly })
+    ? await loadOverrideKeywordProducts(query, filteredProducts, { languageMode, specialOffersOnly, freeOnly })
     : [];
   const mergedProducts = mergeProductsById(filteredProducts, extraKeywordProducts);
 
@@ -856,11 +865,11 @@ async function countFilteredSearchResults({
   };
 }
 
-async function countLanguageFilteredProducts(rawProducts, languageMode, specialOffersOnly = false) {
+async function countLanguageFilteredProducts(rawProducts, languageMode, specialOffersOnly = false, freeOnly = false) {
   const mappedProducts = mapProducts(dedupeRawProducts(rawProducts));
   const filteredProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(mappedProducts)),
-    { languageMode, specialOffersOnly },
+    { languageMode, specialOffersOnly, freeOnly },
   );
   return filteredProducts.length;
 }
@@ -901,6 +910,7 @@ async function serveCuratedIdsPage({
   tokenPrefix,
   languageModes,
   specialOffersOnly = false,
+  freeOnly = false,
   applyIndexMode = false,
   includeFilters = false,
 }) {
@@ -931,6 +941,7 @@ async function serveCuratedIdsPage({
     products = applyPostFilters(mapped, {
       languageMode: languageModes ? [...languageModes].join(',') : '',
       specialOffersOnly,
+      freeOnly,
     }).sort((a, b) => (
       (order.get(String(a.id).toUpperCase()) ?? 0) - (order.get(String(b.id).toUpperCase()) ?? 0)
     ));
@@ -961,11 +972,13 @@ async function serveCuratedIdsPage({
   };
 }
 
-function applyPostFilters(products, { languageMode, specialOffersOnly }) {
+function applyPostFilters(products, { languageMode, specialOffersOnly, freeOnly = false }) {
   const languageModes = parseLanguageModes(languageMode);
   return products.filter((product) => {
     if (product.notAvailableSeparately) return false;
-    if (product.price?.value === 0) return false;
+    // Free games are hidden from the catalog by default, but shown when the
+    // "Бесплатно" filter is active.
+    if (product.price?.value === 0 && !freeOnly) return false;
     if (languageModes.size && !matchesLanguageModes(product, languageModes)) return false;
     // "Спецпредложения": only games that actually have a configured special offer.
     if (specialOffersOnly && !product.specialOfferUrl) return false;
@@ -1046,6 +1059,10 @@ function buildEncodedFilters(filters, sort) {
 
 function isSpecialOfferFilterActive(filters) {
   return Boolean(filters?.[SPECIAL_OFFERS_FILTER_KEY]?.includes(SPECIAL_OFFERS_FILTER_VALUE));
+}
+
+function isFreeFilterActive(filters) {
+  return Boolean(filters?.Price?.includes('Free'));
 }
 
 function mergeProductsById(...groups) {
