@@ -417,28 +417,30 @@ export default function FilterPanel({
         </button>
       </div>
 
-      <div className="filter-quick-row">
-        <div className="filter-quick-chips">
-          {QUICK_CHIPS.map((chip) => (
-            <button
-              key={chip.id}
-              type="button"
-              className={`filter-quick-chip ${isChipActive(chip) ? 'active' : ''}`}
-              onClick={() => toggleChip(chip)}
-              aria-pressed={isChipActive(chip)}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="filter-count-pill">
-          <strong>{Number(total || 0).toLocaleString('ru-RU')}</strong> товаров
-        </div>
-      </div>
-
       {expanded && (
         <div className="filter-expanded">
+          <div className="filter-quick-row">
+            <div className="filter-quick-chips">
+              {QUICK_CHIPS.map((chip) => (
+                <label
+                  key={chip.id}
+                  className={`filter-toggle-check ${isChipActive(chip) ? 'active' : ''}`}
+                >
+                  <span>{chip.label}</span>
+                  <input
+                    type="checkbox"
+                    checked={isChipActive(chip)}
+                    onChange={() => toggleChip(chip)}
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="filter-count-pill">
+              <strong>{Number(total || 0).toLocaleString('ru-RU')}</strong> товаров
+            </div>
+          </div>
+
           <div className="filter-grid">
             {filterKeys.map((key) => {
               const filter = filters?.[key] || CUSTOM_FILTERS[key];

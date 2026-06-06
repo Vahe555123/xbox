@@ -11,24 +11,28 @@ const { getStorePageProductData, getCachedLanguageInfo } = require('./xboxStoreP
  * The Xbox display catalog's language list is unreliable (it reports Russian even
  * for games that have no Russian in-game), so the only trustworthy signal is the
  * per-game xbox.com store page — which is far too slow to fetch live. Instead we
- * build the index in the background (a couple of times per day, or on demand from
- * the admin panel) and serve language-filtered browse pages straight from it —
- * fast and with an exact total count.
+ * build the index in the background and serve language-filtered browse pages
+ * straight from it — fast, with an exact total count.
  *
- * To keep scheduled rebuilds cheap we persist the resolved mode for every scanned
- * game and reuse it; only games we have not classified yet are fetched. A "deep"
- * rebuild (admin button) re-fetches everything to catch language changes.
+ * The build can take a while (it store-fetches thousands of games), so it:
+ *  - reports live progress + a log buffer (shown in the admin panel),
+ *  - persists checkpoints periodically, so a restart never loses progress and the
+ *    (partial) index is immediately usable,
+ *  - reuses previously classified modes, so it resumes where it left off and only
+ *    fetches games it has not seen yet. A "deep" rebuild re-fetches everything.
  *
  * Persisted in `site_content` under `russian-language-index`:
  *   {
- *     builtAt, durationMs, trigger,
- *     modes: { productId: 'full_ru' | 'ru_subtitles' | 'no_ru' }  // all classified games
- *     russian: [productId...]   // games with Russian, catalog order (serving)
- *     fullRu:  [productId...]   // subset with Russian audio, catalog order (serving)
- *     counts: { scanned, russian, fullRu, subtitles, storeFetches }
+ *     builtAt, durationMs, trigger, complete,
+ *     modes: { productId: 'full_ru' | 'ru_subtitles' | 'no_ru' },  // all classified games
+ *     russian: [productId...],   // games with Russian, catalog order (serving)
+ *     fullRu:  [productId...],    // subset with Russian audio, catalog order (serving)
+ *     counts: { scanned, russian, fullRu, subtitles, storeFetches, pending }
  *   }
  */
 const INDEX_KEY = 'russian-language-index';
+const CHECKPOINT_MS = 20_000;
+const MAX_LOGS = 50;
 
 const state = {
   index: null,
@@ -40,7 +44,33 @@ const state = {
   lastDurationMs: null,
   lastTrigger: null,
   lastError: null,
+  progress: emptyProgress(),
+  logs: [],
 };
+
+function emptyProgress() {
+  return {
+    phase: 'idle', // idle | walking | classifying | done | error
+    scanned: 0,
+    total: 0,
+    processed: 0,
+    fetched: 0,
+    russian: 0,
+    fullRu: 0,
+    startedAt: null,
+    updatedAt: null,
+  };
+}
+
+function resetProgress() {
+  state.progress = { ...emptyProgress(), phase: 'starting', startedAt: Date.now(), updatedAt: Date.now() };
+}
+
+function log(message) {
+  state.logs.push({ ts: new Date().toISOString(), message });
+  if (state.logs.length > MAX_LOGS) state.logs.shift();
+  logger.info(`[RussianIndex] ${message}`);
+}
 
 function setIndex(index) {
   state.index = index;
@@ -54,15 +84,21 @@ function emptyIndex() {
     builtAt: null,
     durationMs: null,
     trigger: null,
+    complete: false,
     modes: {},
     russian: [],
     fullRu: [],
-    counts: { scanned: 0, russian: 0, fullRu: 0, subtitles: 0, storeFetches: 0 },
+    counts: { scanned: 0, russian: 0, fullRu: 0, subtitles: 0, storeFetches: 0, pending: 0 },
   };
 }
 
 function normalizeId(id) {
   return String(id || '').trim().toUpperCase();
+}
+
+function normalizeMode(mode) {
+  if (mode === 'full_ru' || mode === 'ru_subtitles' || mode === 'no_ru') return mode;
+  return 'no_ru'; // 'unknown'/missing -> treat as not Russian for the index
 }
 
 async function loadIndex() {
@@ -106,16 +142,23 @@ function getState() {
     isBuilding: state.building,
     builtAt: index.builtAt,
     durationMs: index.durationMs,
+    complete: index.complete ?? false,
     lastRunAt: state.lastRunAt,
     lastTrigger: state.lastTrigger,
     lastError: state.lastError,
     refreshIntervalHours: config.russianIndex.refreshIntervalHours,
     counts: index.counts || emptyIndex().counts,
+    progress: state.progress,
+    logs: state.logs.slice(-30),
   };
 }
 
 function isReady() {
   return Boolean(state.index && state.index.russian && state.index.russian.length > 0);
+}
+
+function isComplete() {
+  return Boolean(state.index && state.index.complete);
 }
 
 /**
@@ -131,12 +174,11 @@ function getServingIds(modes) {
   const wantsAnyRussian = set.has('ru_subtitles');
   const wantsFull = set.has('full_ru');
 
-  if (wantsAnyRussian || (wantsFull && wantsAnyRussian)) {
+  if (wantsAnyRussian) {
     return index.russian;
   }
   if (wantsFull) {
-    const fullSet = new Set(index.fullRu);
-    return index.russian.filter((id) => fullSet.has(id));
+    return index.russian.filter((id) => state.fullSet.has(id));
   }
   return [];
 }
@@ -149,7 +191,7 @@ function getModeForProduct(productId) {
   return null;
 }
 
-async function walkCatalog() {
+async function walkCatalog(onProgress) {
   const products = [];
   const seenIds = new Set();
   const seenTokens = new Set();
@@ -174,6 +216,7 @@ async function walkCatalog() {
     }
 
     pages += 1;
+    if (typeof onProgress === 'function') onProgress(products.length);
     encodedCT = raw.encodedCT || '';
     if (!encodedCT || seenTokens.has(encodedCT)) break;
     seenTokens.add(encodedCT);
@@ -181,11 +224,6 @@ async function walkCatalog() {
 
   logger.info('[RussianIndex] Catalog walk complete', { pages, products: products.length });
   return products;
-}
-
-function normalizeMode(mode) {
-  if (mode === 'full_ru' || mode === 'ru_subtitles' || mode === 'no_ru') return mode;
-  return 'no_ru'; // 'unknown'/missing -> treat as not Russian for the index
 }
 
 async function loadOverrideModes() {
@@ -221,52 +259,46 @@ async function runWithConcurrency(items, limit, worker) {
   await Promise.all(Array.from({ length: Math.min(size, items.length) }, runner));
 }
 
-/**
- * Resolve a Russian-language mode for every walked game.
- * Reuses previously persisted modes (and admin overrides) so only unclassified
- * games trigger a store-page fetch; the per-build fetch count is capped.
- */
-async function classifyProducts(walked, { deep }) {
-  const prevModes = (state.index && state.index.modes) || {};
-  const overrideModes = await loadOverrideModes();
-  const resolved = new Map();
-  const needFetch = [];
-
+function buildIndexObject({ modes, walked, trigger, durationMs, complete, storeFetches, pending }) {
+  const russian = [];
+  const fullRu = [];
   for (const product of walked) {
-    if (overrideModes.has(product.id)) {
-      resolved.set(product.id, overrideModes.get(product.id));
-      continue;
+    const mode = modes[product.id];
+    if (mode === 'full_ru') {
+      russian.push(product.id);
+      fullRu.push(product.id);
+    } else if (mode === 'ru_subtitles') {
+      russian.push(product.id);
     }
-    const cached = getCachedLanguageInfo(product.id);
-    if (cached) {
-      resolved.set(product.id, normalizeMode(cached.russianLanguageMode));
-      continue;
-    }
-    if (!deep && prevModes[product.id]) {
-      resolved.set(product.id, normalizeMode(prevModes[product.id]));
-      continue;
-    }
-    needFetch.push(product);
   }
+  return {
+    builtAt: new Date().toISOString(),
+    durationMs,
+    trigger,
+    complete,
+    modes,
+    russian,
+    fullRu,
+    counts: {
+      scanned: walked.length,
+      russian: russian.length,
+      fullRu: fullRu.length,
+      subtitles: russian.length - fullRu.length,
+      storeFetches: storeFetches || 0,
+      pending: pending || 0,
+    },
+  };
+}
 
-  let storeFetches = 0;
-  const fetchTargets = needFetch.slice(0, config.russianIndex.maxStoreFetches);
-  await runWithConcurrency(fetchTargets, config.russianIndex.storeFetchConcurrency, async (product) => {
-    if (!product.storeUrl) return;
-    try {
-      const data = await getStorePageProductData({
-        productId: product.id,
-        storeUrl: product.storeUrl,
-        languageOnly: true,
-      });
-      storeFetches += 1;
-      resolved.set(product.id, normalizeMode(data?.languageInfo?.russianLanguageMode));
-    } catch (err) {
-      logger.debug('[RussianIndex] Store fetch failed', { productId: product.id, message: err.message });
-    }
-  });
-
-  return { resolved, storeFetches, pending: Math.max(0, needFetch.length - fetchTargets.length) };
+function recomputeProgressCounts(modes, walked) {
+  let russian = 0;
+  let fullRu = 0;
+  for (const product of walked) {
+    const mode = modes[product.id];
+    if (mode === 'full_ru') { russian += 1; fullRu += 1; } else if (mode === 'ru_subtitles') { russian += 1; }
+  }
+  state.progress.russian = russian;
+  state.progress.fullRu = fullRu;
 }
 
 async function buildIndex({ trigger = 'manual', deep = false } = {}) {
@@ -278,55 +310,111 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
   state.lastRunAt = new Date().toISOString();
   state.lastTrigger = trigger;
   state.lastError = null;
+  resetProgress();
   const startedAt = Date.now();
-  logger.info('[RussianIndex] Build started', { trigger, deep });
+  let checkpointTimer = null;
+  log(`Старт сборки${deep ? ' (полная)' : ''} · триггер: ${trigger}`);
 
   try {
     await loadIndex();
-    const walked = await walkCatalog();
-    const { resolved, storeFetches, pending } = await classifyProducts(walked, { deep });
+    const prevModes = (!deep && state.index?.modes) ? state.index.modes : {};
 
+    // Phase 1 — walk the whole catalog.
+    state.progress.phase = 'walking';
+    log('Обход каталога Xbox...');
+    const walked = await walkCatalog((scanned) => {
+      state.progress.scanned = scanned;
+      state.progress.updatedAt = Date.now();
+    });
+    state.progress.total = walked.length;
+    log(`Каталог собран: ${walked.length} игр`);
+
+    // Phase 2 — classify each game (reuse known modes; fetch only the unknown).
+    state.progress.phase = 'classifying';
+    const overrideModes = await loadOverrideModes();
     const modes = {};
-    const russian = [];
-    const fullRu = [];
+    // Carry over previously classified games (even ones no longer in the catalog).
+    for (const [id, mode] of Object.entries(prevModes)) modes[id] = normalizeMode(mode);
+    for (const [id, mode] of overrideModes) modes[id] = mode;
+
+    const needFetch = [];
+    let reused = 0;
     for (const product of walked) {
-      const mode = resolved.get(product.id);
-      if (!mode) continue; // unresolved (beyond per-build cap) -> retried next build
-      modes[product.id] = mode;
-      if (mode === 'full_ru') {
-        russian.push(product.id);
-        fullRu.push(product.id);
-      } else if (mode === 'ru_subtitles') {
-        russian.push(product.id);
-      }
+      if (overrideModes.has(product.id)) { reused += 1; continue; }
+      const cached = getCachedLanguageInfo(product.id);
+      if (cached) { modes[product.id] = normalizeMode(cached.russianLanguageMode); reused += 1; continue; }
+      if (!deep && prevModes[product.id]) { reused += 1; continue; }
+      needFetch.push(product);
     }
 
-    const durationMs = Date.now() - startedAt;
-    const index = {
-      builtAt: new Date().toISOString(),
-      durationMs,
-      trigger,
-      modes,
-      russian,
-      fullRu,
-      counts: {
-        scanned: walked.length,
-        russian: russian.length,
-        fullRu: fullRu.length,
-        subtitles: russian.length - fullRu.length,
-        storeFetches,
-        pending,
-      },
-    };
+    state.progress.processed = walked.length - needFetch.length;
+    recomputeProgressCounts(modes, walked);
+    log(`Переиспользовано: ${reused}, к загрузке: ${needFetch.length}`);
 
+    const fetchTargets = needFetch.slice(0, config.russianIndex.maxStoreFetches);
+    const cappedOut = needFetch.length - fetchTargets.length;
+    let storeFetches = 0;
+    let newlyResolved = 0;
+
+    // Persist checkpoints so progress survives a restart and the index is usable
+    // while still building.
+    checkpointTimer = setInterval(() => {
+      const snapshot = buildIndexObject({
+        modes, walked, trigger, durationMs: Date.now() - startedAt, complete: false, storeFetches, pending: cappedOut,
+      });
+      persistIndex(snapshot).catch((e) => logger.warn('[RussianIndex] checkpoint failed', { message: e.message }));
+      log(`Чекпоинт: ${state.progress.processed}/${walked.length} обработано · русских ${state.progress.russian}`);
+    }, CHECKPOINT_MS);
+
+    await runWithConcurrency(fetchTargets, config.russianIndex.storeFetchConcurrency, async (product) => {
+      if (product.storeUrl) {
+        try {
+          const data = await getStorePageProductData({
+            productId: product.id,
+            storeUrl: product.storeUrl,
+            languageOnly: true,
+          });
+          storeFetches += 1;
+          const mode = normalizeMode(data?.languageInfo?.russianLanguageMode);
+          modes[product.id] = mode;
+          newlyResolved += 1;
+          if (mode === 'full_ru') { state.progress.russian += 1; state.progress.fullRu += 1; } else if (mode === 'ru_subtitles') { state.progress.russian += 1; }
+        } catch (err) {
+          // Leave unresolved -> retried on a later build.
+          logger.debug('[RussianIndex] Store fetch failed', { productId: product.id, message: err.message });
+        }
+      }
+      state.progress.processed += 1;
+      state.progress.fetched = storeFetches;
+      state.progress.updatedAt = Date.now();
+    });
+
+    clearInterval(checkpointTimer);
+    checkpointTimer = null;
+
+    const pending = cappedOut + (fetchTargets.length - newlyResolved);
+    const complete = pending === 0;
+    const durationMs = Date.now() - startedAt;
+    const index = buildIndexObject({ modes, walked, trigger, durationMs, complete, storeFetches, pending });
     await persistIndex(index);
-    logger.info('[RussianIndex] Build finished', { ...index.counts, durationMs });
-    return { success: true, ...getState() };
+
+    state.progress.phase = 'done';
+    state.progress.updatedAt = Date.now();
+    state.lastDurationMs = durationMs;
+    log(
+      `Готово за ${Math.round(durationMs / 1000)}с · русских ${index.counts.russian} `
+      + `(полностью ${index.counts.fullRu}, субтитры ${index.counts.subtitles}), загрузок ${storeFetches}`
+      + `${complete ? '' : ` · осталось ${pending}, продолжу`}`,
+    );
+    return { success: true, complete, newlyResolved, pending, ...getState() };
   } catch (err) {
     state.lastError = err.message;
+    state.progress.phase = 'error';
+    log(`Ошибка: ${err.message}`);
     logger.error('[RussianIndex] Build failed', { message: err.message, stack: err.stack });
     throw err;
   } finally {
+    if (checkpointTimer) clearInterval(checkpointTimer);
     state.building = false;
   }
 }
@@ -336,6 +424,7 @@ module.exports = {
   buildIndex,
   getState,
   isReady,
+  isComplete,
   getServingIds,
   getModeForProduct,
 };

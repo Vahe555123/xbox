@@ -44,6 +44,53 @@ function providerLabel(p) {
   return map[p] || p;
 }
 
+function formatLogTime(ts) {
+  if (!ts) return '';
+  try {
+    return new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
+const RUSSIAN_INDEX_PHASES = {
+  starting: 'Запуск...',
+  walking: 'Обход каталога',
+  classifying: 'Определение языка',
+  done: 'Готово',
+  error: 'Ошибка',
+  idle: 'Ожидание',
+};
+
+function renderRussianIndexProgress(progress) {
+  if (!progress) return null;
+  const phase = RUSSIAN_INDEX_PHASES[progress.phase] || progress.phase;
+  const isClassifying = progress.phase === 'classifying';
+  const total = Number(progress.total) || 0;
+  const done = isClassifying ? Number(progress.processed) || 0 : Number(progress.scanned) || 0;
+  const percent = isClassifying && total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;
+
+  return (
+    <div className="admin-index-progress">
+      <div className="admin-index-progress-head">
+        <span>{phase}</span>
+        <span>
+          {isClassifying
+            ? `${done.toLocaleString('ru-RU')} / ${total.toLocaleString('ru-RU')}${percent !== null ? ` (${percent}%)` : ''}`
+            : `${done.toLocaleString('ru-RU')} игр`}
+          {progress.fetched > 0 && ` • загружено ${Number(progress.fetched).toLocaleString('ru-RU')}`}
+        </span>
+      </div>
+      <div className="admin-index-progress-bar">
+        <div
+          className={`admin-index-progress-fill ${percent === null ? 'indeterminate' : ''}`}
+          style={percent !== null ? { width: `${percent}%` } : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
 function dealRunStatusLabel(status) {
   const map = {
     sent: 'Отправлено',
@@ -405,7 +452,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   useEffect(() => {
     if (!authorized || tab !== 'dashboard') return undefined;
     if (!russianIndexState?.isBuilding) return undefined;
-    const timer = setInterval(loadRussianIndex, 5000);
+    const timer = setInterval(loadRussianIndex, 3000);
     return () => clearInterval(timer);
   }, [authorized, tab, russianIndexState?.isBuilding, loadRussianIndex]);
 
@@ -994,9 +1041,14 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
             <p className="admin-card-desc">
               Последнее обновление: {formatDate(russianIndexState?.builtAt)}
-              {russianIndexState?.isBuilding && ' • идёт сборка...'}
+              {' • '}
+              {russianIndexState?.isBuilding
+                ? 'идёт сборка...'
+                : (russianIndexState?.complete ? 'индекс готов' : 'не завершён — будет достроен')}
               {russianIndexState?.lastError && ` • ошибка: ${russianIndexState.lastError}`}
             </p>
+
+            {russianIndexState?.isBuilding && renderRussianIndexProgress(russianIndexState.progress)}
 
             <div className="admin-override-actions">
               <button
@@ -1009,6 +1061,17 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               </button>
             </div>
             {russianIndexMessage && <p className="admin-scheduler-result">{russianIndexMessage}</p>}
+
+            {russianIndexState?.logs?.length > 0 && (
+              <div className="admin-index-logs">
+                {[...russianIndexState.logs].reverse().map((entry, i) => (
+                  <div className="admin-index-log-row" key={`${entry.ts}-${i}`}>
+                    <span className="admin-index-log-time">{formatLogTime(entry.ts)}</span>
+                    <span>{entry.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

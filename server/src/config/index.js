@@ -27,8 +27,8 @@ const config = {
 
   russianIndex: {
     refreshIntervalHours: parseFloat(process.env.RUSSIAN_INDEX_REFRESH_HOURS) || 12,
-    storeFetchConcurrency: parseInt(process.env.RUSSIAN_INDEX_STORE_CONCURRENCY, 10) || 6,
-    maxStoreFetches: parseInt(process.env.RUSSIAN_INDEX_MAX_STORE_FETCHES, 10) || 9000,
+    storeFetchConcurrency: parseInt(process.env.RUSSIAN_INDEX_STORE_CONCURRENCY, 10) || 10,
+    maxStoreFetches: parseInt(process.env.RUSSIAN_INDEX_MAX_STORE_FETCHES, 10) || 20000,
     maxBrowsePages: parseInt(process.env.RUSSIAN_INDEX_MAX_BROWSE_PAGES, 10) || 1200,
   },
 
