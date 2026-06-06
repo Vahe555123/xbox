@@ -33,6 +33,8 @@ const { getStorePageProductData, getCachedLanguageInfo } = require('./xboxStoreP
 const INDEX_KEY = 'russian-language-index';
 const CHECKPOINT_MS = 20_000;
 const MAX_LOGS = 50;
+// Reuse the walked list from the last run if it's younger than this (skip re-walk).
+const WALK_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 const state = {
   index: null,
@@ -89,6 +91,9 @@ function emptyIndex() {
     russian: [],
     fullRu: [],
     counts: { scanned: 0, russian: 0, fullRu: 0, subtitles: 0, storeFetches: 0, pending: 0 },
+    // walked cache: saved so re-runs can skip re-walking if recent
+    walkedAt: null,
+    walkedList: null,
   };
 }
 
@@ -114,6 +119,8 @@ async function loadIndex() {
         modes: data.modes && typeof data.modes === 'object' ? data.modes : {},
         russian: data.russian.map(normalizeId).filter(Boolean),
         fullRu: (data.fullRu || []).map(normalizeId).filter(Boolean),
+        walkedAt: data.walkedAt || null,
+        walkedList: Array.isArray(data.walkedList) ? data.walkedList : null,
       });
     } else {
       setIndex(emptyIndex());
@@ -125,6 +132,9 @@ async function loadIndex() {
 
   return state.index;
 }
+
+// Auto-load the persisted index so getState() shows correct data right after server restart.
+loadIndex().catch((err) => logger.warn('[RussianIndex] Startup auto-load failed', { message: err.message }));
 
 async function persistIndex(index) {
   await pool.query(
@@ -150,6 +160,8 @@ function getState() {
     counts: index.counts || emptyIndex().counts,
     progress: state.progress,
     logs: state.logs.slice(-30),
+    walkedAt: index.walkedAt || null,
+    walkedCount: Array.isArray(index.walkedList) ? index.walkedList.length : 0,
   };
 }
 
@@ -372,15 +384,36 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
     await loadIndex();
     const prevModes = (!deep && state.index?.modes) ? state.index.modes : {};
 
-    // Phase 1 — walk the whole catalog.
-    state.progress.phase = 'walking';
-    log('Обход каталога Xbox...');
-    const { products: walked, walkComplete } = await walkCatalog((scanned) => {
-      state.progress.scanned = scanned;
+    // Phase 1 — walk the whole catalog (or reuse a recent cached walk).
+    let walked;
+    let walkComplete;
+
+    const cachedWalk = state.index?.walkedList;
+    const cachedWalkAt = state.index?.walkedAt ? new Date(state.index.walkedAt).getTime() : 0;
+    const walkCacheAge = Date.now() - cachedWalkAt;
+    const canReuseWalk = !deep && Array.isArray(cachedWalk) && cachedWalk.length > 0 && walkCacheAge < WALK_CACHE_TTL_MS;
+
+    if (canReuseWalk) {
+      walked = cachedWalk;
+      walkComplete = true;
+      state.progress.phase = 'walking';
+      state.progress.scanned = walked.length;
+      state.progress.total = walked.length;
       state.progress.updatedAt = Date.now();
-    });
-    state.progress.total = walked.length;
-    log(`Каталог собран: ${walked.length} игр${walkComplete ? '' : ' (частично)'}`);
+      const ageMin = Math.round(walkCacheAge / 60000);
+      log(`Обход пропущен — используем кэш (${walked.length} игр, ${ageMin} мин назад)`);
+    } else {
+      state.progress.phase = 'walking';
+      log('Обход каталога Xbox...');
+      const result = await walkCatalog((scanned) => {
+        state.progress.scanned = scanned;
+        state.progress.updatedAt = Date.now();
+      });
+      walked = result.products;
+      walkComplete = result.walkComplete;
+      state.progress.total = walked.length;
+      log(`Каталог собран: ${walked.length} игр${walkComplete ? '' : ' (частично)'}`);
+    }
 
     if (walked.length === 0) {
       // Nothing to classify — skip to done so we don't save an empty index
@@ -401,6 +434,8 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
         walked, trigger, durationMs: Date.now() - startedAt,
         complete: false, storeFetches: 0, pending: walked.length,
       });
+      walkSnapshot.walkedAt = new Date().toISOString();
+      walkSnapshot.walkedList = walked;
       await persistIndex(walkSnapshot);
       log(`Чекпоинт после обхода: ${walked.length} просканировано, начинаем классификацию`);
     }
@@ -438,6 +473,8 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
       const snapshot = buildIndexObject({
         modes, walked, trigger, durationMs: Date.now() - startedAt, complete: false, storeFetches, pending: cappedOut,
       });
+      snapshot.walkedAt = state.index?.walkedAt || new Date().toISOString();
+      snapshot.walkedList = walked;
       persistIndex(snapshot).catch((e) => logger.warn('[RussianIndex] checkpoint failed', { message: e.message }));
       log(`Чекпоинт: ${state.progress.processed}/${walked.length} обработано · русских ${state.progress.russian}`);
     }, CHECKPOINT_MS);
@@ -472,6 +509,8 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
     const complete = walkComplete && pending === 0;
     const durationMs = Date.now() - startedAt;
     const index = buildIndexObject({ modes, walked, trigger, durationMs, complete, storeFetches, pending });
+    index.walkedAt = state.index?.walkedAt || new Date().toISOString();
+    index.walkedList = walked;
     await persistIndex(index);
 
     state.progress.phase = 'done';

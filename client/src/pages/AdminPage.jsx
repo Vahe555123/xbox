@@ -1109,6 +1109,11 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 : (russianIndexState?.complete ? 'индекс готов' : 'не завершён — будет достроен')}
               {russianIndexState?.lastError && ` • ошибка: ${russianIndexState.lastError}`}
             </p>
+            {russianIndexState?.walkedAt && russianIndexState?.walkedCount > 0 && (
+              <p className="admin-card-desc" style={{ marginTop: '0.25rem', opacity: 0.7 }}>
+                Кэш обхода: {russianIndexState.walkedCount} игр от {formatDate(russianIndexState.walkedAt)} — следующая сборка пропустит обход каталога (если &lt; 1 ч)
+              </p>
+            )}
 
             {russianIndexState?.isBuilding && renderRussianIndexProgress(russianIndexState.progress)}
 
