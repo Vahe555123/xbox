@@ -242,19 +242,38 @@ async function walkCatalog(onProgress) {
       break;
     }
 
+    const pageMapped = [];
     for (const mapped of mapProducts(raw.products || [])) {
       const id = normalizeId(mapped.id);
       if (!id || seenIds.has(id)) continue;
       seenIds.add(id);
       products.push({ id, title: mapped.title, storeUrl: mapped.storeUrl });
+      pageMapped.push(id);
     }
 
     pages += 1;
+
+    // Log the first page explicitly so any mapping/API issue is immediately visible.
+    if (pages === 1) {
+      logger.info('[RussianIndex] First walk page', {
+        rawProductCount: (raw.products || []).length,
+        mappedCount: pageMapped.length,
+        hasCT: Boolean(raw.encodedCT),
+      });
+      if (pageMapped.length === 0) {
+        log(`Страница 1 вернула 0 игр (raw: ${(raw.products || []).length}) — возможна проблема с API или маппером`);
+      }
+    }
+
     if (typeof onProgress === 'function') onProgress(products.length);
     encodedCT = raw.encodedCT || '';
     if (!encodedCT || seenTokens.has(encodedCT)) { walkComplete = true; break; }
     seenTokens.add(encodedCT);
   } while (pages < config.russianIndex.maxBrowsePages);
+
+  if (products.length === 0) {
+    log('Обход вернул 0 игр — обход каталога не удался, индекс не будет обновлён');
+  }
 
   logger.info('[RussianIndex] Catalog walk complete', { pages, products: products.length, walkComplete });
   return { products, walkComplete };
@@ -362,6 +381,29 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
     });
     state.progress.total = walked.length;
     log(`Каталог собран: ${walked.length} игр${walkComplete ? '' : ' (частично)'}`);
+
+    if (walked.length === 0) {
+      // Nothing to classify — skip to done so we don't save an empty index
+      // (prevModes already in DB are preserved from before this run).
+      log('Нет игр для классификации — пропускаем сохранение пустого индекса');
+      state.progress.phase = 'done';
+      state.progress.updatedAt = Date.now();
+      state.lastDurationMs = Date.now() - startedAt;
+      return { success: false, complete: false, newlyResolved: 0, pending: 0, ...getState() };
+    }
+
+    // Save a checkpoint immediately after the walk so builtAt is set and
+    // the scanned count is visible in the admin even if the server restarts
+    // during the long classification phase.
+    {
+      const walkSnapshot = buildIndexObject({
+        modes: Object.fromEntries(Object.entries(prevModes).map(([id, mode]) => [id, normalizeMode(mode)])),
+        walked, trigger, durationMs: Date.now() - startedAt,
+        complete: false, storeFetches: 0, pending: walked.length,
+      });
+      await persistIndex(walkSnapshot);
+      log(`Чекпоинт после обхода: ${walked.length} просканировано, начинаем классификацию`);
+    }
 
     // Phase 2 — classify each game (reuse known modes; fetch only the unknown).
     state.progress.phase = 'classifying';
