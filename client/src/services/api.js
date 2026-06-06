@@ -125,6 +125,21 @@ export async function fetchProfile() {
   return data;
 }
 
+export async function unlinkProvider(provider) {
+  const { data } = await api.delete(`/auth/providers/${encodeURIComponent(provider)}`);
+  return data;
+}
+
+export async function linkTelegramAccount(payload) {
+  const { data } = await api.post('/auth/telegram/link', payload);
+  return data;
+}
+
+export function getOAuthLinkUrl(provider) {
+  const base = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+  return `${base}/auth/oauth/${encodeURIComponent(provider)}/link`;
+}
+
 export async function updatePurchaseSettings(payload) {
   const { data } = await api.put('/auth/purchase-settings', payload);
   return data.purchaseSettings;

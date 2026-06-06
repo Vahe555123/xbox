@@ -11,6 +11,8 @@ const {
   getAuthProviderConfig,
   createOAuthStartUrl,
   finishOAuthLogin,
+  unlinkProvider,
+  linkTelegramToUser,
   loginWithTelegram,
   createOAuthSession,
   consumeOAuthSession,
@@ -136,13 +138,34 @@ async function oauthStart(req, res, next) {
   }
 }
 
+async function oauthLinkStart(req, res, next) {
+  try {
+    const url = await createOAuthStartUrl(req.params.provider, req.user.id);
+    res.redirect(url);
+  } catch (err) {
+    if (err.message === 'Unsupported OAuth provider') {
+      return next(new AppError(err.message, 404));
+    }
+    if (err.message.includes('OAuth is not configured')) {
+      return next(new AppError(err.message, 503));
+    }
+    next(err);
+  }
+}
+
 async function oauthCallback(req, res) {
   const { provider } = req.params;
 
   try {
     const result = await finishOAuthLogin(provider, req.query || {});
-    setAuthCookie(res, result.token);
 
+    if (result.isLink) {
+      logger.info('OAuth link', { provider, userId: result.userId });
+      redirectToClient(res, { auth_link: 'success', auth_provider: provider });
+      return;
+    }
+
+    setAuthCookie(res, result.token);
     const sessionId = await createOAuthSession(result);
     logger.info('OAuth login', { provider, user: result.user.email || result.user.name });
 
@@ -202,6 +225,39 @@ async function telegram(req, res, next) {
       'Invalid Telegram login signature',
     ].includes(err.message)) {
       return next(new AppError(err.message, 401));
+    }
+    next(err);
+  }
+}
+
+async function unlinkProviderHandler(req, res, next) {
+  try {
+    await unlinkProvider(req.user.id, req.params.provider);
+    res.json({ success: true });
+  } catch (err) {
+    if (err instanceof AppError) return next(err);
+    if (['Cannot unlink the only login method', 'Provider not linked'].includes(err.message)) {
+      return next(new AppError(err.message, 400));
+    }
+    next(err);
+  }
+}
+
+async function telegramLink(req, res, next) {
+  try {
+    await linkTelegramToUser(req.user.id, req.body || {});
+    logger.info('Telegram linked', { userId: req.user.id });
+    res.json({ success: true });
+  } catch (err) {
+    if (err instanceof AppError) return next(err);
+    if ([
+      'Telegram bot token is required',
+      'Invalid Telegram login payload',
+      'Telegram login payload expired',
+      'Invalid Telegram login signature',
+      'This Telegram account is already linked to a different user',
+    ].includes(err.message)) {
+      return next(new AppError(err.message, 400));
     }
     next(err);
   }
@@ -271,9 +327,12 @@ module.exports = {
   login,
   providers,
   oauthStart,
+  oauthLinkStart,
   oauthCallback,
   oauthSession,
   telegram,
+  telegramLink,
+  unlinkProviderHandler,
   me,
   updatePassword,
   savePurchaseSettings,

@@ -32,6 +32,8 @@ html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* Reserve scrollbar space so the layout doesn't shift between short and tall pages */
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -8046,4 +8048,155 @@ body.mobile-menu-open {
 .cart-modal-total-row span { color: var(--text-muted); letter-spacing: 0.03em; }
 .cart-modal-total-row strong { font-weight: 900; font-size: 0.95rem; }
 .cart-modal-total-row strong small { color: var(--text-muted); font-weight: 600; font-size: 0.78rem; margin-left: 0.3rem; }
+
+/* ── Favorites toolbar (Feature 16) ── */
+.favorites-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.favorites-sale-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.favorites-sale-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.favorites-sort-select {
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-family: inherit;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.favorites-sort-select:focus {
+  outline: none;
+  border-color: rgba(125, 220, 255, 0.4);
+}
+
+/* ── Profile providers (Feature 17) ── */
+.profile-providers-card {
+  grid-column: 1 / -1;
+}
+
+.profile-provider-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.profile-provider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: border-color var(--transition);
+}
+
+.profile-provider-row.linked {
+  border-color: rgba(125, 220, 255, 0.2);
+  background: rgba(125, 220, 255, 0.05);
+}
+
+.profile-provider-icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.profile-provider-row.linked .profile-provider-icon {
+  background: rgba(125, 220, 255, 0.12);
+  color: #7ddcff;
+}
+
+.profile-provider-name {
+  flex: 1;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.profile-provider-link {
+  padding: 0.35rem 0.85rem;
+  border-radius: 7px;
+  background: rgba(125, 220, 255, 0.1);
+  color: #7ddcff;
+  font-size: 0.84rem;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid rgba(125, 220, 255, 0.2);
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.profile-provider-link:hover {
+  background: rgba(125, 220, 255, 0.2);
+  border-color: rgba(125, 220, 255, 0.4);
+}
+
+.profile-provider-unlink {
+  padding: 0.35rem 0.85rem;
+  border-radius: 7px;
+  background: rgba(216, 59, 1, 0.1);
+  color: #ff7a5c;
+  font-size: 0.84rem;
+  font-weight: 600;
+  border: 1px solid rgba(216, 59, 1, 0.18);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.profile-provider-unlink:hover:not(:disabled) {
+  background: rgba(216, 59, 1, 0.22);
+}
+
+.profile-provider-unlink:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.profile-provider-status {
+  font-size: 0.82rem;
+  color: #7ddcff;
+  opacity: 0.8;
+}
+
+.profile-provider-disabled {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.profile-telegram-link-wrap {
+  display: flex;
+  align-items: center;
+}
 .cart-modal-total-row--na strong { color: var(--text-muted); font-weight: 600; }

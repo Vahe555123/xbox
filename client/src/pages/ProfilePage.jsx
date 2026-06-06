@@ -1,12 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { changePassword, fetchProfile, updatePurchaseSettings } from '../services/api';
+import { changePassword, fetchAuthProviders, fetchProfile, getOAuthLinkUrl, linkTelegramAccount, unlinkProvider, updatePurchaseSettings } from '../services/api';
 
 const PROVIDER_LABELS = {
-  email: 'Email',
+  email: 'Email / Пароль',
   google: 'Google',
-  vk: 'VK',
+  vk: 'ВКонтакте',
   telegram: 'Telegram',
+};
+
+const PROVIDER_ICONS = {
+  email: '✉',
+  google: 'G',
+  vk: 'VK',
+  telegram: 'TG',
 };
 
 function readStoredUser() {
@@ -50,14 +57,22 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
   const [purchaseFeedbackBlock, setPurchaseFeedbackBlock] = useState('');
   const [purchaseLoading, setPurchaseLoading] = useState(false);
 
+  const [providerConfig, setProviderConfig] = useState(null);
+  const [providerMsg, setProviderMsg] = useState('');
+  const [providerErr, setProviderErr] = useState('');
+  const [providerLoading, setProviderLoading] = useState('');
+  const telegramLinkRef = useRef(null);
+
   useEffect(() => {
     if (!storedUser) return;
 
     setLoading(true);
     setError('');
-    fetchProfile()
-      .then((data) => {
+
+    Promise.all([fetchProfile(), fetchAuthProviders()])
+      .then(([data, pConfig]) => {
         setProfile(data);
+        setProviderConfig(pConfig);
         const settings = data.purchaseSettings || {};
         setPurchaseForm({
           purchaseEmail: settings.purchaseEmail || '',
@@ -73,6 +88,51 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
       })
       .finally(() => setLoading(false));
   }, [storedUser]);
+
+  // Reload profile after returning from OAuth link redirect
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('auth_link') === 'success') {
+      fetchProfile()
+        .then((data) => {
+          setProfile(data);
+          setProviderMsg('Аккаунт успешно привязан');
+        })
+        .catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Telegram link widget
+  useEffect(() => {
+    if (!telegramLinkRef.current || !providerConfig?.telegram?.botUsername) return;
+    if (telegramLinkRef.current.querySelector('script')) return;
+
+    window.onTelegramLinkAuth = (payload) => {
+      setProviderLoading('telegram');
+      setProviderMsg('');
+      setProviderErr('');
+      linkTelegramAccount(payload)
+        .then(() => fetchProfile())
+        .then((data) => {
+          setProfile(data);
+          setProviderMsg('Telegram привязан');
+        })
+        .catch((err) => {
+          setProviderErr(err.response?.data?.error?.message || err.message || 'Не удалось привязать Telegram');
+        })
+        .finally(() => setProviderLoading(''));
+    };
+
+    const script = document.createElement('script');
+    script.src = 'https://telegram.org/js/telegram-widget.js?22';
+    script.setAttribute('data-telegram-login', providerConfig.telegram.botUsername);
+    script.setAttribute('data-size', 'medium');
+    script.setAttribute('data-onauth', 'onTelegramLinkAuth(user)');
+    script.setAttribute('data-request-access', 'write');
+    script.async = true;
+    telegramLinkRef.current.appendChild(script);
+  }, [providerConfig]);
 
   if (!storedUser) {
     return (
@@ -92,6 +152,27 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
   const user = profile?.user || storedUser || {};
   const providers = profile?.providers || [user.provider].filter(Boolean);
   const hasPassword = Boolean(profile?.hasPassword);
+
+  const handleUnlink = async (provider) => {
+    setProviderMsg('');
+    setProviderErr('');
+    setProviderLoading(provider);
+    try {
+      await unlinkProvider(provider);
+      const data = await fetchProfile();
+      setProfile(data);
+      setProviderMsg(`${PROVIDER_LABELS[provider] || provider} отвязан`);
+    } catch (err) {
+      setProviderErr(err.response?.data?.error?.message || err.message || 'Не удалось отвязать аккаунт');
+    } finally {
+      setProviderLoading('');
+    }
+  };
+
+  const ALL_LINK_PROVIDERS = ['google', 'vk', 'telegram'];
+  const canUnlink = (providers.length + (hasPassword ? 0 : 0)) > 1;
+  // actual count: linked oauth + email/password
+  const loginMethodCount = providers.length;
 
   const submitPassword = async (event) => {
     event.preventDefault();
@@ -181,17 +262,72 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
             <dd>{user.id || '—'}</dd>
             <dt>Email</dt>
             <dd>{user.email || '—'}</dd>
-            <dt>Провайдеры</dt>
-            <dd>
-              <div className="profile-provider-list">
-                {providers.length > 0 ? providers.map((provider) => (
-                  <span key={provider}>{PROVIDER_LABELS[provider] || provider}</span>
-                )) : '—'}
-              </div>
-            </dd>
             <dt>Статус</dt>
             <dd>{profile?.verified ? 'Подтверждён' : 'Не подтверждён'}</dd>
           </dl>
+        </section>
+
+        <section className="profile-page-card profile-providers-card">
+          <h2>Способы входа</h2>
+          <p>Привяжите несколько аккаунтов — войти можно будет любым из них.</p>
+
+          {providerMsg && <p className="profile-success">{providerMsg}</p>}
+          {providerErr && <p className="profile-error">{providerErr}</p>}
+
+          <div className="profile-provider-rows">
+            {ALL_LINK_PROVIDERS.map((prov) => {
+              const linked = providers.includes(prov);
+              const cfg = providerConfig?.[prov];
+              const enabled = prov === 'telegram' ? Boolean(cfg?.enabled) : Boolean(cfg?.enabled);
+              const isBusy = providerLoading === prov;
+
+              return (
+                <div key={prov} className={`profile-provider-row ${linked ? 'linked' : ''}`}>
+                  <span className="profile-provider-icon">{PROVIDER_ICONS[prov]}</span>
+                  <span className="profile-provider-name">{PROVIDER_LABELS[prov]}</span>
+
+                  {linked ? (
+                    <button
+                      className="profile-provider-unlink"
+                      type="button"
+                      disabled={isBusy || loginMethodCount <= 1}
+                      title={loginMethodCount <= 1 ? 'Нельзя отвязать единственный способ входа' : undefined}
+                      onClick={() => handleUnlink(prov)}
+                    >
+                      {isBusy ? '...' : 'Отвязать'}
+                    </button>
+                  ) : (
+                    prov === 'telegram' ? (
+                      enabled && (
+                        <div ref={telegramLinkRef} className="profile-telegram-link-wrap" />
+                      )
+                    ) : (
+                      enabled ? (
+                        <a
+                          className="profile-provider-link"
+                          href={getOAuthLinkUrl(prov)}
+                        >
+                          Привязать
+                        </a>
+                      ) : (
+                        <span className="profile-provider-disabled">Недоступно</span>
+                      )
+                    )
+                  )}
+                </div>
+              );
+            })}
+
+            <div className={`profile-provider-row ${hasPassword ? 'linked' : ''}`}>
+              <span className="profile-provider-icon">{PROVIDER_ICONS.email}</span>
+              <span className="profile-provider-name">{PROVIDER_LABELS.email}</span>
+              {hasPassword ? (
+                <span className="profile-provider-status">Привязан</span>
+              ) : (
+                <span className="profile-provider-disabled">Добавьте пароль ниже</span>
+              )}
+            </div>
+          </div>
         </section>
 
         <section className="profile-page-card">

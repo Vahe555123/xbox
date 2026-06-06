@@ -1,6 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { searchProducts } from '../services/api';
 
+const FILTER_OPTIONS_CACHE_KEY = 'xbox:filterOptions';
+
+function readCachedFilterOptions() {
+  try {
+    const raw = localStorage.getItem(FILTER_OPTIONS_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function writeCachedFilterOptions(value) {
+  try {
+    localStorage.setItem(FILTER_OPTIONS_CACHE_KEY, JSON.stringify(value));
+  } catch { /* ignore quota errors */ }
+}
+
 function normalizeFiltersState(filters) {
   return Object.fromEntries(
     Object.entries(filters || {}).map(([key, values]) => [key, Array.isArray(values) ? [...values] : []]),
@@ -29,7 +44,7 @@ export function useSearch({
   const [total, setTotal] = useState(0);
   const [totalPending, setTotalPending] = useState(false);
   const [encodedCT, setEncodedCT] = useState(null);
-  const [filterOptions, setFilterOptions] = useState(null);
+  const [filterOptions, setFilterOptions] = useState(() => readCachedFilterOptions());
   const [hasMorePages, setHasMorePages] = useState(false);
 
   const [loading, setLoading] = useState(false);
@@ -132,6 +147,7 @@ export function useSearch({
 
       if (result.filters) {
         setFilterOptions(result.filters);
+        writeCachedFilterOptions(result.filters);
       }
     } catch (err) {
       if (controller.signal.aborted) return;

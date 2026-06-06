@@ -351,17 +351,24 @@ export default function App() {
     const url = new URL(window.location.href);
     const sessionId = url.searchParams.get('auth_session');
     const authError = url.searchParams.get('auth_error');
+    const authLink = url.searchParams.get('auth_link');
 
     const clearAuthParams = () => {
       url.searchParams.delete('auth_session');
       url.searchParams.delete('auth_error');
       url.searchParams.delete('auth_provider');
+      url.searchParams.delete('auth_link');
       window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
     };
 
     if (authError) {
       setAuthNotice(authError);
       setAuthModalOpen(true);
+      clearAuthParams();
+      return;
+    }
+
+    if (authLink === 'success') {
       clearAuthParams();
       return;
     }

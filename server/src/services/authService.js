@@ -318,14 +318,14 @@ function assertOAuthProvider(provider) {
   }
 }
 
-async function createOAuthStartUrl(provider) {
+async function createOAuthStartUrl(provider, linkUserId = null) {
   assertOAuthProvider(provider);
 
   const state = crypto.randomBytes(24).toString('hex');
   await pool.query(
-    `INSERT INTO oauth_states (state, provider, expires_at)
-     VALUES ($1, $2, NOW() + ($3::int * INTERVAL '1 second'))`,
-    [state, provider, config.auth.oauthStateTtlSeconds],
+    `INSERT INTO oauth_states (state, provider, expires_at, link_user_id)
+     VALUES ($1, $2, NOW() + ($3::int * INTERVAL '1 second'), $4)`,
+    [state, provider, config.auth.oauthStateTtlSeconds, linkUserId || null],
   );
 
   if (provider === 'google') {
@@ -478,6 +478,84 @@ async function upsertSocialUser(profile) {
   }
 }
 
+async function linkProviderToUser(userId, profile) {
+  const conflict = await pool.query(
+    `SELECT user_id FROM oauth_accounts
+     WHERE provider = $1 AND provider_user_id = $2`,
+    [profile.provider, profile.providerId],
+  );
+
+  if (conflict.rows.length > 0 && conflict.rows[0].user_id !== userId) {
+    throw new Error('This account is already linked to a different user');
+  }
+
+  await pool.query(
+    `INSERT INTO oauth_accounts (provider, provider_user_id, user_id)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (provider, provider_user_id) DO UPDATE SET user_id = EXCLUDED.user_id`,
+    [profile.provider, profile.providerId, userId],
+  );
+
+  await pool.query(
+    `UPDATE users SET last_provider = $2, updated_at = NOW() WHERE id = $1`,
+    [userId, profile.provider],
+  );
+}
+
+async function unlinkProvider(userId, provider) {
+  const { rows: accounts } = await pool.query(
+    `SELECT provider FROM oauth_accounts WHERE user_id = $1`,
+    [userId],
+  );
+  const { rows: users } = await pool.query(
+    `SELECT password_hash FROM users WHERE id = $1`,
+    [userId],
+  );
+  const hasPassword = Boolean(users[0]?.password_hash);
+  const totalMethods = accounts.length + (hasPassword ? 1 : 0);
+
+  if (totalMethods <= 1) {
+    throw new Error('Cannot unlink the only login method');
+  }
+
+  const { rowCount } = await pool.query(
+    `DELETE FROM oauth_accounts WHERE user_id = $1 AND provider = $2`,
+    [userId, provider],
+  );
+
+  if (rowCount === 0) {
+    throw new Error('Provider not linked');
+  }
+}
+
+async function linkTelegramToUser(userId, payload) {
+  const profile = verifyTelegramPayload(payload || {});
+
+  const conflict = await pool.query(
+    `SELECT user_id FROM oauth_accounts
+     WHERE provider = 'telegram' AND provider_user_id = $1`,
+    [profile.providerId],
+  );
+
+  if (conflict.rows.length > 0 && conflict.rows[0].user_id !== userId) {
+    throw new Error('This Telegram account is already linked to a different user');
+  }
+
+  await pool.query(
+    `INSERT INTO oauth_accounts (provider, provider_user_id, user_id)
+     VALUES ('telegram', $1, $2)
+     ON CONFLICT (provider, provider_user_id) DO UPDATE SET user_id = EXCLUDED.user_id`,
+    [profile.providerId, userId],
+  );
+
+  await pool.query(
+    `UPDATE users SET updated_at = NOW() WHERE id = $1`,
+    [userId],
+  );
+
+  await linkTelegramChatToUser(userId, profile.providerId);
+}
+
 async function finishOAuthLogin(provider, query) {
   assertOAuthProvider(provider);
 
@@ -491,16 +569,23 @@ async function finishOAuthLogin(provider, query) {
   const stateResult = await pool.query(
     `DELETE FROM oauth_states
      WHERE state = $1 AND provider = $2 AND expires_at > NOW()
-     RETURNING state`,
+     RETURNING state, link_user_id`,
     [query.state, provider],
   );
   if (stateResult.rows.length === 0) {
     throw new Error('Invalid or expired OAuth state');
   }
 
+  const { link_user_id: linkUserId } = stateResult.rows[0];
+
   const profile = provider === 'google'
     ? await exchangeGoogleCode(query.code)
     : await exchangeVkCode(query.code);
+
+  if (linkUserId) {
+    await linkProviderToUser(linkUserId, profile);
+    return { isLink: true, userId: linkUserId };
+  }
 
   const user = await upsertSocialUser(profile);
   const token = issueToken(user);
@@ -601,6 +686,9 @@ module.exports = {
   getAuthProviderConfig,
   createOAuthStartUrl,
   finishOAuthLogin,
+  linkProviderToUser,
+  unlinkProvider,
+  linkTelegramToUser,
   loginWithTelegram,
   createOAuthSession,
   consumeOAuthSession,
