@@ -183,12 +183,44 @@ function getServingIds(modes) {
   return [];
 }
 
+/**
+ * Returns the classified mode for a product: 'full_ru' | 'ru_subtitles' | 'no_ru',
+ * or null if the index has not classified it yet. The full modes map is consulted
+ * (so "no_ru" is reported), which is what makes the catalog badges accurate.
+ */
 function getModeForProduct(productId) {
   const id = normalizeId(productId);
   if (!id) return null;
+  const modes = state.index?.modes;
+  if (modes && modes[id]) return modes[id];
   if (state.fullSet.has(id)) return 'full_ru';
   if (state.russianSet.has(id)) return 'ru_subtitles';
   return null;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchBrowsePage(encodedCT, attempts = 4) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await catalogService.browseGames({
+        encodedFilters: '',
+        encodedCT,
+        // Match the main browse request on the first page so we reuse (and don't
+        // clobber) the shared `browse:::` cache entry, which carries the filters.
+        returnFilters: encodedCT === '',
+        channelId: '',
+      });
+    } catch (err) {
+      lastError = err;
+      logger.warn('[RussianIndex] Browse page failed', { attempt, message: err.message });
+      if (attempt < attempts) await sleep(1500 * attempt);
+    }
+  }
+  throw lastError;
 }
 
 async function walkCatalog(onProgress) {
@@ -197,16 +229,18 @@ async function walkCatalog(onProgress) {
   const seenTokens = new Set();
   let encodedCT = '';
   let pages = 0;
+  let walkComplete = false;
 
   do {
-    const raw = await catalogService.browseGames({
-      encodedFilters: '',
-      encodedCT,
-      // Match the main browse request on the first page so we reuse (and don't
-      // clobber) the shared `browse:::` cache entry, which carries the filters.
-      returnFilters: encodedCT === '',
-      channelId: '',
-    });
+    let raw;
+    try {
+      raw = await fetchBrowsePage(encodedCT);
+    } catch (err) {
+      // A transient upstream error after retries: stop the walk and proceed with
+      // whatever we collected. The build stays "incomplete" so it re-walks later.
+      log(`Обход прерван на странице ${pages + 1} (${err.message}) — продолжаю с ${products.length} играми`);
+      break;
+    }
 
     for (const mapped of mapProducts(raw.products || [])) {
       const id = normalizeId(mapped.id);
@@ -218,12 +252,12 @@ async function walkCatalog(onProgress) {
     pages += 1;
     if (typeof onProgress === 'function') onProgress(products.length);
     encodedCT = raw.encodedCT || '';
-    if (!encodedCT || seenTokens.has(encodedCT)) break;
+    if (!encodedCT || seenTokens.has(encodedCT)) { walkComplete = true; break; }
     seenTokens.add(encodedCT);
   } while (pages < config.russianIndex.maxBrowsePages);
 
-  logger.info('[RussianIndex] Catalog walk complete', { pages, products: products.length });
-  return products;
+  logger.info('[RussianIndex] Catalog walk complete', { pages, products: products.length, walkComplete });
+  return { products, walkComplete };
 }
 
 async function loadOverrideModes() {
@@ -322,12 +356,12 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
     // Phase 1 — walk the whole catalog.
     state.progress.phase = 'walking';
     log('Обход каталога Xbox...');
-    const walked = await walkCatalog((scanned) => {
+    const { products: walked, walkComplete } = await walkCatalog((scanned) => {
       state.progress.scanned = scanned;
       state.progress.updatedAt = Date.now();
     });
     state.progress.total = walked.length;
-    log(`Каталог собран: ${walked.length} игр`);
+    log(`Каталог собран: ${walked.length} игр${walkComplete ? '' : ' (частично)'}`);
 
     // Phase 2 — classify each game (reuse known modes; fetch only the unknown).
     state.progress.phase = 'classifying';
@@ -393,7 +427,7 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
     checkpointTimer = null;
 
     const pending = cappedOut + (fetchTargets.length - newlyResolved);
-    const complete = pending === 0;
+    const complete = walkComplete && pending === 0;
     const durationMs = Date.now() - startedAt;
     const index = buildIndexObject({ modes, walked, trigger, durationMs, complete, storeFetches, pending });
     await persistIndex(index);

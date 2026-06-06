@@ -994,8 +994,16 @@ async function enrichProducts(products) {
 
 function applyIndexLanguageMode(product) {
   const mode = russianIndex.getModeForProduct(product.id);
-  if (!mode) return product;
-  return { ...product, russianLanguageMode: mode, hasRussianLanguage: true };
+  if (mode === 'full_ru' || mode === 'ru_subtitles') {
+    return { ...product, russianLanguageMode: mode, hasRussianLanguage: true };
+  }
+  if (mode === 'no_ru') {
+    return { ...product, russianLanguageMode: 'no_ru', hasRussianLanguage: false };
+  }
+  // Not classified by the index yet — the display-catalog language list is
+  // unreliable (it reports Russian for almost everything), so show "unknown"
+  // instead of a wrong "Русские субтитры" badge.
+  return { ...product, russianLanguageMode: 'unknown', hasRussianLanguage: false };
 }
 
 function fetchCatalogPage({ query, encodedFilters, encodedCT, returnFilters, channelId = '' }) {
