@@ -43,8 +43,6 @@ export default function FavoritesPage() {
 
   return (
     <div className="favorites-page">
-      <h1 className="favorites-title">Твои сохранённые игры</h1>
-
       <div className="favorites-count-bar">
         В избранном <strong>{count}</strong> {count === 1 ? 'товар' : 'товаров'}
       </div>
