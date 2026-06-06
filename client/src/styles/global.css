@@ -93,6 +93,10 @@ img {
   padding: 1.6rem 1.5rem 3rem;
 }
 
+.app-main--catalog {
+  padding-top: 0;
+}
+
 /* ========== Header ========== */
 .app-header {
   position: sticky;
@@ -563,7 +567,7 @@ img {
 /* ========== Filter Panel ========== */
 .filter-panel {
   position: sticky;
-  top: calc(var(--header-height) + 0.85rem);
+  top: var(--header-height);
   z-index: 90;
   width: 100%;
   margin: 0 auto 1.55rem;
@@ -760,6 +764,61 @@ img {
   width: 16px;
   height: 16px;
   accent-color: var(--accent);
+}
+
+.filter-sale-date-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.9rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  background: rgba(16, 124, 16, 0.1);
+  border: 1px solid rgba(45, 189, 116, 0.2);
+}
+
+.filter-sale-date-label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.filter-sale-date-input {
+  height: 36px;
+  padding: 0 0.6rem;
+  border-radius: 6px;
+  border: 1px solid rgba(125, 220, 255, 0.2);
+  background: rgba(21, 30, 43, 0.9);
+  color: var(--text);
+  font-size: 0.875rem;
+  outline: none;
+  color-scheme: dark;
+}
+
+.filter-sale-date-input:focus {
+  border-color: rgba(125, 220, 255, 0.5);
+}
+
+.filter-sale-date-clear {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.filter-sale-date-clear:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
 }
 
 .filter-grid {
@@ -1934,6 +1993,17 @@ img {
   color: var(--text-muted);
   line-height: 1.65;
   white-space: pre-line;
+}
+
+.help-rich-link {
+  color: #7ddcff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color var(--transition);
+}
+
+.help-rich-link:hover {
+  color: #b8ecff;
 }
 
 .help-faq-list {
@@ -6492,6 +6562,86 @@ code {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
+}
+
+/* ── Admin Help item editors ── */
+.admin-help-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.admin-help-item {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.8rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.admin-help-item-index {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(125, 220, 255, 0.15);
+  color: #7ddcff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.45rem;
+}
+
+.admin-help-item-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.admin-help-item-fields input,
+.admin-help-item-fields textarea {
+  width: 100%;
+  padding: 0.45rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(21, 30, 43, 0.7);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.admin-help-item-fields input:focus,
+.admin-help-item-fields textarea:focus {
+  border-color: rgba(125, 220, 255, 0.4);
+  outline: none;
+}
+
+.admin-help-item-del {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(216, 59, 1, 0.12);
+  color: #ff7a5c;
+  font-size: 1.1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.3rem;
+  transition: background var(--transition);
+}
+
+.admin-help-item-del:hover {
+  background: rgba(216, 59, 1, 0.28);
+  color: #fff;
 }
 
 .admin-scheduler-action {

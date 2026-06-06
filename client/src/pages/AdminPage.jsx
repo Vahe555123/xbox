@@ -179,8 +179,8 @@ function helpContentToForm(content = {}) {
     purchasesDescription: content.purchasesDescription || '',
     purchasesButtonLabel: content.purchasesButtonLabel || '',
     purchasesButtonUrl: content.purchasesButtonUrl || '',
-    stepsText: serializeDelimitedPairs(content.steps, 'title', 'body'),
-    faqText: serializeDelimitedPairs(content.faqItems, 'question', 'answer'),
+    steps: Array.isArray(content.steps) ? content.steps.map((s) => ({ title: s.title || '', body: s.body || '' })) : [],
+    faqItems: Array.isArray(content.faqItems) ? content.faqItems.map((f) => ({ question: f.question || '', answer: f.answer || '' })) : [],
   };
 }
 
@@ -197,8 +197,8 @@ function helpFormToPayload(form = {}) {
     purchasesDescription: form.purchasesDescription || '',
     purchasesButtonLabel: form.purchasesButtonLabel || '',
     purchasesButtonUrl: form.purchasesButtonUrl || '',
-    steps: parseDelimitedPairs(form.stepsText, 'title', 'body'),
-    faqItems: parseDelimitedPairs(form.faqText, 'question', 'answer'),
+    steps: (form.steps || []).filter((s) => s.title || s.body),
+    faqItems: (form.faqItems || []).filter((f) => f.question || f.answer),
   };
 }
 
@@ -1509,6 +1509,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
             <div className="admin-card">
               <h3>Карточки помощи</h3>
+              <p className="admin-card-desc">Описания поддерживают ссылки: [текст](https://...)</p>
               <form className="admin-override-form" onSubmit={handleHelpContentSave}>
                 <label className="admin-field">
                   <span>Заголовок поддержки</span>
@@ -1589,33 +1590,103 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
           <div className="admin-card">
             <h3>Пошаговый блок</h3>
-            <p className="admin-card-desc">Каждая строка: Заголовок || Описание</p>
-            <form className="admin-override-form" onSubmit={handleHelpContentSave}>
-              <label className="admin-field">
-                <span>Шаги</span>
-                <textarea
-                  value={helpContentForm.stepsText}
-                  onChange={(e) => setHelpContentForm((current) => ({ ...current, stepsText: e.target.value }))}
-                  rows={7}
-                />
-              </label>
+            <p className="admin-card-desc">Поддерживает ссылки: [текст](https://...)</p>
+            <div className="admin-help-items">
+              {(helpContentForm.steps || []).map((step, idx) => (
+                <div key={idx} className="admin-help-item">
+                  <div className="admin-help-item-index">{idx + 1}</div>
+                  <div className="admin-help-item-fields">
+                    <input
+                      type="text"
+                      placeholder="Заголовок шага"
+                      value={step.title}
+                      onChange={(e) => setHelpContentForm((cur) => {
+                        const steps = cur.steps.map((s, i) => (i === idx ? { ...s, title: e.target.value } : s));
+                        return { ...cur, steps };
+                      })}
+                    />
+                    <textarea
+                      placeholder="Описание шага (поддерживает [текст](url))"
+                      rows={2}
+                      value={step.body}
+                      onChange={(e) => setHelpContentForm((cur) => {
+                        const steps = cur.steps.map((s, i) => (i === idx ? { ...s, body: e.target.value } : s));
+                        return { ...cur, steps };
+                      })}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="admin-help-item-del"
+                    title="Удалить шаг"
+                    onClick={() => setHelpContentForm((cur) => ({ ...cur, steps: cur.steps.filter((_, i) => i !== idx) }))}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="admin-btn"
+                onClick={() => setHelpContentForm((cur) => ({ ...cur, steps: [...(cur.steps || []), { title: '', body: '' }] }))}
+              >
+                + Добавить шаг
+              </button>
+            </div>
+          </div>
 
-              <label className="admin-field">
-                <span>FAQ</span>
-                <textarea
-                  value={helpContentForm.faqText}
-                  onChange={(e) => setHelpContentForm((current) => ({ ...current, faqText: e.target.value }))}
-                  rows={8}
-                />
-              </label>
+          <div className="admin-card">
+            <h3>Частые вопросы (FAQ)</h3>
+            <p className="admin-card-desc">Поддерживает ссылки: [текст](https://...)</p>
+            <div className="admin-help-items">
+              {(helpContentForm.faqItems || []).map((item, idx) => (
+                <div key={idx} className="admin-help-item admin-help-item--faq">
+                  <div className="admin-help-item-index">{idx + 1}</div>
+                  <div className="admin-help-item-fields">
+                    <input
+                      type="text"
+                      placeholder="Вопрос"
+                      value={item.question}
+                      onChange={(e) => setHelpContentForm((cur) => {
+                        const faqItems = cur.faqItems.map((f, i) => (i === idx ? { ...f, question: e.target.value } : f));
+                        return { ...cur, faqItems };
+                      })}
+                    />
+                    <textarea
+                      placeholder="Ответ (поддерживает [текст](url))"
+                      rows={3}
+                      value={item.answer}
+                      onChange={(e) => setHelpContentForm((cur) => {
+                        const faqItems = cur.faqItems.map((f, i) => (i === idx ? { ...f, answer: e.target.value } : f));
+                        return { ...cur, faqItems };
+                      })}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="admin-help-item-del"
+                    title="Удалить вопрос"
+                    onClick={() => setHelpContentForm((cur) => ({ ...cur, faqItems: cur.faqItems.filter((_, i) => i !== idx) }))}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="admin-btn"
+                onClick={() => setHelpContentForm((cur) => ({ ...cur, faqItems: [...(cur.faqItems || []), { question: '', answer: '' }] }))}
+              >
+                + Добавить вопрос
+              </button>
+            </div>
 
-              <div className="admin-override-actions">
-                <button className="admin-btn admin-btn-primary" type="submit" disabled={helpContentSaving}>
-                  {helpContentSaving ? 'Сохраняем...' : 'Сохранить раздел помощи'}
-                </button>
-              </div>
-              {helpContentMessage && <p className="admin-scheduler-result">{helpContentMessage}</p>}
-            </form>
+            <div className="admin-override-actions" style={{ marginTop: '1.2rem' }}>
+              <button className="admin-btn admin-btn-primary" type="button" onClick={handleHelpContentSave} disabled={helpContentSaving}>
+                {helpContentSaving ? 'Сохраняем...' : 'Сохранить раздел помощи'}
+              </button>
+            </div>
+            {helpContentMessage && <p className="admin-scheduler-result">{helpContentMessage}</p>}
           </div>
         </div>
       )}

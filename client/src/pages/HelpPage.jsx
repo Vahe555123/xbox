@@ -10,6 +10,27 @@ const CONTACT_META = {
   maxUrl: { label: 'MAX', icon: 'MX' },
 };
 
+// Parse [text](url) markdown-style links in a string and return React nodes.
+function renderRichText(text) {
+  if (!text) return null;
+  const parts = [];
+  const re = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
+  let last = 0;
+  let match;
+  let key = 0;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    parts.push(
+      <a key={key++} href={match[2]} target="_blank" rel="noreferrer" className="help-rich-link">
+        {match[1]}
+      </a>,
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length === 1 && typeof parts[0] === 'string' ? parts[0] : parts;
+}
+
 function pickPrimarySupportUrl(content, links) {
   if (content?.supportButtonUrl) return content.supportButtonUrl;
   return links.telegramUrl || links.vkUrl || links.maxUrl || '';
@@ -73,7 +94,7 @@ export default function HelpPage() {
       <section className="help-hero">
         {content?.eyebrow && <p className="help-kicker">{content.eyebrow}</p>}
         <h1>{content?.title || 'Помощь'}</h1>
-        {content?.subtitle && <p className="help-hero-text">{content.subtitle}</p>}
+        {content?.subtitle && <p className="help-hero-text">{renderRichText(content.subtitle)}</p>}
 
         <div className="help-hero-actions">
           {primarySupportUrl && (
@@ -91,7 +112,7 @@ export default function HelpPage() {
         <article className="help-card help-card-accent">
           <p className="help-card-label">Поддержка</p>
           <h2>{content?.supportTitle || 'Написать в поддержку'}</h2>
-          <p>{content?.supportDescription || 'Свяжитесь с нами через удобный мессенджер.'}</p>
+          <p>{renderRichText(content?.supportDescription || 'Свяжитесь с нами через удобный мессенджер.')}</p>
           {primarySupportUrl && (
             <a className="help-inline-link" href={primarySupportUrl} target="_blank" rel="noreferrer">
               {content?.supportButtonLabel || 'Открыть поддержку'}
@@ -102,7 +123,7 @@ export default function HelpPage() {
         <article className="help-card">
           <p className="help-card-label">Покупка</p>
           <h2>{content?.purchasesTitle || 'Как проходит покупка'}</h2>
-          <p>{content?.purchasesDescription || 'После оплаты вы получите дальнейшие инструкции.'}</p>
+          <p>{renderRichText(content?.purchasesDescription || 'После оплаты вы получите дальнейшие инструкции.')}</p>
           {content?.purchasesButtonUrl && (
             <a className="help-inline-link" href={content.purchasesButtonUrl} target="_blank" rel="noreferrer">
               {content?.purchasesButtonLabel || 'Перейти к оплате'}
@@ -150,7 +171,7 @@ export default function HelpPage() {
               <article key={`${item.title}-${index}`} className="help-step-card">
                 <span className="help-step-index">{String(index + 1).padStart(2, '0')}</span>
                 <h3>{item.title}</h3>
-                <p>{item.body}</p>
+                <p>{renderRichText(item.body)}</p>
               </article>
             ))}
           </div>
@@ -168,7 +189,7 @@ export default function HelpPage() {
             {faqItems.map((item, index) => (
               <details key={`${item.question}-${index}`} className="help-faq-item">
                 <summary>{item.question}</summary>
-                <div className="help-faq-answer">{item.answer}</div>
+                <div className="help-faq-answer">{renderRichText(item.answer)}</div>
               </details>
             ))}
           </div>

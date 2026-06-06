@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 const SKIP_FILTER_KEYS = ['orderby', 'MaturityRating', 'Accessibility', 'SupportedLanguages'];
+// These filters allow only one value at a time (radio behaviour)
+const RADIO_FILTER_KEYS = new Set(['Genre', 'Multiplayer', 'IncludedInSubscription']);
 const FILTER_ORDER = [
   'LanguageMode',
   'PlayWith',
@@ -278,7 +280,14 @@ export default function FilterPanel({
       const next = cloneFilters(prev);
       const current = next[key] || [];
 
-      if (current.includes(valueId)) {
+      if (RADIO_FILTER_KEYS.has(key)) {
+        // Single-select: toggle off if already selected, otherwise replace
+        if (current.includes(valueId)) {
+          delete next[key];
+        } else {
+          next[key] = [valueId];
+        }
+      } else if (current.includes(valueId)) {
         const filtered = current.filter((value) => value !== valueId);
         if (filtered.length === 0) {
           delete next[key];
@@ -330,8 +339,26 @@ export default function FilterPanel({
         if (remaining.length > 0) next[item.filterKey] = remaining;
         else delete next[item.filterKey];
       }
+      // Clear sale end-date when deactivating or switching away from Скидки
+      delete next.SaleEndBefore;
       if (!wasActive) {
         next[chip.filterKey] = [...(next[chip.filterKey] || []), chip.value];
+      }
+      return next;
+    });
+  };
+
+  const saleChipActive = isChipActive(QUICK_CHIPS[0]); // 'sale' chip
+
+  const saleEndDate = (draftFilters.SaleEndBefore || [])[0] || '';
+
+  const setSaleEndDate = (value) => {
+    setDraftFilters((prev) => {
+      const next = cloneFilters(prev);
+      if (value) {
+        next.SaleEndBefore = [value];
+      } else {
+        delete next.SaleEndBefore;
       }
       return next;
     });
@@ -441,6 +468,31 @@ export default function FilterPanel({
             </div>
           </div>
 
+          {saleChipActive && (
+            <div className="filter-sale-date-row">
+              <label className="filter-sale-date-label">
+                Скидка действует до
+                <input
+                  type="date"
+                  className="filter-sale-date-input"
+                  value={saleEndDate}
+                  onChange={(e) => setSaleEndDate(e.target.value)}
+                  min={new Date().toISOString().slice(0, 10)}
+                />
+              </label>
+              {saleEndDate && (
+                <button
+                  type="button"
+                  className="filter-sale-date-clear"
+                  onClick={() => setSaleEndDate('')}
+                  aria-label="Сбросить дату"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="filter-grid">
             {filterKeys.map((key) => {
               const filter = filters?.[key] || CUSTOM_FILTERS[key];
@@ -457,6 +509,7 @@ export default function FilterPanel({
                   activeValues={draftFilters[key] || []}
                   getTitle={(choice) => choiceTitle(key, choice)}
                   onToggle={(valueId) => updateDraftFilter(key, valueId)}
+                  isRadio={RADIO_FILTER_KEYS.has(key)}
                 />
               );
             })}
@@ -477,11 +530,14 @@ export default function FilterPanel({
   );
 }
 
-function FilterDropdown({ title, choices, activeValues, getTitle, onToggle }) {
+function FilterDropdown({ title, choices, activeValues, getTitle, onToggle, isRadio = false }) {
   const selectedChoices = choices.filter((choice) => activeValues.includes(choice.id));
   const selectedLabel = selectedChoices.length > 0
     ? selectedChoices.slice(0, 2).map((choice) => getTitle(choice)).join(', ')
     : title;
+
+  // Stable group name for radio inputs (not for accessibility, just for DOM grouping)
+  const groupName = `filter-radio-${title}`;
 
   return (
     <details className="filter-dropdown">
@@ -499,6 +555,21 @@ function FilterDropdown({ title, choices, activeValues, getTitle, onToggle }) {
           }
 
           const isActive = activeValues.includes(choice.id);
+
+          if (isRadio) {
+            return (
+              <label key={choice.id} className={`filter-checkbox filter-radio-item ${isActive ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name={groupName}
+                  checked={isActive}
+                  onChange={() => onToggle(choice.id)}
+                  onClick={() => { if (isActive) onToggle(choice.id); }}
+                />
+                <span className="filter-checkbox-label">{getTitle(choice)}</span>
+              </label>
+            );
+          }
 
           return (
             <label key={choice.id} className={`filter-checkbox ${isActive ? 'active' : ''}`}>

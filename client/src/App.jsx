@@ -25,6 +25,7 @@ const FILTER_QUERY_KEYS = [
   'IncludedInSubscription',
   'HandheldCompatibility',
   'SpecialOffers',
+  'SaleEndBefore',
 ];
 
 const DEALS_FILTER_KEY = 'Price';
@@ -580,7 +581,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="app-main">
+      <main className={`app-main${isCatalogRoute ? ' app-main--catalog' : ''}`}>
         {isCatalogRoute && (
           <FilterPanel
             filters={searchState.filterOptions}

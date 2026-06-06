@@ -75,6 +75,7 @@ async function search({
   const languageFilterActive = languageModes.size > 0;
   const specialOffersOnly = isSpecialOfferFilterActive(filters);
   const freeOnly = isFreeFilterActive(filters);
+  const saleEndBefore = getSaleEndBefore(filters);
 
   if (isRankedSearchToken(encodedCT)) {
     const buffered = await readRankedSearchBuffer(encodedCT);
@@ -146,6 +147,7 @@ async function search({
         channelId,
         specialOffersOnly,
         freeOnly,
+        saleEndBefore,
       });
     }
 
@@ -182,6 +184,7 @@ async function search({
       languageMode,
       specialOffersOnly,
       freeOnly,
+      saleEndBefore,
     });
   }
 
@@ -198,6 +201,7 @@ async function search({
       languageMode,
       specialOffersOnly,
       freeOnly,
+      saleEndBefore,
     });
 
     rawProducts = collected.rawProducts;
@@ -207,10 +211,10 @@ async function search({
   const products = mapProducts(rawProducts);
   const enrichedProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(products)),
-    { languageMode, specialOffersOnly, freeOnly },
+    { languageMode, specialOffersOnly, freeOnly, saleEndBefore },
   );
   const extraKeywordProducts = query
-    ? await loadOverrideKeywordProducts(query, enrichedProducts, { languageMode, specialOffersOnly, freeOnly })
+    ? await loadOverrideKeywordProducts(query, enrichedProducts, { languageMode, specialOffersOnly, freeOnly, saleEndBefore })
     : [];
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)
@@ -240,6 +244,7 @@ async function searchWithRelevanceRerank({
   channelId,
   specialOffersOnly,
   freeOnly,
+  saleEndBefore = null,
 }) {
   const collectedRawProducts = [];
   const queryVariants = getSearchQueryVariants(query);
@@ -275,11 +280,13 @@ async function searchWithRelevanceRerank({
     languageMode,
     specialOffersOnly,
     freeOnly,
+    saleEndBefore,
   });
   const extraKeywordProducts = await loadOverrideKeywordProducts(query, enrichedProducts, {
     languageMode,
     specialOffersOnly,
     freeOnly,
+    saleEndBefore,
   });
   const rankedProducts = rankProductsBySearchRelevance(
     mergeProductsById(enrichedProducts, extraKeywordProducts),
@@ -467,7 +474,7 @@ function bestRawSearchMatchTier(rawProducts, query) {
   ), SEARCH_MATCH_TIERS.NONE);
 }
 
-async function loadOverrideKeywordProducts(query, existingProducts, { languageMode, specialOffersOnly, freeOnly }) {
+async function loadOverrideKeywordProducts(query, existingProducts, { languageMode, specialOffersOnly, freeOnly, saleEndBefore = null }) {
   const overrides = await listSearchableProductOverrides();
   if (!overrides.length) return [];
 
@@ -510,7 +517,7 @@ async function loadOverrideKeywordProducts(query, existingProducts, { languageMo
   const mappedProducts = mapRelatedProducts(rawProducts, {});
   const enrichedProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(mappedProducts)),
-    { languageMode, specialOffersOnly, freeOnly },
+    { languageMode, specialOffersOnly, freeOnly, saleEndBefore },
   );
   const productsById = new Map(
     enrichedProducts.map((product) => [String(product?.id || '').toUpperCase(), product]),
@@ -766,6 +773,7 @@ async function collectRawProductsForLanguage({
   languageMode,
   specialOffersOnly,
   freeOnly,
+  saleEndBefore = null,
 }) {
   const targetCount = getLanguageFilterTargetCount();
   let collectedRawProducts = [...rawProducts];
@@ -773,7 +781,7 @@ async function collectRawProductsForLanguage({
   let attempts = 0;
 
   while (
-    await countLanguageFilteredProducts(collectedRawProducts, languageMode, specialOffersOnly, freeOnly) < targetCount
+    await countLanguageFilteredProducts(collectedRawProducts, languageMode, specialOffersOnly, freeOnly, saleEndBefore) < targetCount
     && collectedNextEncodedCT
     && attempts < LANGUAGE_FILTER_PREFETCH_MAX_PAGES
   ) {
@@ -835,6 +843,7 @@ async function countFilteredSearchResults({
   languageMode,
   specialOffersOnly,
   freeOnly,
+  saleEndBefore = null,
 }) {
   const collected = await collectAllCatalogPages({
     query,
@@ -847,10 +856,10 @@ async function countFilteredSearchResults({
   const mappedProducts = mapProducts(dedupeRawProducts(collected.rawProducts));
   const filteredProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(mappedProducts)),
-    { languageMode, specialOffersOnly, freeOnly },
+    { languageMode, specialOffersOnly, freeOnly, saleEndBefore },
   );
   const extraKeywordProducts = query
-    ? await loadOverrideKeywordProducts(query, filteredProducts, { languageMode, specialOffersOnly, freeOnly })
+    ? await loadOverrideKeywordProducts(query, filteredProducts, { languageMode, specialOffersOnly, freeOnly, saleEndBefore })
     : [];
   const mergedProducts = mergeProductsById(filteredProducts, extraKeywordProducts);
 
@@ -865,11 +874,11 @@ async function countFilteredSearchResults({
   };
 }
 
-async function countLanguageFilteredProducts(rawProducts, languageMode, specialOffersOnly = false, freeOnly = false) {
+async function countLanguageFilteredProducts(rawProducts, languageMode, specialOffersOnly = false, freeOnly = false, saleEndBefore = null) {
   const mappedProducts = mapProducts(dedupeRawProducts(rawProducts));
   const filteredProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(mappedProducts)),
-    { languageMode, specialOffersOnly, freeOnly },
+    { languageMode, specialOffersOnly, freeOnly, saleEndBefore },
   );
   return filteredProducts.length;
 }
@@ -972,8 +981,9 @@ async function serveCuratedIdsPage({
   };
 }
 
-function applyPostFilters(products, { languageMode, specialOffersOnly, freeOnly = false }) {
+function applyPostFilters(products, { languageMode, specialOffersOnly, freeOnly = false, saleEndBefore = null }) {
   const languageModes = parseLanguageModes(languageMode);
+  const saleEndMs = saleEndBefore ? Date.parse(`${saleEndBefore}T23:59:59Z`) : null;
   return products.filter((product) => {
     if (product.notAvailableSeparately) return false;
     // Free games are hidden from the catalog by default, but shown when the
@@ -982,6 +992,11 @@ function applyPostFilters(products, { languageMode, specialOffersOnly, freeOnly 
     if (languageModes.size && !matchesLanguageModes(product, languageModes)) return false;
     // "Спецпредложения": only games that actually have a configured special offer.
     if (specialOffersOnly && !product.specialOfferUrl) return false;
+    // Sale end date: keep only games whose discount ends on or before the chosen date.
+    if (saleEndMs !== null) {
+      const end = product.price?.dealEndDate ? Date.parse(product.price.dealEndDate) : null;
+      if (!end || end > saleEndMs) return false;
+    }
     return true;
   });
 }
@@ -1039,7 +1054,7 @@ function fetchCatalogPage({ query, encodedFilters, encodedCT, returnFilters, cha
 
 function buildEncodedFilters(filters, sort) {
   const filterObj = {};
-  const localFilterKeys = new Set(['LanguageMode', SPECIAL_OFFERS_FILTER_KEY]);
+  const localFilterKeys = new Set(['LanguageMode', SPECIAL_OFFERS_FILTER_KEY, 'SaleEndBefore']);
 
   if (filters && typeof filters === 'object') {
     for (const [key, values] of Object.entries(filters)) {
@@ -1063,6 +1078,11 @@ function isSpecialOfferFilterActive(filters) {
 
 function isFreeFilterActive(filters) {
   return Boolean(filters?.Price?.includes('Free'));
+}
+
+function getSaleEndBefore(filters) {
+  const v = filters?.SaleEndBefore?.[0];
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
 function mergeProductsById(...groups) {
