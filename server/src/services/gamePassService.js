@@ -107,10 +107,18 @@ async function createGamePassOrder(selections = {}, productId = 4687274) {
   const digiuid = randomUUID().toUpperCase();
   const failPage = `https://xboxportal.ru/product/${productId}`;
 
-  // Build option fields: option_<categoryId>=<variantValue>
+  // Build option fields using Digiseller's pay.asp format
   const optionFields = {};
-  for (const [optId, varValue] of Object.entries(selections)) {
-    if (varValue) optionFields[`option_${optId}`] = String(varValue);
+  for (const opt of product.options || []) {
+    const selVal = selections[opt.id];
+    if (!selVal) continue;
+    if (opt.type === 'radio') {
+      optionFields[`Option_radio_${opt.id}`] = String(selVal);
+    } else if (opt.type === 'checkbox') {
+      optionFields[`Option_checkbox_${opt.id}`] = String(selVal);
+    } else {
+      optionFields[`Option_text_${opt.id}`] = String(selVal);
+    }
   }
 
   const body = new URLSearchParams({
