@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { fetchGamePass } from '../services/api';
+import { fetchGamePass, createGamePassOrder } from '../services/api';
 
 function formatPrice(rub) {
   return rub.toLocaleString('ru-RU') + ' ₽';
@@ -7,18 +7,17 @@ function formatPrice(rub) {
 
 export default function GamePassModal({ onClose }) {
   const [product, setProduct] = useState(null);
-  const [payUrl, setPayUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   // selections: { [optionId]: variantValue }
   const [selections, setSelections] = useState({});
+  const [buying, setBuying] = useState(false);
   const backdropRef = useRef(null);
 
   useEffect(() => {
     fetchGamePass()
-      .then(({ product: p, payUrl: url }) => {
+      .then(({ product: p }) => {
         setProduct(p);
-        setPayUrl(url);
         // Pre-select first radio variant of each option
         const initial = {};
         (p.options || []).forEach((opt) => {
@@ -55,14 +54,16 @@ export default function GamePassModal({ onClose }) {
       }, 0)
     : 0;
 
-  const buildBuyUrl = () => {
-    if (!payUrl || !product) return payUrl;
-    const url = new URL(payUrl);
-    (product.options || []).forEach((opt) => {
-      const selVal = selections[opt.id];
-      if (selVal) url.searchParams.set(`option_${opt.id}`, selVal);
-    });
-    return url.toString();
+  const handleBuy = async () => {
+    setBuying(true);
+    try {
+      const { payUrl: url } = await createGamePassOrder(selections);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setError(err.response?.data?.error?.message || err.message || 'Не удалось создать заказ');
+    } finally {
+      setBuying(false);
+    }
   };
 
   const handleBackdrop = (e) => {
@@ -178,14 +179,14 @@ export default function GamePassModal({ onClose }) {
                 <strong>{formatPrice(totalPrice)}</strong>
               </div>
 
-              <a
+              <button
                 className="gp-buy-btn"
-                href={buildBuyUrl()}
-                target="_blank"
-                rel="noreferrer"
+                type="button"
+                onClick={handleBuy}
+                disabled={buying}
               >
-                Перейти к оплате →
-              </a>
+                {buying ? 'Создаём заказ…' : 'Перейти к оплате →'}
+              </button>
 
               <p className="gp-pay-note">
                 Безопасная оплата через <strong>oplata.info</strong> · Digiseller

@@ -1,4 +1,6 @@
 const axios = require('axios');
+const { randomUUID } = require('crypto');
+const config = require('../config');
 const logger = require('../utils/logger');
 
 const DIGISELLER_API = 'https://api.digiseller.ru/api/products/{id}/data';
@@ -90,4 +92,88 @@ async function fetchGamePassData(productId = 4687274) {
   }
 }
 
-module.exports = { fetchGamePassData };
+// Creates a pre-order on Digiseller and returns pay_cl.asp URL with id_po
+async function createGamePassOrder(selections = {}, productId = 4687274) {
+  const product = await fetchGamePassData(productId);
+
+  // Calculate total price from selections
+  const totalPrice = product.basePrice + (product.options || []).reduce((sum, opt) => {
+    const selVal = selections[opt.id];
+    if (!selVal) return sum;
+    const variant = opt.variants.find((v) => v.value === selVal);
+    return sum + (variant?.modifyValue || 0);
+  }, 0);
+
+  const digiuid = randomUUID().toUpperCase();
+  const failPage = `https://xboxportal.ru/product/${productId}`;
+
+  // Build option fields: option_<categoryId>=<variantValue>
+  const optionFields = {};
+  for (const [optId, varValue] of Object.entries(selections)) {
+    if (varValue) optionFields[`option_${optId}`] = String(varValue);
+  }
+
+  const body = new URLSearchParams({
+    Lang: 'ru-RU',
+    ID_D: String(productId),
+    product_id: String(productId),
+    Agent: config.digiseller.sellerId || '',
+    AgentN: '',
+    FailPage: failPage,
+    failpage: failPage,
+    NoClearBuyerQueryString: 'NoClear',
+    digiuid,
+    Curr_add: '',
+    TypeCurr: 'API_17432_RUB',
+    _subcurr: '',
+    _ow: '0',
+    firstrun: '0',
+    unit_cnt: '1',
+    unit_amount: String(totalPrice),
+    product_cnt: '1',
+    Email: '',
+    ...optionFields,
+  });
+
+  const payPostUrl = config.digiseller.payPostUrl || 'https://www.oplata.info/asp2/pay.asp';
+
+  const response = await axios.post(payPostUrl, body.toString(), {
+    headers: {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'ru,en;q=0.9',
+      'Cache-Control': 'no-cache',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Origin: 'https://www.oplata.info',
+      Pragma: 'no-cache',
+      Referer: 'https://www.oplata.info/',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    },
+    timeout: 15_000,
+    maxRedirects: 0,
+    validateStatus: (s) => s >= 200 && s < 400,
+  });
+
+  const location = response.headers?.location || '';
+  const idPoMatch = location.match(/[?&]id_po=([^&]+)/i);
+  const idPo = idPoMatch ? decodeURIComponent(idPoMatch[1]) : null;
+
+  if (!idPo) {
+    logger.warn('[GamePass] No id_po from Digiseller', { status: response.status, location });
+    throw new Error('Не удалось создать заказ на Digiseller');
+  }
+
+  const payUrl = new URL('https://www.oplata.info/asp2/pay_cl.asp');
+  payUrl.searchParams.set('id_d', String(productId));
+  payUrl.searchParams.set('id_po', idPo);
+  payUrl.searchParams.set('cart_uid', '');
+  payUrl.searchParams.set('lang', 'ru-RU');
+  payUrl.searchParams.set('digiuid', digiuid);
+  payUrl.searchParams.set('_ow', '0');
+  payUrl.searchParams.set('failpage', failPage);
+
+  logger.info('[GamePass] Order created', { productId, idPo, totalPrice });
+
+  return { payUrl: payUrl.toString(), idPo };
+}
+
+module.exports = { fetchGamePassData, createGamePassOrder };

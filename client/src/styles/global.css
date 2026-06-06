@@ -8449,7 +8449,8 @@ body.mobile-menu-open {
   margin-bottom: 0.75rem;
 }
 
-.gp-buy-btn:hover { filter: brightness(1.12); transform: translateY(-1px); }
+.gp-buy-btn:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
+.gp-buy-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .gp-pay-note {
   text-align: center;

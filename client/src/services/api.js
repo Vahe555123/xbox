@@ -140,6 +140,11 @@ export async function fetchGamePass() {
   return data;
 }
 
+export async function createGamePassOrder(selections) {
+  const { data } = await api.post('/gamepass/order', { selections });
+  return data;
+}
+
 export function getOAuthLinkUrl(provider) {
   const base = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
   return `${base}/auth/oauth/${encodeURIComponent(provider)}/link`;
