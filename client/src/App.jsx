@@ -218,7 +218,12 @@ export default function App() {
   const [authNotice, setAuthNotice] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(() => window.location.pathname === '/');
+  const [headerQuery, setHeaderQuery] = useState('');
+  const [priceRubBoundaries, setPriceRubBoundaries] = useState(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isCatalogRoute = location.pathname === '/';
+  const [filterOpen, setFilterOpen] = useState(() => location.pathname === '/');
   const filterOpenedAtRef = useRef(Date.now());
   const filterAutoClosedAtRef = useRef(0);
 
@@ -232,11 +237,6 @@ export default function App() {
     }
     setFilterOpen((v) => !v);
   };
-  const [headerQuery, setHeaderQuery] = useState('');
-  const [priceRubBoundaries, setPriceRubBoundaries] = useState(null);
-  const location = useLocation();
-  const navigate = useNavigate();
-  const isCatalogRoute = location.pathname === '/';
   const urlCatalogState = useMemo(() => readCatalogState(location.search), [location.search]);
   const isDealsActive = isCatalogRoute && Boolean(urlCatalogState.filters?.Price?.includes(DEALS_FILTER_VALUE));
   const isHomeActive = isCatalogRoute && !isDealsActive;
