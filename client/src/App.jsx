@@ -266,6 +266,12 @@ export default function App() {
     searchState.replaceSearchState(urlCatalogState);
   }, [isCatalogRoute, searchState.replaceSearchState, urlCatalogState]);
 
+  // Reopen filter whenever user returns to the catalog route.
+  useEffect(() => {
+    if (isCatalogRoute) openFilter();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCatalogRoute]);
+
   // Load best-rate ruble boundaries for the "Цена" filter labels.
   useEffect(() => {
     let active = true;

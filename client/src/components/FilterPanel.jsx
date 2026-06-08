@@ -14,6 +14,7 @@ const FILTER_ORDER = [
   'HandheldCompatibility',
 ];
 const AUTO_APPLY_DELAY_MS = 250;
+const QUERY_APPLY_DELAY_MS = 1000;
 
 // Скидки / Бесплатно / Спецпредложения — shown as quick chips under the search
 // bar (PS-style); only one can be active at a time.
@@ -235,7 +236,7 @@ export default function FilterPanel({
 
     const timer = setTimeout(() => {
       onQueryChange(draftQuery);
-    }, AUTO_APPLY_DELAY_MS);
+    }, QUERY_APPLY_DELAY_MS);
 
     return () => clearTimeout(timer);
   }, [draftQuery, onQueryChange, query]);
