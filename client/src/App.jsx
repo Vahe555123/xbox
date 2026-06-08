@@ -218,7 +218,7 @@ export default function App() {
   const [authNotice, setAuthNotice] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(true);
+  const [filterOpen, setFilterOpen] = useState(() => window.location.pathname === '/');
   const filterOpenedAtRef = useRef(Date.now());
   const filterAutoClosedAtRef = useRef(0);
 
@@ -266,11 +266,6 @@ export default function App() {
     searchState.replaceSearchState(urlCatalogState);
   }, [isCatalogRoute, searchState.replaceSearchState, urlCatalogState]);
 
-  // Reopen filter whenever user returns to the catalog route.
-  useEffect(() => {
-    if (isCatalogRoute) openFilter();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCatalogRoute]);
 
   // Load best-rate ruble boundaries for the "Цена" filter labels.
   useEffect(() => {
