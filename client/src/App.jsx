@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import SearchPage from './pages/SearchPage';
 import GameDetailPage from './pages/GameDetailPage';
@@ -60,10 +60,8 @@ function getParamValues(params, key) {
 }
 
 function resolveDefaultCatalogSort({ sort }) {
-  // Keep '' as the canonical "default" sort on the client. The server applies the
-  // real browse default (most-wishlisted) when no sort is sent. Materializing a
-  // concrete default here desynced the sort dropdown and caused an apply loop.
-  return String(sort || '').trim();
+  const normalized = String(sort || '').trim();
+  return normalized || 'ReleaseDate desc';
 }
 
 function readCatalogState(searchString = '') {
@@ -219,7 +217,8 @@ export default function App() {
   const [authNotice, setAuthNotice] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(true);
+  const filterClosedByScrollRef = useRef(false);
   const [headerQuery, setHeaderQuery] = useState('');
   const [priceRubBoundaries, setPriceRubBoundaries] = useState(null);
   const location = useLocation();
@@ -263,13 +262,13 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
-  // Collapse the expanded filter while scrolling down (PS-style).
+  // Close filter once when user scrolls past 100px; after that scroll has no effect.
   useEffect(() => {
-    let lastY = window.scrollY;
     const onScroll = () => {
-      const y = window.scrollY;
-      if (y > lastY + 12 && y > 220) setFilterOpen(false);
-      lastY = y;
+      if (!filterClosedByScrollRef.current && window.scrollY > 100) {
+        filterClosedByScrollRef.current = true;
+        setFilterOpen(false);
+      }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
