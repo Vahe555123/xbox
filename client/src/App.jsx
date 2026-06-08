@@ -59,9 +59,10 @@ function getParamValues(params, key) {
   return fallbackValue ? parseFilterValues(fallbackValue) : [];
 }
 
-function resolveDefaultCatalogSort({ sort }) {
+function resolveDefaultCatalogSort({ sort, query }) {
   const normalized = String(sort || '').trim();
-  return normalized || 'ReleaseDate desc';
+  if (normalized) return normalized;
+  return query ? '' : 'ReleaseDate desc';
 }
 
 function readCatalogState(searchString = '') {
@@ -109,7 +110,7 @@ function buildCatalogUrl({ query = '', sort = '', filters = {} } = {}) {
   const normalizedFilters = cloneFilters(filters);
   const normalizedQuery = String(query || '').trim();
   const normalizedSort = String(sort || '').trim();
-  const effectiveSort = resolveDefaultCatalogSort({ sort: normalizedSort });
+  const effectiveSort = resolveDefaultCatalogSort({ sort: normalizedSort, query: normalizedQuery });
 
   if (normalizedQuery) {
     params.set('q', normalizedQuery);
