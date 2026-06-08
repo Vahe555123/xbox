@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import SearchPage from './pages/SearchPage';
 import GameDetailPage from './pages/GameDetailPage';
@@ -218,6 +218,18 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(true);
+  const filterOpenedAtRef = useRef(Date.now());
+
+  const openFilter = () => {
+    filterOpenedAtRef.current = Date.now();
+    setFilterOpen(true);
+  };
+  const toggleFilter = () => {
+    if (!filterOpen) {
+      filterOpenedAtRef.current = Date.now();
+    }
+    setFilterOpen((v) => !v);
+  };
   const [headerQuery, setHeaderQuery] = useState('');
   const [priceRubBoundaries, setPriceRubBoundaries] = useState(null);
   const location = useLocation();
@@ -261,17 +273,21 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
-  // Close filter when scrolled past 100px; reopen when back at the top.
+  // Close filter when scrolled past 100px; reopen when back at top.
+  // Ignore close within 400ms of a manual open to prevent click-triggered micro-scroll.
   useEffect(() => {
     const onScroll = () => {
       if (window.scrollY > 100) {
-        setFilterOpen(false);
+        if (Date.now() - filterOpenedAtRef.current > 400) {
+          setFilterOpen(false);
+        }
       } else if (window.scrollY === 0) {
-        setFilterOpen(true);
+        openFilter();
       }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const navigateToCatalog = (nextState) => {
@@ -468,7 +484,7 @@ export default function App() {
               <button
                 type="button"
                 className={`header-mobile-filter-btn ${filterOpen ? 'active' : ''}`}
-                onClick={() => setFilterOpen((v) => !v)}
+                onClick={toggleFilter}
                 aria-label="Фильтры"
                 aria-pressed={filterOpen}
               >
@@ -602,7 +618,10 @@ export default function App() {
           sortFilter={sortFilter}
           total={isCatalogRoute ? searchState.total : null}
           isOpen={filterOpen}
-          onToggle={setFilterOpen}
+          onToggle={(v) => {
+            const next = typeof v === 'function' ? v(filterOpen) : v;
+            if (next) openFilter(); else setFilterOpen(false);
+          }}
           priceRubBoundaries={priceRubBoundaries}
         />
 
