@@ -219,6 +219,7 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(true);
   const filterOpenedAtRef = useRef(Date.now());
+  const filterAutoClosedAtRef = useRef(0);
 
   const openFilter = () => {
     filterOpenedAtRef.current = Date.now();
@@ -274,7 +275,8 @@ export default function App() {
   }, []);
 
   // Close filter when scrolled past 100px; reopen when back at top.
-  // Debounced 150ms so momentum/inertia scrolling doesn't cause rapid toggling.
+  // Debounced 150ms to avoid flicker from momentum scrolling.
+  // After auto-close, ignore auto-reopen for 600ms to avoid layout-shift feedback loop.
   useEffect(() => {
     let timer = null;
     const onScroll = () => {
@@ -282,10 +284,13 @@ export default function App() {
       timer = setTimeout(() => {
         if (window.scrollY > 100) {
           if (Date.now() - filterOpenedAtRef.current > 400) {
+            filterAutoClosedAtRef.current = Date.now();
             setFilterOpen(false);
           }
         } else if (window.scrollY === 0) {
-          openFilter();
+          if (Date.now() - filterAutoClosedAtRef.current > 600) {
+            openFilter();
+          }
         }
       }, 150);
     };
