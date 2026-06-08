@@ -513,16 +513,14 @@ export default function FilterPanel({
                 />
               );
             })}
-          </div>
-
-          <div className="filter-actions">
-            <span className="filter-auto-hint">Применяется автоматически</span>
-            <button className="filter-reset-btn" type="button" onClick={resetFilters}>
-              Сбросить
-            </button>
-            <button className="filter-apply-btn" type="button" onClick={applyFilters}>
-              Применить
-            </button>
+            <div className="filter-actions">
+              <button className="filter-reset-btn" type="button" onClick={resetFilters}>
+                Сбросить
+              </button>
+              <button className="filter-apply-btn" type="button" onClick={applyFilters}>
+                Применить
+              </button>
+            </div>
           </div>
         </div>
       )}
