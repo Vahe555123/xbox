@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import SearchPage from './pages/SearchPage';
 import GameDetailPage from './pages/GameDetailPage';
@@ -218,7 +218,6 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(true);
-  const filterClosedByScrollRef = useRef(false);
   const [headerQuery, setHeaderQuery] = useState('');
   const [priceRubBoundaries, setPriceRubBoundaries] = useState(null);
   const location = useLocation();
@@ -262,17 +261,17 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
-  // Close filter once when user scrolls past 100px; after that scroll has no effect.
+  // Close filter when scrolled past 100px; reopen when back at the top.
   useEffect(() => {
     const onScroll = () => {
-      if (!filterClosedByScrollRef.current && window.scrollY > 100) {
-        filterClosedByScrollRef.current = true;
+      if (window.scrollY > 100) {
         setFilterOpen(false);
+      } else if (window.scrollY === 0) {
+        setFilterOpen(true);
       }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const navigateToCatalog = (nextState) => {
