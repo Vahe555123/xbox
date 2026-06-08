@@ -274,19 +274,26 @@ export default function App() {
   }, []);
 
   // Close filter when scrolled past 100px; reopen when back at top.
-  // Ignore close within 400ms of a manual open to prevent click-triggered micro-scroll.
+  // Debounced 150ms so momentum/inertia scrolling doesn't cause rapid toggling.
   useEffect(() => {
+    let timer = null;
     const onScroll = () => {
-      if (window.scrollY > 100) {
-        if (Date.now() - filterOpenedAtRef.current > 400) {
-          setFilterOpen(false);
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (window.scrollY > 100) {
+          if (Date.now() - filterOpenedAtRef.current > 400) {
+            setFilterOpen(false);
+          }
+        } else if (window.scrollY === 0) {
+          openFilter();
         }
-      } else if (window.scrollY === 0) {
-        openFilter();
-      }
+      }, 150);
     };
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      clearTimeout(timer);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
