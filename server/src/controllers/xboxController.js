@@ -33,6 +33,10 @@ function assignKeyActivationUrl(product) {
     product.keyActivationPayUrl = null;
     return product;
   }
+  if (!product.isGiftable) {
+    product.keyActivationPayUrl = null;
+    return product;
+  }
   product.keyActivationPayUrl = buildKeyActivationPayUrl(product);
   return product;
 }

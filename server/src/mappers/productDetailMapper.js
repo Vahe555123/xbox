@@ -699,6 +699,7 @@ function mapProductDetail(raw) {
   const title = lp.ProductTitle || raw.ProductId;
   const productId = raw.ProductId;
   const skus = mapSkus(raw.DisplaySkuAvailabilities);
+  const isGiftable = skus.some((sku) => sku.availabilities.some((av) => av.actions.includes('Gift')));
   const playWith = mapPlatforms(props.XboxConsoleGenCompatible);
   const price = pickPrimaryPrice(skus);
   const gamePassSavings = extractGamePassSavings(skus);
@@ -758,6 +759,7 @@ function mapProductDetail(raw) {
 
     price,
     notAvailableSeparately: !price && releaseInfo.status !== 'unreleased' && releaseInfo.status !== 'comingSoon',
+    isGiftable,
     gamePassSavingsPercent: gamePassSavings?.percent ?? null,
     gamePassSavingsAmount: gamePassSavings?.amount ?? null,
     gamePassSavingsFormatted: gamePassSavings?.formattedAmount ?? null,
