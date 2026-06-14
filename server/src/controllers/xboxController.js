@@ -33,7 +33,7 @@ function assignKeyActivationUrl(product) {
     product.keyActivationPayUrl = null;
     return product;
   }
-  if (!product.isGiftable) {
+  if (product.isGiftable === false) {
     product.keyActivationPayUrl = null;
     return product;
   }

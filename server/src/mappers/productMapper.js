@@ -470,10 +470,14 @@ function enrichProductsWithCatalogDetails(products, catalogProducts) {
     const notAvailableSeparately = !catalogPriceInfo.price
       && product.releaseInfo?.status !== 'unreleased'
       && product.releaseInfo?.status !== 'comingSoon';
+    const isGiftable = (catalogProduct.DisplaySkuAvailabilities || []).some((entry) =>
+      (entry.Availabilities || []).some((av) => (av.Actions || []).includes('Gift'))
+    );
 
     return {
       ...product,
       ...languageInfo,
+      isGiftable,
       notAvailableSeparately,
       price: gamePassSavingsPercent && catalogPriceInfo.price ? catalogPriceInfo.price : product.price,
       subscriptions,
