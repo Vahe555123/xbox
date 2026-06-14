@@ -54,8 +54,19 @@ function getProductUsdPrice(product) {
   return null;
 }
 
-function getProductOriginalUsdPrice(product) {
-  const current = getProductUsdPrice(product);
+// Full (public) price, ignoring any Game Pass subscriber discount. Used for
+// key activation, which is never sold at the Game Pass discounted price.
+function getProductFullUsdPrice(product) {
+  const candidates = [product?.price?.value, product?.price?.listPrice, product?.price?.msrp];
+  for (const c of candidates) {
+    const n = Number(c);
+    if (Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100;
+  }
+  return null;
+}
+
+function getProductOriginalUsdPrice(product, currentOverride = null) {
+  const current = currentOverride ?? getProductUsdPrice(product);
   const original = Number(product?.price?.original || product?.price?.msrp || product?.price?.value);
   if (!Number.isFinite(original) || original <= 0) return null;
   if (current && original <= current) return null;
@@ -123,10 +134,10 @@ function buildRubPaymentPrice(id, title, price, extra = {}) {
   };
 }
 
-function estimateOriginalRubPrice(currentRub, product) {
+function estimateOriginalRubPrice(currentRub, product, currentUsdOverride = null) {
   const value = getRubValue(currentRub);
-  const currentUsd = getProductUsdPrice(product);
-  const originalUsd = getProductOriginalUsdPrice(product);
+  const currentUsd = currentUsdOverride ?? getProductUsdPrice(product);
+  const originalUsd = getProductOriginalUsdPrice(product, currentUsd);
   if (!value || !currentUsd || !originalUsd) return null;
   const originalValue = Math.round(value * (originalUsd / currentUsd));
   return {
@@ -183,7 +194,7 @@ async function assignPaymentPrices(product) {
     }),
     key_activation: buildRubPaymentPrice('key_activation', 'Ключ активации', keyActivationRub, {
       enabled: Boolean(product.keyActivationPayUrl),
-      originalPrice: estimateOriginalRubPrice(keyActivationRub, product),
+      originalPrice: estimateOriginalRubPrice(keyActivationRub, product, getProductFullUsdPrice(product)),
     }),
     topup_cards: buildRubPaymentPrice('topup_cards', 'Карты пополнения', product.topupCombo, {
       enabled: Boolean(product.topupCombo?.available),

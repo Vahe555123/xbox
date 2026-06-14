@@ -153,7 +153,7 @@ async function createKeyActivationPayment(product, { purchaseEmail, gameName } =
   const digisellerId = rateMode.digisellerId;
   if (!digisellerId) throw createPaymentError('Digiseller product id is not configured', 500);
 
-  const unitCount = getUsdPriceValue(product);
+  const unitCount = getFullUsdPriceValue(product);
   if (!unitCount || !shouldFetchRubPrice(product)) {
     throw createPaymentError('Для этого товара нельзя создать ссылку оплаты', 400);
   }
@@ -426,6 +426,22 @@ function getUsdPriceValue(product) {
   return null;
 }
 
+// Key activation must always charge the full (public) price, ignoring any
+// Game Pass subscriber discount. The Game Pass price is only available via
+// account purchase and topup cards.
+function getFullUsdPriceValue(product) {
+  const candidates = [
+    product?.price?.value,
+    product?.price?.listPrice,
+    product?.price?.msrp,
+  ];
+  for (const candidate of candidates) {
+    const value = parseMoney(candidate);
+    if (value && value > 0) return Math.round(value * 100) / 100;
+  }
+  return null;
+}
+
 function shouldFetchRubPrice(product) {
   if (!product) return false;
   if (product.price?.value === 0 || product.price?.isFree) return false;
@@ -488,7 +504,9 @@ function estimateRubFromSamples(samples, usdValue) {
 }
 
 async function getRubPriceForProduct(product, digisellerId, mode = RATE_MODE_OPLATA) {
-  const usdValue = getUsdPriceValue(product);
+  const usdValue = mode === RATE_MODE_KEY_ACTIVATION
+    ? getFullUsdPriceValue(product)
+    : getUsdPriceValue(product);
   if (!usdValue || !digisellerId || !shouldFetchRubPrice(product)) return null;
   const rateMode = getRateMode(mode);
   const samples = await getLatestRateSamples(digisellerId, rateMode.id).catch(() => []);
@@ -924,6 +942,7 @@ module.exports = {
   getMappingsByProductIds,
   fetchRubPrice,
   getRubPriceForProduct,
+  getFullUsdPriceValue,
   getUsdToRubEstimate,
   getKeyActivationRubPriceForProduct,
   createPurchasePaymentUrl,

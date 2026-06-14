@@ -2,7 +2,7 @@ const axios = require('axios');
 const { randomUUID } = require('crypto');
 const config = require('../config');
 const logger = require('../utils/logger');
-const { fetchRubPrice } = require('./digisellerService');
+const { fetchRubPrice, getFullUsdPriceValue } = require('./digisellerService');
 const { buildCartComboPurchase } = require('./topupCardService');
 
 const OPLATA_BASE_URL = 'https://www.oplata.info';
@@ -363,7 +363,7 @@ async function buildItemsForKeyActivation(products, { gameNames, purchaseEmail }
 
   for (let index = 0; index < products.length; index += 1) {
     const product = products[index];
-    const usd = getUsdPriceValue(product);
+    const usd = getFullUsdPriceValue(product);
 
     if (!usd) {
       throw createCartError(`Не удалось определить цену для "${product.title || product.id}"`, 400);
@@ -422,7 +422,7 @@ async function buildItemsForKeyActivation(products, { gameNames, purchaseEmail }
       metaItems: products.map((product, index) => ({
         id: product.id,
         title: normalizeText(gameNames?.[index] || product.title || product.name || product.id),
-        usd: getUsdPriceValue(product),
+        usd: getFullUsdPriceValue(product),
       })),
     },
   ];
