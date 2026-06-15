@@ -909,17 +909,23 @@ async function deleteMapping(productId) {
   return rowCount > 0;
 }
 
-function extractSpecialOfferProductId(url) {
-  try {
-    return new URL(String(url || '')).searchParams.get('id_d') || null;
-  } catch {
-    return null;
+function resolveSpecialOfferId(idOrUrl) {
+  const s = String(idOrUrl || '').trim();
+  if (!s) return null;
+  // backward compat: if a full URL was stored, extract id_d from it
+  if (s.startsWith('http')) {
+    try {
+      return new URL(s).searchParams.get('id_d') || null;
+    } catch {
+      return null;
+    }
   }
+  return /^\d+$/.test(s) ? s : null;
 }
 
-async function getSpecialOfferInfo(url) {
-  if (!url) return null;
-  const productId = extractSpecialOfferProductId(url);
+async function getSpecialOfferInfo(productIdOrUrl) {
+  if (!productIdOrUrl) return null;
+  const productId = resolveSpecialOfferId(productIdOrUrl);
   if (!productId) return null;
 
   const price = await fetchRubPrice(productId, 1);
@@ -929,7 +935,7 @@ async function getSpecialOfferInfo(url) {
     available: true,
     value: price.value,
     formatted: price.formatted,
-    url,
+    url: buildPayUrl(productId),
   };
 }
 

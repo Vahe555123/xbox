@@ -179,7 +179,10 @@ async function assignPaymentPrices(product) {
     specialOfferPromise,
   ]);
 
-  if (product.specialOfferUrl && !specialOfferInfo) {
+  if (specialOfferInfo) {
+    // always expose the canonical payment URL built from the stored ID
+    product.specialOfferUrl = specialOfferInfo.url;
+  } else if (product.specialOfferUrl) {
     product.specialOfferUrl = null;
   }
 

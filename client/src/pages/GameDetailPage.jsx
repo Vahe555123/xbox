@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useSeoMeta } from '../utils/useSeoMeta';
 import {
   createProductPurchase,
   fetchProductDetail,
@@ -105,7 +106,7 @@ const EMPTY_PURCHASE_FORM = {
   purchaseEmail: '',
   accountEmail: '',
   accountPassword: '',
-  paymentMode: 'oplata',
+  paymentMode: 'key_activation',
   saveToProfile: false,
 };
 
@@ -291,6 +292,15 @@ export default function GameDetailPage() {
 
     return () => { cancelled = true; };
   }, [productId]);
+
+  useSeoMeta({
+    title: data?.title
+      ? `${data.title} купить Xbox Ключ в России и на аккаунт Xbox Series X, Xbox Series S, Xbox One.`
+      : undefined,
+    description: data?.title
+      ? `Легко и быстро купить ${data.title} Xbox Ключ в России и на аккаунт Xbox Series X, Xbox Series S, Xbox One. Отслеживай скидки на ${data.title} для Xbox Series и Xbox One. Покупай игры Xbox в России дешево.`
+      : undefined,
+  });
 
   useEffect(() => {
     if (!data?.id || !data.officialStoreUrl) return undefined;
@@ -582,7 +592,8 @@ export default function GameDetailPage() {
   const hasManagedPurchaseMode = Boolean(
     data.digisellerId || data.keyActivationPayUrl || data.specialOfferUrl || data.topupCombo?.available,
   );
-  const canOpenPurchase = hasManagedPurchaseMode || Boolean(data.officialStoreUrl);
+  const hasKnownPrice = price != null && price.value != null;
+  const canOpenPurchase = hasKnownPrice && (hasManagedPurchaseMode || Boolean(data.officialStoreUrl));
   const showSpecialOfferCartNote = Boolean(data.specialOfferUrl);
 
   const handleBuyClick = async () => {
@@ -609,7 +620,7 @@ export default function GameDetailPage() {
       const settingsMissing = !hasPurchaseDelivery || !settings.xboxAccountEmail || !settings.hasXboxAccountPassword;
       setPurchaseForm((current) => ({
         ...current,
-        paymentMode: settings.paymentMode || 'oplata',
+        paymentMode: settings.paymentMode || 'key_activation',
         saveToProfile: settingsMissing,
       }));
     } catch {
@@ -697,7 +708,7 @@ export default function GameDetailPage() {
   };
 
   const isInCart = inCart(data.id);
-  const canAddToCart = Boolean(data.digisellerId || data.keyActivationPayUrl || data.topupCombo?.available);
+  const canAddToCart = hasKnownPrice && Boolean(data.digisellerId || data.keyActivationPayUrl || data.topupCombo?.available);
   const handleToggleCart = () => {
     toggleCart(favoriteProduct);
     setCartToast(isInCart ? 'Игра удалена из корзины' : 'Игра добавлена в корзину');
@@ -773,16 +784,27 @@ export default function GameDetailPage() {
                 onClick={handleBuyClick}
                 disabled={purchaseLoading || !canOpenPurchase}
               >
-                {purchaseLoading ? 'Готовим ссылку...' : 'Купить'}
+                {purchaseLoading ? 'Готовим ссылку...' : hasManagedPurchaseMode ? 'Купить' : 'Посмотреть'}
               </button>
-              <a
-                className="ps-gamepass-button"
-                href="https://www.oplata.info/asp2/pay_wm.asp?id_d=4687274&ai=1279033&_ow=0"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Купить Game Pass
-              </a>
+              {data.subscriptions?.ubisoftPlus && !data.subscriptions?.gamePass ? (
+                <a
+                  className="ps-gamepass-button"
+                  href="https://www.oplata.info/asp2/pay_wm.asp?id_d=3711939&ai=1279033&_ow=0"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Купить Ubisoft+
+                </a>
+              ) : (
+                <a
+                  className="ps-gamepass-button"
+                  href="https://www.oplata.info/asp2/pay_wm.asp?id_d=4687274&ai=1279033&_ow=0"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Купить Game Pass
+                </a>
+              )}
               <button
                 className={`ps-cart-button ${isInCart ? 'ps-cart-button--active' : ''}`}
                 type="button"
@@ -796,7 +818,7 @@ export default function GameDetailPage() {
                 type="button"
                 onClick={handleToggleFavorite}
               >
-                {inFavorites ? 'Игра в избранном' : 'Следить за скидкой'}
+                {inFavorites ? 'Игра в избранном' : hasManagedPurchaseMode ? 'Следить за скидкой' : 'Добавить в избранное'}
               </button>
             </div>
           </div>
@@ -1111,7 +1133,7 @@ export default function GameDetailPage() {
                   type="submit"
                   disabled={purchaseLoading || purchaseProfileLoading}
                 >
-                  {purchaseLoading ? 'Генерируем ссылку...' : isSpecialOfferMode ? 'Перейти к оплате' : 'Сгенерировать ссылку'}
+                  {purchaseLoading ? 'Генерируем ссылку...' : isSpecialOfferMode ? 'Перейти к оплате' : 'Продолжить'}
                 </button>
               )}
             </form>

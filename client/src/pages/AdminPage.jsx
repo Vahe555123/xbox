@@ -131,19 +131,39 @@ const EMPTY_DIG_RATE_STATE = { lastRun: null, samples: [] };
 
 const PRODUCT_LANGUAGE_MODES = [
   { value: 'auto', label: 'Авто с Xbox' },
-  { value: 'full_ru', label: 'Русский' },
+  { value: 'full_ru', label: 'Полностью на русском' },
   { value: 'ru_subtitles', label: 'Русские субтитры' },
-  { value: 'no_ru', label: 'Оригинал' },
+  { value: 'no_ru', label: 'Без русского' },
   { value: 'unknown', label: 'Язык не указан' },
 ];
 
 const PRODUCT_LANGUAGE_FILTERS = [
   { value: 'all', label: 'Все языки' },
   { value: 'unknown', label: 'Язык не указан' },
-  { value: 'no_ru', label: 'Оригинал' },
-  { value: 'full_ru', label: 'Русский' },
+  { value: 'no_ru', label: 'Без русского' },
+  { value: 'full_ru', label: 'Полностью на русском' },
   { value: 'ru_subtitles', label: 'Русские субтитры' },
 ];
+
+const LANGUAGE_TAG_STYLES = {
+  full_ru:      { background: 'rgba(16,124,16,0.25)', color: '#7edf7e', border: '1px solid rgba(16,124,16,0.4)' },
+  ru_subtitles: { background: 'rgba(9,100,175,0.25)', color: '#7dcfff', border: '1px solid rgba(9,100,175,0.4)' },
+  no_ru:        { background: 'rgba(255,255,255,0.08)', color: '#e0e4ed', border: '1px solid rgba(255,255,255,0.2)' },
+  unknown:      { background: 'rgba(120,120,120,0.2)', color: '#b0b6c4', border: '1px solid rgba(120,120,120,0.3)' },
+  auto:         { background: 'transparent', color: '#b0b6c4', border: '1px solid rgba(255,255,255,0.12)' },
+};
+
+const LANGUAGE_TAG_BASE = {
+  display: 'inline-block', padding: '2px 8px', borderRadius: '4px',
+  fontSize: '0.78rem', fontWeight: 500, whiteSpace: 'nowrap',
+};
+
+function ProductLanguageTag({ mode }) {
+  const resolved = mode || 'auto';
+  const label = PRODUCT_LANGUAGE_MODES.find((item) => item.value === resolved)?.label || resolved;
+  const style = { ...LANGUAGE_TAG_BASE, ...(LANGUAGE_TAG_STYLES[resolved] || LANGUAGE_TAG_STYLES.auto) };
+  return <span style={style}>{label}</span>;
+}
 
 function productLanguageLabel(mode) {
   return PRODUCT_LANGUAGE_MODES.find((item) => item.value === (mode || 'auto'))?.label || mode || 'Авто';
@@ -1556,7 +1576,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                       <tr key={product.id}>
                         <td>{product.title}</td>
                         <td className="admin-mono">{product.id}</td>
-                        <td>{productLanguageLabel(product.russianLanguageMode)}</td>
+                        <td><ProductLanguageTag mode={product.russianLanguageMode} /></td>
                         <td>
                           <button className="admin-btn admin-btn-sm" type="button" onClick={() => selectProductForOverride(product)}>
                             Редактировать
@@ -1619,12 +1639,12 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 </label>
 
                 <label className="admin-field">
-                  <span style={{ color: '#ac84f1' }}>Спецпредложение (ссылка oplata.info)</span>
+                  <span style={{ color: '#ac84f1' }}>Спецпредложение (ID товара на oplata.info)</span>
                   <input
-                    type="url"
+                    type="text"
                     value={overrideForm.specialOfferUrl}
                     onChange={(e) => setOverrideForm((current) => ({ ...current, specialOfferUrl: e.target.value }))}
-                    placeholder="https://www.oplata.info/asp2/pay_wm.asp?id_d=..."
+                    placeholder="например: 1234567"
                   />
                 </label>
 
@@ -1677,7 +1697,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                     <tr key={override.productId}>
                       <td>{override.title || '—'}</td>
                       <td className="admin-mono">{override.productId}</td>
-                      <td>{productLanguageLabel(override.russianLanguageMode)}</td>
+                      <td><ProductLanguageTag mode={override.russianLanguageMode} /></td>
                       <td>{override.languageNote || '—'}</td>
                       <td>{formatDate(override.updatedAt)}</td>
                       <td>

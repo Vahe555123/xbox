@@ -101,12 +101,20 @@ async function getProfile(userId) {
     providerNames.unshift('email');
   }
 
+  const purchaseSettings = {
+    ...toPurchaseSettings(user),
+    hasXboxAccountPassword: Boolean(
+      user.xbox_account_password_encrypted &&
+      decryptProfileSecret(user.xbox_account_password_encrypted),
+    ),
+  };
+
   return {
     user: toPublicUser(user),
     verified: user.verified,
     hasPassword: Boolean(user.password_hash),
     providers: [...new Set(providerNames)],
-    purchaseSettings: toPurchaseSettings(user),
+    purchaseSettings,
     createdAt: user.created_at,
   };
 }
@@ -114,9 +122,13 @@ async function getProfile(userId) {
 async function getPurchaseSettingsForCheckout(userId) {
   const user = await findUserById(userId);
   if (!user) return null;
+  const xboxAccountPassword = decryptProfileSecret(user.xbox_account_password_encrypted) || null;
   return {
     ...toPurchaseSettings(user),
-    xboxAccountPassword: decryptProfileSecret(user.xbox_account_password_encrypted),
+    // override hasXboxAccountPassword to reflect actual decryption result —
+    // encrypted value may exist in DB but fail to decrypt (e.g. key rotation)
+    hasXboxAccountPassword: Boolean(xboxAccountPassword),
+    xboxAccountPassword,
   };
 }
 

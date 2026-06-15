@@ -58,9 +58,10 @@ router.get('/stats', requireAdmin, async (_req, res, next) => {
     `);
 
     const topFavorited = await pool.query(`
-      SELECT product_id, product_id AS title, COUNT(*)::int AS count
-      FROM favorites
-      GROUP BY product_id
+      SELECT f.product_id, COALESCE(po.title, f.product_id) AS title, COUNT(*)::int AS count
+      FROM favorites f
+      LEFT JOIN product_overrides po ON po.product_id = f.product_id
+      GROUP BY f.product_id, po.title
       ORDER BY count DESC
       LIMIT 10
     `);

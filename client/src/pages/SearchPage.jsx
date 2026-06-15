@@ -4,8 +4,13 @@ import ProductGrid from '../components/ProductGrid';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 import ErrorMessage from '../components/ErrorMessage';
+import { useSeoMeta } from '../utils/useSeoMeta';
 
 export default function SearchPage({ searchState, dealsMode = false, onClearDeals }) {
+  useSeoMeta({
+    title: 'XboxTracker - поможем купить игры для Xbox Series Ключи в России и на аккаунт Xbox One, Xbox Series X, Xbox Series S.',
+    description: 'Удобный способ купить игры для Xbox Series Ключи в России, а также на аккаунт Xbox One, Xbox Series X, Xbox Series S. Отслеживай скидки на игры для Xbox Series и Xbox One. Покупай игры Xbox в России дешево.',
+  });
   const navigate = useNavigate();
 
   const {
