@@ -1948,7 +1948,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <div className="admin-table-wrap">
                 <table className="admin-table admin-table-compact">
                   <thead>
-                    <tr><th>Название</th><th>Игр</th><th>Вкл.</th><th></th></tr>
+                    <tr><th>Название</th><th>Игр</th><th>На сайте</th><th></th></tr>
                   </thead>
                   <tbody>
                     {collections.map((c) => (
@@ -1966,8 +1966,13 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                         </td>
                         <td>{c.productCount ?? 0}</td>
                         <td>
-                          <button className="admin-btn admin-btn-sm" type="button" onClick={() => handleToggleCollectionEnabled(c)}>
-                            {c.enabled ? 'Да' : 'Нет'}
+                          <button
+                            className={`admin-btn admin-btn-sm ${c.enabled ? 'admin-btn-primary' : ''}`}
+                            type="button"
+                            onClick={() => handleToggleCollectionEnabled(c)}
+                            title="Нажмите, чтобы показать/скрыть подборку в фильтре на сайте"
+                          >
+                            {c.enabled ? '✓ Показана' : 'Скрыта'}
                           </button>
                         </td>
                         <td>
