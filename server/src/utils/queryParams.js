@@ -18,6 +18,7 @@ function parseSearchParams(query) {
   const sort = typeof query.sort === 'string' ? query.sort.trim() : '';
   const encodedCT = typeof query.encodedCT === 'string' ? query.encodedCT.trim() : '';
   const languageMode = typeof query.languageMode === 'string' ? query.languageMode.trim() : '';
+  const collection = typeof query.collection === 'string' ? query.collection.trim() : '';
 
   let filters = {};
   if (query.filters) {
@@ -52,6 +53,7 @@ function parseSearchParams(query) {
     sort,
     filters,
     languageMode,
+    collection,
     encodedCT,
     countOnly,
   };

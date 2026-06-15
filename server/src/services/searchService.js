@@ -5,6 +5,7 @@ const { mapProducts, enrichProductsWithCatalogDetails } = require('../mappers/pr
 const { mapRelatedProducts } = require('../mappers/relatedProductMapper');
 const { mapFilters, encodeFilters } = require('../mappers/filtersMapper');
 const { applyProductOverrides, listSearchableProductOverrides, listSpecialOfferProductIds } = require('./productOverrideService');
+const collectionsService = require('./collectionsService');
 const russianIndex = require('./russianLanguageIndexService');
 const config = require('../config');
 const cache = require('../utils/cache');
@@ -25,6 +26,7 @@ const SPECIAL_OFFERS_FILTER_KEY = 'SpecialOffers';
 const SPECIAL_OFFERS_FILTER_VALUE = 'Available';
 const RUSSIAN_INDEX_TOKEN_PREFIX = 'rulang:';
 const SPECIAL_OFFERS_TOKEN_PREFIX = 'specialoffers:';
+const COLLECTION_TOKEN_PREFIX = 'collection:';
 const VALID_LANGUAGE_MODES = new Set(['full_ru', 'ru_subtitles']);
 const KEYWORD_MATCH_TIER_OFFSET = 3;
 const SEARCH_MATCH_TIERS = {
@@ -65,11 +67,13 @@ async function search({
   sort,
   filters,
   languageMode,
+  collection,
   countOnly = false,
   encodedCT,
   channelId = '',
 }) {
   const effectiveSort = resolveSort({ query, sort });
+  const collectionSlug = typeof collection === 'string' ? collection.trim() : '';
   const encodedFilters = buildEncodedFilters(filters, effectiveSort);
   const languageModes = parseLanguageModes(languageMode);
   const languageFilterActive = languageModes.size > 0;
@@ -102,6 +106,38 @@ async function search({
       offset: parseCuratedOffset(encodedCT, SPECIAL_OFFERS_TOKEN_PREFIX),
       tokenPrefix: SPECIAL_OFFERS_TOKEN_PREFIX,
       languageModes,
+    });
+  }
+
+  // Fast path: an admin-curated collection ("Подборка") serves only its games,
+  // straight from the stored snapshot (falling back to a live fetch for any
+  // game missing a snapshot). Local post-filters (язык/бесплатно/спец) still apply.
+  if (isCollectionToken(encodedCT)) {
+    const { slug, offset } = parseCollectionToken(encodedCT);
+    const ids = await collectionsService.getCollectionProductIds(slug);
+    return serveCuratedIdsPage({
+      ids,
+      offset,
+      tokenPrefix: `${COLLECTION_TOKEN_PREFIX}${slug}:`,
+      languageModes,
+      specialOffersOnly,
+      freeOnly,
+      resolveProducts: resolveCollectionProducts,
+    });
+  }
+
+  if (collectionSlug) {
+    const ids = await collectionsService.getCollectionProductIds(collectionSlug);
+    if (countOnly) return countCuratedResults(ids);
+    return serveCuratedIdsPage({
+      ids,
+      offset: 0,
+      tokenPrefix: `${COLLECTION_TOKEN_PREFIX}${collectionSlug}:`,
+      languageModes,
+      specialOffersOnly,
+      freeOnly,
+      includeFilters: true,
+      resolveProducts: resolveCollectionProducts,
     });
   }
 
@@ -891,6 +927,39 @@ function isSpecialOffersToken(value) {
   return typeof value === 'string' && value.startsWith(SPECIAL_OFFERS_TOKEN_PREFIX);
 }
 
+function isCollectionToken(value) {
+  return typeof value === 'string' && value.startsWith(COLLECTION_TOKEN_PREFIX);
+}
+
+// Token format: collection:<slug>:<offset>
+function parseCollectionToken(token) {
+  const rest = String(token || '').slice(COLLECTION_TOKEN_PREFIX.length);
+  const idx = rest.lastIndexOf(':');
+  if (idx < 0) return { slug: rest, offset: 0 };
+  const slug = rest.slice(0, idx);
+  const offset = parseInt(rest.slice(idx + 1), 10);
+  return { slug, offset: Number.isFinite(offset) && offset > 0 ? offset : 0 };
+}
+
+// Resolve collection product cards from the DB snapshot, falling back to a live
+// catalog fetch for any IDs missing a snapshot. Returns mapped cards in input order.
+async function resolveCollectionProducts(sliceIds) {
+  const snapshots = await collectionsService.getSnapshotProducts(sliceIds).catch(() => new Map());
+  const missing = sliceIds.filter((id) => !snapshots.has(String(id).toUpperCase()));
+  let built = [];
+  if (missing.length) {
+    built = await collectionsService.buildCardsForIds(missing).catch(() => []);
+  }
+  const builtById = new Map(built.map((card) => [String(card.id).toUpperCase(), card]));
+  const result = [];
+  for (const id of sliceIds) {
+    const key = String(id).toUpperCase();
+    const card = snapshots.get(key) || builtById.get(key);
+    if (card) result.push(card);
+  }
+  return result;
+}
+
 function parseCuratedOffset(token, prefix) {
   const parsed = parseInt(String(token || '').slice(prefix.length), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
@@ -922,6 +991,7 @@ async function serveCuratedIdsPage({
   freeOnly = false,
   applyIndexMode = false,
   includeFilters = false,
+  resolveProducts = null,
 }) {
   const pageSize = config.xbox.pageSize;
   const slice = ids.slice(offset, offset + pageSize);
@@ -930,13 +1000,23 @@ async function serveCuratedIdsPage({
 
   let products = [];
   if (slice.length) {
-    const rawProducts = await getProductsByIds(slice, { allowPartial: true, context: 'curated-ids-page' })
-      .catch((err) => {
-        logger.warn('Curated ids page fetch failed', { count: slice.length, message: err.message });
+    let mapped;
+    if (resolveProducts) {
+      // Caller supplies pre-mapped cards (e.g. collection snapshot); overrides
+      // are already applied at snapshot-build time.
+      mapped = await resolveProducts(slice).catch((err) => {
+        logger.warn('Curated ids resolve failed', { count: slice.length, message: err.message });
         return [];
       });
-    const mapped = mapRelatedProducts(rawProducts, {});
-    await applyProductOverrides(mapped).catch(() => {});
+    } else {
+      const rawProducts = await getProductsByIds(slice, { allowPartial: true, context: 'curated-ids-page' })
+        .catch((err) => {
+          logger.warn('Curated ids page fetch failed', { count: slice.length, message: err.message });
+          return [];
+        });
+      mapped = mapRelatedProducts(rawProducts, {});
+      await applyProductOverrides(mapped).catch(() => {});
+    }
     if (applyIndexMode) {
       for (const product of mapped) {
         const mode = russianIndex.getModeForProduct(product.id);

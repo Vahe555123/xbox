@@ -24,6 +24,7 @@ const {
   resolvePurchaseDeliveryTarget,
 } = require('../services/purchaseDeliveryService');
 const { applyProductOverrides } = require('../services/productOverrideService');
+const collectionsService = require('../services/collectionsService');
 const { logPurchase } = require('../services/purchaseLogService');
 const config = require('../config');
 
@@ -261,6 +262,7 @@ async function searchXbox(req, res, next) {
       sort: params.sort,
       filters: params.filters,
       languageMode: params.languageMode,
+      collection: params.collection,
       countOnly: params.countOnly,
       encodedCT: params.encodedCT,
       channelId,
@@ -1097,6 +1099,15 @@ function getHealth(_req, res) {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 }
 
+async function getCollections(_req, res, next) {
+  try {
+    const collections = await collectionsService.getEnabledCollectionsForFilter();
+    res.json({ success: true, collections });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function getPriceFilterRates(_req, res, next) {
   try {
     const data = await getPriceFilterRubBoundaries();
@@ -1114,5 +1125,6 @@ module.exports = {
   createCartPurchase,
   getRelatedProducts,
   getPriceFilterRates,
+  getCollections,
   getHealth,
 };

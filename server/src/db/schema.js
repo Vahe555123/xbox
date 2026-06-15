@@ -238,6 +238,37 @@ async function initDb() {
       ON purchases (product_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_purchases_created_at
       ON purchases (created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS collections (
+      id BIGSERIAL PRIMARY KEY,
+      slug TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS collection_products (
+      collection_id BIGINT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+      product_id TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (collection_id, product_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_collection_products_product
+      ON collection_products (product_id);
+    CREATE INDEX IF NOT EXISTS idx_collection_products_collection
+      ON collection_products (collection_id, sort_order);
+
+    -- Snapshot of mapped game data, shared across collections (a game in N
+    -- collections is stored once) so the curated filter serves instantly.
+    CREATE TABLE IF NOT EXISTS collection_product_snapshots (
+      product_id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      refreshed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 
   logger.info('PostgreSQL schema ready');

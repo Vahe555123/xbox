@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 const SKIP_FILTER_KEYS = ['orderby', 'MaturityRating', 'Accessibility', 'SupportedLanguages'];
 // These filters allow only one value at a time (radio behaviour)
-const RADIO_FILTER_KEYS = new Set(['Genre', 'Multiplayer', 'IncludedInSubscription']);
+const RADIO_FILTER_KEYS = new Set(['Genre', 'Multiplayer', 'IncludedInSubscription', 'Collections']);
 const FILTER_ORDER = [
+  'Collections',
   'LanguageMode',
   'PlayWith',
   'Price',
@@ -28,6 +29,7 @@ const HIDDEN_PRICE_CHOICES = new Set(['OnSale', 'Free']);
 
 const FILTER_TITLES = {
   orderby: 'Сортировка',
+  Collections: 'Подборки',
   LanguageMode: 'Язык',
   PlayWith: 'Платформы',
   Accessibility: 'Доступность',
@@ -203,6 +205,7 @@ export default function FilterPanel({
   isOpen,
   onToggle,
   priceRubBoundaries,
+  collections,
 }) {
   const [internalExpanded, setInternalExpanded] = useState(true);
   const expanded = isOpen !== undefined ? isOpen : internalExpanded;
@@ -257,10 +260,25 @@ export default function FilterPanel({
     return () => clearTimeout(timer);
   }, [activeFilters, draftFilters, draftSort, onApply, sort]);
 
+  // Custom (non-Xbox-API) filters: language + admin-curated collections. The
+  // collections facet is built from the list loaded by the parent page.
+  const customFilters = useMemo(() => {
+    const result = { ...CUSTOM_FILTERS };
+    if (Array.isArray(collections) && collections.length > 0) {
+      result.Collections = {
+        id: 'Collections',
+        title: 'Подборки',
+        isMultiSelect: false,
+        choices: collections.map((c) => ({ id: c.slug, title: c.title, isLabelOnly: false })),
+      };
+    }
+    return result;
+  }, [collections]);
+
   const filterKeys = useMemo(() => {
     const availableFilters = {
       ...(filters || {}),
-      ...CUSTOM_FILTERS,
+      ...customFilters,
     };
 
     const visibleKeys = Object.keys(availableFilters).filter((key) => {
@@ -272,7 +290,7 @@ export default function FilterPanel({
       ...FILTER_ORDER.filter((key) => visibleKeys.includes(key)),
       ...visibleKeys.filter((key) => !FILTER_ORDER.includes(key)),
     ];
-  }, [filters]);
+  }, [filters, customFilters]);
 
   const activeCount = countActiveFilters(activeFilters);
 
@@ -496,7 +514,7 @@ export default function FilterPanel({
 
           <div className="filter-grid">
             {filterKeys.map((key) => {
-              const filter = filters?.[key] || CUSTOM_FILTERS[key];
+              const filter = filters?.[key] || customFilters[key];
               if (!filter) return null;
 
               const choices = getDropdownChoices(key, filter);

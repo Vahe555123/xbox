@@ -14,7 +14,7 @@ import { useFavorites } from './context/FavoritesContext';
 import { useCart } from './context/CartContext';
 import CartPage from './pages/CartPage';
 import { useSearch } from './hooks/useSearch';
-import { consumeOAuthSession, checkAdmin, fetchPriceFilterRates } from './services/api';
+import { consumeOAuthSession, checkAdmin, fetchPriceFilterRates, fetchCollections } from './services/api';
 
 const FILTER_QUERY_KEYS = [
   'PlayWith',
@@ -220,6 +220,7 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [headerQuery, setHeaderQuery] = useState('');
   const [priceRubBoundaries, setPriceRubBoundaries] = useState(null);
+  const [collections, setCollections] = useState([]);
   const location = useLocation();
   const navigate = useNavigate();
   const isCatalogRoute = location.pathname === '/';
@@ -272,6 +273,15 @@ export default function App() {
     let active = true;
     fetchPriceFilterRates()
       .then((boundaries) => { if (active) setPriceRubBoundaries(boundaries); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  // Load admin-curated collections for the "Подборки" filter facet.
+  useEffect(() => {
+    let active = true;
+    fetchCollections()
+      .then((list) => { if (active) setCollections(list); })
       .catch(() => {});
     return () => { active = false; };
   }, []);
@@ -637,6 +647,7 @@ export default function App() {
             if (next) openFilter(); else setFilterOpen(false);
           }}
           priceRubBoundaries={priceRubBoundaries}
+          collections={collections}
         />
 
         <Routes>

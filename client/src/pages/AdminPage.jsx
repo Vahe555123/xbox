@@ -29,6 +29,15 @@ import {
   refreshTopupCards,
   updateTopupCard,
   fetchAdminPurchases,
+  fetchAdminCollections,
+  fetchAdminCollection,
+  createAdminCollection,
+  updateAdminCollection,
+  deleteAdminCollection,
+  setAdminCollectionProducts,
+  fetchAdminCollectionsRefreshState,
+  refreshAdminCollections,
+  updateAdminCollectionsSchedule,
 } from '../services/api';
 
 function formatDate(d) {
@@ -369,6 +378,20 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [purchasesSort, setPurchasesSort] = useState('count');
   const [purchasesLoading, setPurchasesLoading] = useState(false);
 
+  // Collections (Подборки)
+  const [collections, setCollections] = useState([]);
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [newCollectionTitle, setNewCollectionTitle] = useState('');
+  const [selectedCollection, setSelectedCollection] = useState(null); // detail with productIds
+  const [collectionProducts, setCollectionProducts] = useState([]); // [{id,title}]
+  const [collectionProductsSaving, setCollectionProductsSaving] = useState(false);
+  const [collectionMessage, setCollectionMessage] = useState('');
+  const [collectionProductSearch, setCollectionProductSearch] = useState('');
+  const [collectionSearchResults, setCollectionSearchResults] = useState([]);
+  const [collectionSearchLoading, setCollectionSearchLoading] = useState(false);
+  const [collectionsRefresh, setCollectionsRefresh] = useState(null);
+  const [scheduleForm, setScheduleForm] = useState({ hour: 4, minute: 0, enabled: true });
+
   // Auth check
   useEffect(() => {
     if (!currentUser) {
@@ -490,6 +513,29 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     finally { setPurchasesLoading(false); }
   }, []);
 
+  const loadCollections = useCallback(async () => {
+    setCollectionsLoading(true);
+    try {
+      const list = await fetchAdminCollections();
+      setCollections(list || []);
+    } catch { /* ignore */ }
+    finally { setCollectionsLoading(false); }
+  }, []);
+
+  const loadCollectionsRefresh = useCallback(async () => {
+    try {
+      const state = await fetchAdminCollectionsRefreshState();
+      setCollectionsRefresh(state);
+      if (state?.schedule) {
+        setScheduleForm({
+          hour: state.schedule.hour ?? 4,
+          minute: state.schedule.minute ?? 0,
+          enabled: state.schedule.enabled !== false,
+        });
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     if (!authorized) return;
     if (tab === 'dashboard') {
@@ -508,7 +554,16 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     else if (tab === 'digiseller') loadDigiseller();
     else if (tab === 'topup') loadTopupCards();
     else if (tab === 'purchases') loadPurchases(purchasesSort);
-  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadRussianIndex, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort]);
+    else if (tab === 'collections') { loadCollections(); loadCollectionsRefresh(); }
+  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadRussianIndex, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort, loadCollections, loadCollectionsRefresh]);
+
+  // Poll snapshot-refresh status while a refresh is running.
+  useEffect(() => {
+    if (!authorized || tab !== 'collections') return undefined;
+    if (!collectionsRefresh?.running) return undefined;
+    const timer = setInterval(loadCollectionsRefresh, 3000);
+    return () => clearInterval(timer);
+  }, [authorized, tab, collectionsRefresh?.running, loadCollectionsRefresh]);
 
   // While a Russian-index build is running, poll its status.
   useEffect(() => {
@@ -533,6 +588,117 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     const languageMode = event.target.value;
     setProductLanguageFilter(languageMode);
     await loadAdminProducts({ q: productSearch, languageMode });
+  };
+
+  // ---- Collections handlers ----
+  const handleCreateCollection = async (e) => {
+    e.preventDefault();
+    const title = newCollectionTitle.trim();
+    if (!title) return;
+    setCollectionMessage('');
+    try {
+      await createAdminCollection({ title });
+      setNewCollectionTitle('');
+      await loadCollections();
+    } catch (err) {
+      setCollectionMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const selectCollection = async (id) => {
+    setCollectionMessage('');
+    try {
+      const detail = await fetchAdminCollection(id);
+      setSelectedCollection(detail);
+      // Seed the editable product list; titles come from search picks or the id.
+      setCollectionProducts((detail.productIds || []).map((pid) => ({ id: pid, title: pid })));
+      setCollectionSearchResults([]);
+      setCollectionProductSearch('');
+    } catch (err) {
+      setCollectionMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleToggleCollectionEnabled = async (collection) => {
+    try {
+      await updateAdminCollection(collection.id, { enabled: !collection.enabled });
+      await loadCollections();
+    } catch (err) {
+      setCollectionMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleDeleteCollection = async (collection) => {
+    if (!window.confirm(`Удалить подборку «${collection.title}»?`)) return;
+    try {
+      await deleteAdminCollection(collection.id);
+      if (selectedCollection?.id === collection.id) setSelectedCollection(null);
+      await loadCollections();
+    } catch (err) {
+      setCollectionMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleCollectionProductSearch = async (e) => {
+    e.preventDefault();
+    setCollectionSearchLoading(true);
+    try {
+      const results = await searchAdminProducts({ q: collectionProductSearch.trim() });
+      setCollectionSearchResults(results || []);
+    } catch { /* ignore */ }
+    finally { setCollectionSearchLoading(false); }
+  };
+
+  const addProductToCollection = (product) => {
+    setCollectionProducts((current) => (
+      current.some((p) => p.id === product.id)
+        ? current
+        : [...current, { id: product.id, title: product.title || product.id }]
+    ));
+  };
+
+  const removeProductFromCollection = (productId) => {
+    setCollectionProducts((current) => current.filter((p) => p.id !== productId));
+  };
+
+  const handleSaveCollectionProducts = async () => {
+    if (!selectedCollection) return;
+    setCollectionProductsSaving(true);
+    setCollectionMessage('');
+    try {
+      await setAdminCollectionProducts(selectedCollection.id, collectionProducts.map((p) => p.id));
+      setCollectionMessage('Состав подборки сохранён');
+      await loadCollections();
+    } catch (err) {
+      setCollectionMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setCollectionProductsSaving(false);
+    }
+  };
+
+  const handleRefreshCollections = async () => {
+    try {
+      await refreshAdminCollections();
+      await loadCollectionsRefresh();
+    } catch (err) {
+      setCollectionMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleSaveSchedule = async (e) => {
+    e.preventDefault();
+    setCollectionMessage('');
+    try {
+      await updateAdminCollectionsSchedule({
+        hour: Number(scheduleForm.hour),
+        minute: Number(scheduleForm.minute),
+        enabled: scheduleForm.enabled,
+      });
+      setCollectionMessage('Расписание сохранено');
+      await loadCollectionsRefresh();
+    } catch (err) {
+      setCollectionMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
   };
 
   const handleSupportLinksSave = async (event) => {
@@ -868,6 +1034,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
           ['users', 'Пользователи'],
           ['notifications', 'Уведомления'],
           ['products', 'Игры'],
+          ['collections', 'Подборки'],
           ['scheduler', 'Планировщик'],
           ['help', 'Помощь'],
           ['digiseller', 'Digiseller'],
@@ -1754,6 +1921,193 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               </button>
             </div>
             {helpContentMessage && <p className="admin-scheduler-result">{helpContentMessage}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* ==================== Collections (Подборки) ==================== */}
+      {tab === 'collections' && (
+        <div className="admin-panel">
+          {collectionMessage && <p className="admin-scheduler-result">{collectionMessage}</p>}
+          <div className="admin-grid-2col admin-products-grid">
+            <div className="admin-card">
+              <h3>Подборки</h3>
+              <p className="admin-card-desc">
+                Создавайте подборки и добавляйте в них игры. На сайте подборки доступны в фильтре. Одна игра может быть в нескольких подборках.
+              </p>
+              <form className="admin-search-bar" onSubmit={handleCreateCollection}>
+                <input
+                  type="text"
+                  placeholder="Название новой подборки..."
+                  value={newCollectionTitle}
+                  onChange={(e) => setNewCollectionTitle(e.target.value)}
+                />
+                <button type="submit" className="admin-btn admin-btn-primary">Создать</button>
+              </form>
+
+              <div className="admin-table-wrap">
+                <table className="admin-table admin-table-compact">
+                  <thead>
+                    <tr><th>Название</th><th>Игр</th><th>Вкл.</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {collections.map((c) => (
+                      <tr key={c.id} style={selectedCollection?.id === c.id ? { background: 'rgba(255,255,255,0.06)' } : undefined}>
+                        <td>
+                          <button
+                            className="admin-btn admin-btn-sm"
+                            type="button"
+                            onClick={() => selectCollection(c.id)}
+                            style={{ background: 'transparent', padding: 0, textAlign: 'left', textDecoration: 'underline' }}
+                          >
+                            {c.title}
+                          </button>
+                          <span className="admin-mono" style={{ display: 'block', fontSize: '0.75em', color: 'var(--text-muted)' }}>{c.slug}</span>
+                        </td>
+                        <td>{c.productCount ?? 0}</td>
+                        <td>
+                          <button className="admin-btn admin-btn-sm" type="button" onClick={() => handleToggleCollectionEnabled(c)}>
+                            {c.enabled ? 'Да' : 'Нет'}
+                          </button>
+                        </td>
+                        <td>
+                          <button className="admin-btn admin-btn-sm admin-btn-secondary" type="button" onClick={() => handleDeleteCollection(c)}>
+                            Удалить
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {collections.length === 0 && !collectionsLoading && (
+                      <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Подборок пока нет</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="admin-card" style={{ marginTop: '1rem' }}>
+                <h3>Автообновление</h3>
+                <p className="admin-card-desc">
+                  Раз в сутки сервер заново скачивает данные игр подборок и сохраняет в базу для быстрой отдачи.
+                </p>
+                {collectionsRefresh && (
+                  <dl className="admin-dl">
+                    <dt>Последнее обновление</dt><dd>{formatDate(collectionsRefresh.lastRunAt)}</dd>
+                    <dt>Игр в снепшоте</dt><dd>{collectionsRefresh.counts?.snapshots ?? 0}</dd>
+                    <dt>Статус</dt><dd>{collectionsRefresh.running ? 'Обновляется...' : 'Ожидание'}</dd>
+                    {collectionsRefresh.lastError && <><dt>Ошибка</dt><dd>{collectionsRefresh.lastError}</dd></>}
+                  </dl>
+                )}
+                <form className="admin-override-form" onSubmit={handleSaveSchedule}>
+                  <label className="admin-field">
+                    <span>Время обновления (час : минута)</span>
+                    <span style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input
+                        type="number" min={0} max={23}
+                        value={scheduleForm.hour}
+                        onChange={(e) => setScheduleForm((s) => ({ ...s, hour: e.target.value }))}
+                      />
+                      <input
+                        type="number" min={0} max={59}
+                        value={scheduleForm.minute}
+                        onChange={(e) => setScheduleForm((s) => ({ ...s, minute: e.target.value }))}
+                      />
+                    </span>
+                  </label>
+                  <label className="admin-field" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={scheduleForm.enabled}
+                      onChange={(e) => setScheduleForm((s) => ({ ...s, enabled: e.target.checked }))}
+                    />
+                    <span>Автообновление включено</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button type="submit" className="admin-btn admin-btn-primary">Сохранить расписание</button>
+                    <button type="button" className="admin-btn" onClick={handleRefreshCollections} disabled={collectionsRefresh?.running}>
+                      Обновить сейчас
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <div className="admin-card">
+              {selectedCollection ? (
+                <>
+                  <h3>Игры подборки «{selectedCollection.title}»</h3>
+                  <form className="admin-search-bar" onSubmit={handleCollectionProductSearch}>
+                    <input
+                      type="text"
+                      placeholder="Найти игру по названию или Product ID..."
+                      value={collectionProductSearch}
+                      onChange={(e) => setCollectionProductSearch(e.target.value)}
+                    />
+                    <button type="submit" className="admin-btn admin-btn-primary" disabled={collectionSearchLoading}>
+                      {collectionSearchLoading ? 'Загрузка...' : 'Найти'}
+                    </button>
+                  </form>
+
+                  {collectionSearchResults.length > 0 && (
+                    <div className="admin-table-wrap" style={{ maxHeight: 220, overflowY: 'auto' }}>
+                      <table className="admin-table admin-table-compact">
+                        <tbody>
+                          {collectionSearchResults.map((product) => (
+                            <tr key={product.id}>
+                              <td>{product.title}</td>
+                              <td className="admin-mono">{product.id}</td>
+                              <td>
+                                <button
+                                  className="admin-btn admin-btn-sm"
+                                  type="button"
+                                  onClick={() => addProductToCollection(product)}
+                                  disabled={collectionProducts.some((p) => p.id === product.id)}
+                                >
+                                  {collectionProducts.some((p) => p.id === product.id) ? 'Добавлено' : 'Добавить'}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <h4 style={{ marginTop: '1rem' }}>В подборке: {collectionProducts.length}</h4>
+                  <div className="admin-table-wrap">
+                    <table className="admin-table admin-table-compact">
+                      <tbody>
+                        {collectionProducts.map((p) => (
+                          <tr key={p.id}>
+                            <td>{p.title}</td>
+                            <td className="admin-mono">{p.id}</td>
+                            <td>
+                              <button className="admin-btn admin-btn-sm admin-btn-secondary" type="button" onClick={() => removeProductFromCollection(p.id)}>
+                                Убрать
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {collectionProducts.length === 0 && (
+                          <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Пусто</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <button
+                    className="admin-btn admin-btn-primary"
+                    type="button"
+                    onClick={handleSaveCollectionProducts}
+                    disabled={collectionProductsSaving}
+                    style={{ marginTop: '0.75rem' }}
+                  >
+                    {collectionProductsSaving ? 'Сохранение...' : 'Сохранить состав'}
+                  </button>
+                </>
+              ) : (
+                <p style={{ color: 'var(--text-muted)' }}>Выберите подборку слева, чтобы редактировать её состав.</p>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -28,6 +28,8 @@ const {
 } = require('../services/cacheSettingsService');
 const { getHelpContent, updateHelpContent } = require('../services/helpContentService');
 const { getSupportLinks, updateSupportLinks } = require('../services/supportLinksService');
+const collectionsService = require('../services/collectionsService');
+const collectionsScheduler = require('../services/collectionsScheduler');
 const logger = require('../utils/logger');
 
 const router = Router();
@@ -588,6 +590,105 @@ router.get('/purchases', requireAdmin, async (req, res, next) => {
     }
 
     res.json({ purchases: rows, total, page, limit });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==================== Collections (Подборки) ====================
+
+router.get('/collections', requireAdmin, async (_req, res, next) => {
+  try {
+    const collections = await collectionsService.listCollections({ includeDisabled: true });
+    res.json({ collections });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Snapshot refresh state + schedule. Defined before /:id to avoid route clash.
+router.get('/collections/refresh', requireAdmin, async (_req, res, next) => {
+  try {
+    const state = await collectionsScheduler.getState();
+    res.json(state);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/collections/refresh', requireAdmin, async (_req, res) => {
+  const current = await collectionsService.getRefreshState().catch(() => null);
+  if (current?.running) {
+    return res.json({ started: false, alreadyRunning: true });
+  }
+  // Run in the background; the admin polls /collections/refresh for status.
+  collectionsScheduler.runNow().catch((err) => {
+    logger.error('Manual collections refresh failed', { message: err.message });
+  });
+  res.json({ started: true });
+});
+
+router.put('/collections/schedule', requireAdmin, async (req, res, next) => {
+  try {
+    const schedule = await collectionsService.setSchedule(req.body || {});
+    res.json({ success: true, schedule });
+  } catch (err) {
+    if (/must be/.test(err.message)) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next(err);
+  }
+});
+
+router.post('/collections', requireAdmin, async (req, res, next) => {
+  try {
+    const collection = await collectionsService.createCollection(req.body || {});
+    res.json({ success: true, collection });
+  } catch (err) {
+    if (err.message === 'Title is required') {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next(err);
+  }
+});
+
+router.get('/collections/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const collection = await collectionsService.getCollection(req.params.id);
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    res.json({ collection });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/collections/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const collection = await collectionsService.updateCollection(req.params.id, req.body || {});
+    if (!collection) return res.status(404).json({ error: 'Collection not found' });
+    res.json({ success: true, collection });
+  } catch (err) {
+    if (err.message === 'Title is required') {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next(err);
+  }
+});
+
+router.delete('/collections/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const ok = await collectionsService.deleteCollection(req.params.id);
+    res.json({ success: ok });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/collections/:id/products', requireAdmin, async (req, res, next) => {
+  try {
+    const productIds = Array.isArray(req.body?.productIds) ? req.body.productIds : [];
+    const ids = await collectionsService.setCollectionProducts(req.params.id, productIds);
+    res.json({ success: true, productIds: ids });
   } catch (err) {
     next(err);
   }

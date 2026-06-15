@@ -33,6 +33,11 @@ export async function searchProducts({ q, sort, filters, encodedCT, countOnly, s
           params.set('languageMode', values.join(','));
           continue;
         }
+        if (key === 'Collections') {
+          // Single-select facet: send the first selected collection slug.
+          params.set('collection', values[0]);
+          continue;
+        }
         values.forEach((value) => params.append(key, value));
       }
     }
@@ -45,6 +50,11 @@ export async function searchProducts({ q, sort, filters, encodedCT, countOnly, s
 export async function fetchPriceFilterRates() {
   const { data } = await api.get('/xbox/price-rate');
   return data?.boundaries || {};
+}
+
+export async function fetchCollections() {
+  const { data } = await api.get('/xbox/collections');
+  return data?.collections || [];
 }
 
 export async function fetchProductDetail(productId) {
@@ -229,6 +239,53 @@ export async function searchAdminProducts(options = {}) {
 
 export async function fetchProductOverrides({ page = 1, limit = 50, search = '' } = {}) {
   const { data } = await api.get('/admin/product-overrides', { params: { page, limit, search } });
+  return data;
+}
+
+// ==================== Admin: Collections (Подборки) ====================
+
+export async function fetchAdminCollections() {
+  const { data } = await api.get('/admin/collections');
+  return data.collections || [];
+}
+
+export async function fetchAdminCollection(id) {
+  const { data } = await api.get(`/admin/collections/${encodeURIComponent(id)}`);
+  return data.collection;
+}
+
+export async function createAdminCollection(payload) {
+  const { data } = await api.post('/admin/collections', payload);
+  return data.collection;
+}
+
+export async function updateAdminCollection(id, payload) {
+  const { data } = await api.put(`/admin/collections/${encodeURIComponent(id)}`, payload);
+  return data.collection;
+}
+
+export async function deleteAdminCollection(id) {
+  const { data } = await api.delete(`/admin/collections/${encodeURIComponent(id)}`);
+  return data;
+}
+
+export async function setAdminCollectionProducts(id, productIds) {
+  const { data } = await api.put(`/admin/collections/${encodeURIComponent(id)}/products`, { productIds });
+  return data;
+}
+
+export async function fetchAdminCollectionsRefreshState() {
+  const { data } = await api.get('/admin/collections/refresh');
+  return data;
+}
+
+export async function refreshAdminCollections() {
+  const { data } = await api.post('/admin/collections/refresh');
+  return data;
+}
+
+export async function updateAdminCollectionsSchedule(payload) {
+  const { data } = await api.put('/admin/collections/schedule', payload);
   return data;
 }
 
