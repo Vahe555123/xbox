@@ -286,10 +286,19 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
+  // Auto open/close-on-scroll only applies to the catalog. On other routes
+  // (admin, profile, etc.) the filter opens only when the user clicks it.
+  useEffect(() => {
+    // When leaving the catalog the filter is closed; when entering it opens.
+    setFilterOpen(isCatalogRoute);
+    if (isCatalogRoute) filterOpenedAtRef.current = Date.now();
+  }, [isCatalogRoute]);
+
   // Close filter when scrolled past 100px; reopen when back at top.
   // Debounced 150ms to avoid flicker from momentum scrolling.
   // After auto-close, ignore auto-reopen for 600ms to avoid layout-shift feedback loop.
   useEffect(() => {
+    if (!isCatalogRoute) return undefined;
     let timer = null;
     const onScroll = () => {
       clearTimeout(timer);
@@ -312,7 +321,7 @@ export default function App() {
       clearTimeout(timer);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isCatalogRoute]);
 
   const navigateToCatalog = (nextState) => {
     navigate(buildCatalogUrl(nextState));
