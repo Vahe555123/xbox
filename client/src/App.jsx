@@ -89,6 +89,11 @@ function readCatalogState(searchString = '') {
     filters.LanguageMode = languageModes;
   }
 
+  const collectionSlug = String(params.get('collection') || '').trim();
+  if (collectionSlug) {
+    filters.Collections = [collectionSlug];
+  }
+
   // Keep legacy links working, but do not serialize them back to the URL.
   if (params.get('deals') === 'true') {
     filters.Price = Array.from(new Set([...(filters.Price || []), DEALS_FILTER_VALUE]));
@@ -130,6 +135,13 @@ function buildCatalogUrl({ query = '', sort = '', filters = {} } = {}) {
     : [];
   if (languageModes.length > 0) {
     params.set('languageMode', languageModes.join(','));
+  }
+
+  const collectionSlug = Array.isArray(normalizedFilters.Collections)
+    ? normalizedFilters.Collections.filter(Boolean)[0]
+    : null;
+  if (collectionSlug) {
+    params.set('collection', collectionSlug);
   }
 
   const search = params.toString();
