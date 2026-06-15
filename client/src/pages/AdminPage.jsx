@@ -140,7 +140,7 @@ const PRODUCT_LANGUAGE_MODES = [
 const PRODUCT_LANGUAGE_FILTERS = [
   { value: 'all', label: 'Все языки' },
   { value: 'unknown', label: 'Язык не указан' },
-  { value: 'no_ru', label: 'Без русского' },
+  { value: 'no_ru', label: 'Без русского' },  
   { value: 'full_ru', label: 'Полностью на русском' },
   { value: 'ru_subtitles', label: 'Русские субтитры' },
 ];
