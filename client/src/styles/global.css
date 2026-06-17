@@ -1742,6 +1742,17 @@ img {
   letter-spacing: -0.02em;
 }
 
+.favorites-removal-notice {
+  width: 100%;
+  padding: 0.65rem 1rem;
+  margin-bottom: 0.65rem;
+  border-radius: 8px;
+  background: rgba(172, 132, 241, 0.12);
+  border: 1px solid rgba(172, 132, 241, 0.35);
+  color: #c9a8f8;
+  font-size: 0.88rem;
+}
+
 .favorites-count-bar {
   width: 100%;
   padding: 0.5rem 1rem;
@@ -4333,6 +4344,21 @@ img {
 .purchase-modal-form {
   display: grid;
   gap: 1rem;
+}
+
+.purchase-min-order-notice {
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.purchase-min-order-notice a {
+  color: #fbbf24;
+  text-decoration: underline;
 }
 
 .purchase-modal-section {

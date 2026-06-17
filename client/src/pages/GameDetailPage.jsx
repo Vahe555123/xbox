@@ -931,6 +931,12 @@ export default function GameDetailPage() {
                 </section>
               )}
 
+              {!purchaseResult && (purchaseForm.paymentMode === 'oplata' || purchaseForm.paymentMode === 'key_activation') && Number(data.price?.value) > 0 && Number(data.price?.value) < 10 && (
+                <div className="purchase-min-order-notice">
+                  ⚠ Цена игры меньше $10. Минимальная сумма заказа — $10, поэтому к оплате добавится небольшая доплата. Чтобы избежать этого, добавьте ещё товары в <Link to="/cart">корзину</Link> и купите сразу несколько игр.
+                </div>
+              )}
+
               {!purchaseResult && isTopupMode && data.topupCombo?.available && (
                 <section className="purchase-modal-section">
                   <h3>Комбинация карт</h3>
