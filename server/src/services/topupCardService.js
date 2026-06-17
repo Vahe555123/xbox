@@ -568,7 +568,7 @@ async function getPurchaseOptionsId({
   }
 }
 
-function buildCartPayUrl(cartUid, { purchaseEmail } = {}) {
+function buildCartPayUrl(cartUid, { purchaseEmail, failPageUrl } = {}) {
   const sellerId = config.digiseller.sellerId;
   if (!cartUid || !sellerId) return null;
   const url = new URL(config.digiseller.payApiBaseUrl || `${OPLATA_BASE_URL}/asp2/pay_api.asp`);
@@ -580,7 +580,7 @@ function buildCartPayUrl(cartUid, { purchaseEmail } = {}) {
   url.searchParams.set('curr', config.digiseller.cartPaymentCurrency || 'API_5020_RUB');
   url.searchParams.set('lang', 'ru-RU');
   url.searchParams.set('digiuid', randomUUID().toUpperCase());
-  url.searchParams.set('failpage', getFailPageForTopup());
+  url.searchParams.set('failpage', failPageUrl || getFailPageForTopup());
   url.searchParams.set('_ow', '0');
   url.searchParams.set('_ids_shop', String(sellerId));
   url.searchParams.set('item_cnt', '');
@@ -690,13 +690,14 @@ function getFailPageForTopup() {
 }
 
 // Submit the chosen option to pay.asp and capture the final pay_api.asp redirect.
-async function createCardPayApiUrl(card, { quantity = 1, purchaseEmail, optionCategoryId } = {}) {
+async function createCardPayApiUrl(card, { quantity = 1, purchaseEmail, optionCategoryId, failPageUrl } = {}) {
   const productId = config.digiseller.topupCardProductId;
   const sellerId = config.digiseller.sellerId;
   const catId = optionCategoryId || config.digiseller.topupCardOptionCategoryId || null;
   if (!productId || !sellerId || !card?.optionId || !catId) return null;
 
   const digiuid = randomUUID().toUpperCase();
+  const resolvedFailPage = failPageUrl || getFailPageForTopup();
   const unitAmount = Number(card.priceRub) > 0 ? Math.round(Number(card.priceRub) * quantity) : '';
   const body = new URLSearchParams({
     Lang: 'ru-RU',
@@ -704,8 +705,8 @@ async function createCardPayApiUrl(card, { quantity = 1, purchaseEmail, optionCa
     product_id: String(productId),
     Agent: String(sellerId),
     AgentN: '',
-    FailPage: getFailPageForTopup(),
-    failpage: getFailPageForTopup(),
+    FailPage: resolvedFailPage,
+    failpage: resolvedFailPage,
     NoClearBuyerQueryString: 'NoClear',
     digiuid,
     Curr_add: '',
@@ -759,7 +760,7 @@ async function createCardPayApiUrl(card, { quantity = 1, purchaseEmail, optionCa
   }
 }
 
-async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp } = {}) {
+async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp, failPageUrl } = {}) {
   const combo = await computeCombo(priceUsd);
   if (!combo?.available) return combo;
   const state = await getTopupState();
@@ -807,7 +808,7 @@ async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp } = {}) {
     }
     const failures = addResults.filter((r) => !r.ok);
     if (failures.length === 0 && cartUid) {
-      cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail });
+      cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail, failPageUrl });
     } else {
       cartError = failures[0]?.retdesc || failures[0]?.reason || 'cart_add_failed';
       logger.warn('Cart build failed, falling back to per-card links', {
@@ -829,6 +830,7 @@ async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp } = {}) {
         quantity: item.count,
         purchaseEmail,
         optionCategoryId: state.optionCategoryId,
+        failPageUrl,
       });
       return { usdValue: item.usdValue, apiUrl };
     }));
@@ -856,7 +858,7 @@ async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp } = {}) {
   };
 }
 
-async function buildCartComboPurchase(products, { purchaseEmail, buyerIp } = {}) {
+async function buildCartComboPurchase(products, { purchaseEmail, buyerIp, failPageUrl } = {}) {
   if (!Array.isArray(products) || products.length === 0) {
     return { available: false, reason: 'cart_empty' };
   }
@@ -970,7 +972,7 @@ async function buildCartComboPurchase(products, { purchaseEmail, buyerIp } = {})
 
     const failures = addResults.filter((result) => !result.ok);
     if (failures.length === 0 && cartUid) {
-      cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail });
+      cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail, failPageUrl });
     } else {
       cartError = failures[0]?.retdesc || failures[0]?.reason || 'cart_add_failed';
       logger.warn('Topup cart build failed, falling back to per-card links', {
@@ -993,6 +995,7 @@ async function buildCartComboPurchase(products, { purchaseEmail, buyerIp } = {})
         quantity: item.count,
         purchaseEmail,
         optionCategoryId: state.optionCategoryId,
+        failPageUrl,
       });
       return { usdValue: item.usdValue, apiUrl };
     }));

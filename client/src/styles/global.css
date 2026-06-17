@@ -109,8 +109,18 @@ img {
   background: rgba(5, 10, 18, 0.6);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+}
+
+/* backdrop-filter lives on ::before so that position:fixed children inside
+   the header are NOT repositioned relative to the header in Safari/iOS */
+.app-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  pointer-events: none;
 }
 
 .header-inner {
@@ -1196,6 +1206,24 @@ img {
   .filter-expanded {
     margin-top: 0.75rem;
     padding-top: 0.75rem;
+  }
+
+  /* Chips fit on one line */
+  .filter-quick-chips {
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+  }
+
+  .filter-toggle-check {
+    font-size: 0.72rem;
+    padding: 0 0.45rem;
+    min-height: 34px;
+    gap: 0.25rem;
+  }
+
+  .filter-toggle-check input {
+    width: 13px;
+    height: 13px;
   }
 
   /* Hide auto-apply hint on mobile */

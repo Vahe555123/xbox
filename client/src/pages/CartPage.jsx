@@ -411,136 +411,140 @@ export default function CartPage({ currentUser, onLoginClick }) {
               </div>
             ) : (
               <form className="purchase-modal-form" onSubmit={handleSubmit}>
-                <section className="purchase-modal-section">
-                  <h3>Способ оплаты</h3>
-                  <div className="purchase-mode-grid">
-                    {PAYMENT_MODES.filter((mode) => isCartBatchMode(mode.id)).map((mode) => {
-                      const available = paymentModeAvailable(items, mode.id);
-                      return (
-                        <label key={mode.id} className={`purchase-mode-card ${form.paymentMode === mode.id ? 'active' : ''} ${available ? '' : 'disabled'}`}>
-                          <input
-                            type="radio"
-                            name="paymentMode"
-                            value={mode.id}
-                            checked={form.paymentMode === mode.id}
-                            onChange={handleField}
-                            disabled={!available || purchaseLoading}
-                          />
-                          <span>
-                            <strong>{mode.title}</strong>
-                            <small>{available ? mode.description : 'недоступно для части товаров'}</small>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </section>
+                {!purchaseResult && (
+                  <section className="purchase-modal-section">
+                    <h3>Способ оплаты</h3>
+                    <div className="purchase-mode-grid">
+                      {PAYMENT_MODES.filter((mode) => isCartBatchMode(mode.id)).map((mode) => {
+                        const available = paymentModeAvailable(items, mode.id);
+                        return (
+                          <label key={mode.id} className={`purchase-mode-card ${form.paymentMode === mode.id ? 'active' : ''} ${available ? '' : 'disabled'}`}>
+                            <input
+                              type="radio"
+                              name="paymentMode"
+                              value={mode.id}
+                              checked={form.paymentMode === mode.id}
+                              onChange={handleField}
+                              disabled={!available || purchaseLoading}
+                            />
+                            <span>
+                              <strong>{mode.title}</strong>
+                              <small>{available ? mode.description : 'недоступно для части товаров'}</small>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
 
-                <section className="purchase-modal-section">
-                  <h3>Данные</h3>
-                  {profileLoading ? (
-                    <p className="purchase-muted">Проверяем сохранённые данные профиля...</p>
-                  ) : (
-                    <>
-                      {!currentUser && (
-                        <p className="purchase-muted">
-                          <button type="button" className="cart-link-button" onClick={onLoginClick}>Войдите</button>
-                          {' '}чтобы использовать сохранённые данные, либо введите их вручную.
-                        </p>
-                      )}
-                      {currentUser && !hasMissingPurchaseFields && (
-                        <div className="purchase-saved-box">
-                          <strong>Берём данные из профиля</strong>
-                          <span>Почта покупки и аккаунт Xbox уже сохранены, повторно вводить их не нужно.</span>
-                        </div>
-                      )}
+                {!purchaseResult && (
+                  <section className="purchase-modal-section">
+                    <h3>Данные</h3>
+                    {profileLoading ? (
+                      <p className="purchase-muted">Проверяем сохранённые данные профиля...</p>
+                    ) : (
+                      <>
+                        {!currentUser && (
+                          <p className="purchase-muted">
+                            <button type="button" className="cart-link-button" onClick={onLoginClick}>Войдите</button>
+                            {' '}чтобы использовать сохранённые данные, либо введите их вручную.
+                          </p>
+                        )}
+                        {currentUser && !hasMissingPurchaseFields && (
+                          <div className="purchase-saved-box">
+                            <strong>Берём данные из профиля</strong>
+                            <span>Почта покупки и аккаунт Xbox уже сохранены, повторно вводить их не нужно.</span>
+                          </div>
+                        )}
 
-                      {hasSavedPurchaseEmail && (
-                        <div className="purchase-data-row">
-                          <span>Email для покупки</span>
-                          <strong>{purchaseSettings.purchaseEmail}</strong>
-                        </div>
-                      )}
-                      {!hasSavedPurchaseEmail && registrationEmail && (
-                        <div className="purchase-data-row">
-                          <span>Email регистрации</span>
-                          <strong>{registrationEmail}</strong>
-                        </div>
-                      )}
-                      {!hasSavedPurchaseEmail && !registrationEmail && canUseTelegramDelivery && (
-                        <div className="purchase-data-row">
-                          <span>Доставка ссылки</span>
-                          <strong>Telegram</strong>
-                        </div>
-                      )}
-                      {hasSavedAccountEmail && !skipAccountFields && (
-                        <div className="purchase-data-row">
-                          <span>Аккаунт Xbox</span>
-                          <strong>{purchaseSettings.xboxAccountEmail}</strong>
-                        </div>
-                      )}
-                      {hasSavedAccountPassword && !skipAccountFields && (
-                        <div className="purchase-data-row">
-                          <span>Пароль Xbox</span>
-                          <strong>Сохранён в профиле</strong>
-                        </div>
-                      )}
+                        {hasSavedPurchaseEmail && (
+                          <div className="purchase-data-row">
+                            <span>Email для покупки</span>
+                            <strong>{purchaseSettings.purchaseEmail}</strong>
+                          </div>
+                        )}
+                        {!hasSavedPurchaseEmail && registrationEmail && (
+                          <div className="purchase-data-row">
+                            <span>Email регистрации</span>
+                            <strong>{registrationEmail}</strong>
+                          </div>
+                        )}
+                        {!hasSavedPurchaseEmail && !registrationEmail && canUseTelegramDelivery && (
+                          <div className="purchase-data-row">
+                            <span>Доставка ссылки</span>
+                            <strong>Telegram</strong>
+                          </div>
+                        )}
+                        {hasSavedAccountEmail && !skipAccountFields && (
+                          <div className="purchase-data-row">
+                            <span>Аккаунт Xbox</span>
+                            <strong>{purchaseSettings.xboxAccountEmail}</strong>
+                          </div>
+                        )}
+                        {hasSavedAccountPassword && !skipAccountFields && (
+                          <div className="purchase-data-row">
+                            <span>Пароль Xbox</span>
+                            <strong>Сохранён в профиле</strong>
+                          </div>
+                        )}
 
-                      {needsPurchaseEmail && (
-                        <label>
-                          Email для покупки
-                          <input
-                            name="purchaseEmail"
-                            type="email"
-                            value={form.purchaseEmail}
-                            onChange={handleField}
-                            placeholder="mail@example.com"
-                            required
-                          />
-                        </label>
-                      )}
-                      {needsAccountEmail && (
-                        <label>
-                          Email аккаунта Xbox
-                          <input
-                            name="accountEmail"
-                            type="email"
-                            value={form.accountEmail}
-                            onChange={handleField}
-                            placeholder="xbox@example.com"
-                            autoComplete="username"
-                            required
-                          />
-                        </label>
-                      )}
-                      {needsAccountPassword && (
-                        <label>
-                          Пароль аккаунта Xbox
-                          <input
-                            name="accountPassword"
-                            type="password"
-                            value={form.accountPassword}
-                            onChange={handleField}
-                            placeholder="Пароль"
-                            autoComplete="current-password"
-                            required
-                          />
-                        </label>
-                      )}
-                      {purchaseCanSave && hasMissingPurchaseFields && (
-                        <label className="purchase-checkbox-row">
-                          <input
-                            name="saveToProfile"
-                            type="checkbox"
-                            checked={form.saveToProfile}
-                            onChange={handleField}
-                          />
-                          Сохранить эти данные в профиль
-                        </label>
-                      )}
-                    </>
-                  )}
-                </section>
+                        {needsPurchaseEmail && (
+                          <label>
+                            Email для покупки
+                            <input
+                              name="purchaseEmail"
+                              type="email"
+                              value={form.purchaseEmail}
+                              onChange={handleField}
+                              placeholder="mail@example.com"
+                              required
+                            />
+                          </label>
+                        )}
+                        {needsAccountEmail && (
+                          <label>
+                            Email аккаунта Xbox
+                            <input
+                              name="accountEmail"
+                              type="email"
+                              value={form.accountEmail}
+                              onChange={handleField}
+                              placeholder="xbox@example.com"
+                              autoComplete="username"
+                              required
+                            />
+                          </label>
+                        )}
+                        {needsAccountPassword && (
+                          <label>
+                            Пароль аккаунта Xbox
+                            <input
+                              name="accountPassword"
+                              type="password"
+                              value={form.accountPassword}
+                              onChange={handleField}
+                              placeholder="Пароль"
+                              autoComplete="current-password"
+                              required
+                            />
+                          </label>
+                        )}
+                        {purchaseCanSave && hasMissingPurchaseFields && (
+                          <label className="purchase-checkbox-row">
+                            <input
+                              name="saveToProfile"
+                              type="checkbox"
+                              checked={form.saveToProfile}
+                              onChange={handleField}
+                            />
+                            Сохранить эти данные в профиль
+                          </label>
+                        )}
+                      </>
+                    )}
+                  </section>
+                )}
 
                 {purchaseError && <p className="ps-purchase-error">{purchaseError}</p>}
 
@@ -548,10 +552,7 @@ export default function CartPage({ currentUser, onLoginClick }) {
                   <div className="purchase-result">
                     <strong>{purchaseResult.cartBatch ? 'Корзина готова' : 'Ссылки на карты готовы'}</strong>
                     <p>
-                      {purchaseResult.cartBatch
-                        ? 'Все карты для товаров из корзины добавлены в одну оплату.'
-                        : 'Единую корзину собрать не удалось, поэтому ниже показаны отдельные ссылки на карты.'}
-                      {' '}Итого:{' '}
+                      Итого:{' '}
                       {purchaseResult.totalRubFormatted || `${purchaseResult.totalRub || ''} ₽`}
                       {purchaseResult.cardsCount ? ` за ${purchaseResult.cardsCount} карт(ы).` : ''}
                     </p>
@@ -584,28 +585,12 @@ export default function CartPage({ currentUser, onLoginClick }) {
                         >
                           Оплатить корзину
                         </button>
-                        <button
-                          className="purchase-secondary"
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(purchaseResult.paymentUrl);
-                              setCopyMessage('Ссылка скопирована');
-                            } catch {
-                              setCopyMessage('Не удалось скопировать');
-                            }
-                          }}
-                        >
-                          Копировать ссылку
-                        </button>
                       </div>
                     )}
-                    {copyMessage && <p className="purchase-muted">{copyMessage}</p>}
                   </div>
                 ) : purchaseResult?.paymentUrl ? (
                   <div className="purchase-result">
                     <strong>Корзина готова</strong>
-                    <p>Все товары добавлены в одну корзину на oplata.info. Оплатите единой ссылкой.</p>
                     <div className="purchase-result-actions">
                       <button
                         className="purchase-primary"
@@ -614,22 +599,7 @@ export default function CartPage({ currentUser, onLoginClick }) {
                       >
                         Оплатить корзину
                       </button>
-                      <button
-                        className="purchase-secondary"
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(purchaseResult.paymentUrl);
-                            setCopyMessage('Ссылка скопирована');
-                          } catch {
-                            setCopyMessage('Не удалось скопировать');
-                          }
-                        }}
-                      >
-                        Копировать ссылку
-                      </button>
                     </div>
-                    {copyMessage && <p className="purchase-muted">{copyMessage}</p>}
                   </div>
                 ) : (
                   <button

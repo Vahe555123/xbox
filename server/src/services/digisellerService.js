@@ -168,7 +168,7 @@ async function createKeyActivationPayment(product, { purchaseEmail, gameName } =
   }
 
   const digiuid = randomUUID().toUpperCase();
-  const failPage = rateMode.failPageUrl || `https://plati.market/itm/?idd=${digisellerId}`;
+  const failPage = getFailPageUrl(product);
   const body = new URLSearchParams({
     Lang: 'ru-RU',
     ID_D: String(digisellerId),

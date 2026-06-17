@@ -522,6 +522,9 @@ async function createProductPurchase(req, res, next) {
       const combo = await topupCardService.buildComboPurchase(usd, {
         purchaseEmail: buyerEmailForPayment,
         buyerIp: getRequestIp(req),
+        failPageUrl: config.clientOrigin
+          ? `${config.clientOrigin.replace(/\/$/, '')}/game/${encodeURIComponent(product.id)}`
+          : '',
       });
       if (!combo?.available) {
         throw new AppError('Комбинация карт недоступна: нет в наличии нужных номиналов', 502);

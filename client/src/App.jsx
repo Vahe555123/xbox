@@ -236,9 +236,10 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const isCatalogRoute = location.pathname === '/';
-  const [filterOpen, setFilterOpen] = useState(() => location.pathname === '/');
+  const [filterOpen, setFilterOpen] = useState(() => location.pathname === '/' && !isMobileNavigationViewport());
   const filterOpenedAtRef = useRef(Date.now());
   const filterAutoClosedAtRef = useRef(0);
+  const headerSearchTimerRef = useRef(null);
 
   const openFilter = () => {
     filterOpenedAtRef.current = Date.now();
@@ -301,9 +302,10 @@ export default function App() {
   // Auto open/close-on-scroll only applies to the catalog. On other routes
   // (admin, profile, etc.) the filter opens only when the user clicks it.
   useEffect(() => {
-    // When leaving the catalog the filter is closed; when entering it opens.
-    setFilterOpen(isCatalogRoute);
-    if (isCatalogRoute) filterOpenedAtRef.current = Date.now();
+    // On mobile the filter stays closed by default; open only on desktop.
+    const openOnEnter = isCatalogRoute && !isMobileNavigationViewport();
+    setFilterOpen(openOnEnter);
+    if (openOnEnter) filterOpenedAtRef.current = Date.now();
   }, [isCatalogRoute]);
 
   // Close filter when scrolled past 100px; reopen when back at top.
@@ -321,7 +323,7 @@ export default function App() {
             setFilterOpen(false);
           }
         } else if (window.scrollY === 0) {
-          if (Date.now() - filterAutoClosedAtRef.current > 600) {
+          if (!isMobileNavigationViewport() && Date.now() - filterAutoClosedAtRef.current > 600) {
             openFilter();
           }
         }
@@ -496,6 +498,7 @@ export default function App() {
   function handleMobileSearchKeyDown(event) {
     if (event.key === 'Enter') {
       event.preventDefault();
+      clearTimeout(headerSearchTimerRef.current);
       handleMobileSearchSubmit();
     }
   }
@@ -520,9 +523,21 @@ export default function App() {
                 <input
                   type="search"
                   value={headerQuery}
-                  onChange={(event) => setHeaderQuery(event.target.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setHeaderQuery(value);
+                    clearTimeout(headerSearchTimerRef.current);
+                    headerSearchTimerRef.current = setTimeout(() => {
+                      if (value !== (urlCatalogState.query || '')) {
+                        handleGlobalQueryChange(value);
+                      }
+                    }, 1000);
+                  }}
                   onKeyDown={handleMobileSearchKeyDown}
-                  onBlur={handleMobileSearchSubmit}
+                  onBlur={() => {
+                    clearTimeout(headerSearchTimerRef.current);
+                    handleMobileSearchSubmit();
+                  }}
                   placeholder="Поиск игр..."
                 />
               </label>
