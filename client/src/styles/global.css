@@ -687,6 +687,10 @@ img {
   color: #fff;
 }
 
+.filter-count-pill--toprow {
+  display: none;
+}
+
 .filter-toggle-btn {
   gap: 0.55rem;
   min-width: 148px;
@@ -1198,6 +1202,16 @@ img {
     padding-left: 2rem;
   }
 
+  .filter-count-pill--toprow {
+    display: flex;
+    flex: 0 0 25%;
+    min-width: 0;
+  }
+
+  .filter-count-pill--quickrow {
+    display: none;
+  }
+
   .filter-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 2px;
@@ -1378,7 +1392,6 @@ img {
   }
 
   .filter-sort-dropdown,
-  .filter-count-pill,
   .filter-toggle-btn {
     flex: 1;
     min-width: 0;

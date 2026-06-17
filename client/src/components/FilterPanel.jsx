@@ -446,6 +446,10 @@ export default function FilterPanel({
           </label>
         )}
 
+        <div className="filter-count-pill filter-count-pill--toprow">
+          <strong>{Number(total || 0).toLocaleString('ru-RU')}</strong> товаров
+        </div>
+
         <button
           className="filter-toggle-btn"
           type="button"
@@ -482,7 +486,7 @@ export default function FilterPanel({
               ))}
             </div>
 
-            <div className="filter-count-pill">
+            <div className="filter-count-pill filter-count-pill--quickrow">
               <strong>{Number(total || 0).toLocaleString('ru-RU')}</strong> товаров
             </div>
           </div>
