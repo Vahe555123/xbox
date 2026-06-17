@@ -597,6 +597,21 @@ export default function App() {
               </button>
             </div>
 
+            <button
+              type="button"
+              className={`top-nav-button auth-button ${currentUser ? 'profile-button' : ''}`}
+              onClick={handleProfileAction}
+            >
+              {currentUser ? (
+                <>
+                  <span className="profile-button-avatar">
+                    {(currentUser.name || currentUser.email || 'X').slice(0, 1).toUpperCase()}
+                  </span>
+                  <span>Профиль</span>
+                </>
+              ) : 'Войти'}
+            </button>
+
             <Link to="/" className={`top-nav-link top-nav-home ${isHomeActive ? 'active' : ''}`}>
               Каталог игр
             </Link>
@@ -647,21 +662,6 @@ export default function App() {
 
             <HeaderFavoritesLink active={location.pathname === '/favorites'} onClick={closeMobileMenu} />
             <HeaderCartLink active={location.pathname === '/cart'} onClick={closeMobileMenu} />
-
-            <button
-              type="button"
-              className={`top-nav-button auth-button ${currentUser ? 'profile-button' : ''}`}
-              onClick={handleProfileAction}
-            >
-              {currentUser ? (
-                <>
-                  <span className="profile-button-avatar">
-                    {(currentUser.name || currentUser.email || 'X').slice(0, 1).toUpperCase()}
-                  </span>
-                  <span>Профиль</span>
-                </>
-              ) : 'Войти'}
-            </button>
           </nav>
         </div>
       </header>

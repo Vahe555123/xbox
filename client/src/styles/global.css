@@ -1206,6 +1206,7 @@ img {
     display: flex;
     flex: 0 0 25%;
     min-width: 0;
+    font-size: 0.72rem;
   }
 
   .filter-count-pill--quickrow {
