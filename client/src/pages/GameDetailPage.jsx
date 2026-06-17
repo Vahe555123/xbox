@@ -1488,5 +1488,8 @@ function formatDealEndDateShort(value) {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return `до ${date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`;
+  const dateStr = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  const h = date.getHours().toString().padStart(2, '0');
+  const m = date.getMinutes().toString().padStart(2, '0');
+  return `до ${dateStr} в ${h}:${m}`;
 }
