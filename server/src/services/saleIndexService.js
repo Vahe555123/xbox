@@ -60,7 +60,16 @@ async function upsertSaleProducts(products) {
   return updated;
 }
 
-async function refreshSaleProducts() {
+/**
+ * Run a full sale-index refresh.
+ *
+ * @param {Object}   [opts]
+ * @param {Function} [opts.onProgress] called with a `{ progress, log }` snapshot
+ *                   whenever state changes, so callers can stream it live.
+ * @param {Function} [opts.shouldCancel] return `true` to abort the scan early
+ *                   (cleanup of stale records is skipped on cancel).
+ */
+async function refreshSaleProducts({ onProgress, shouldCancel } = {}) {
   const startedAt = new Date();
   const runRes = await pool.query(
     `INSERT INTO sale_index_runs (status, started_at) VALUES ('running', $1) RETURNING id`,
@@ -68,60 +77,139 @@ async function refreshSaleProducts() {
   );
   const runId = runRes.rows[0].id;
 
+  const log = [];
+  const progress = {
+    phase: 'scanning', // scanning | cleanup | done | cancelled | error
+    page: 0,
+    pagesScanned: 0,
+    productsFound: 0,
+    productsUpdated: 0,
+    productsDeleted: 0,
+    totalItems: null,
+    emptyRuns: 0,
+    stopEmptyRuns: STOP_EMPTY_RUNS,
+    maxPages: MAX_PAGES,
+  };
+
+  const emit = (message) => {
+    if (message) log.push({ ts: new Date().toISOString(), message });
+    if (onProgress) {
+      try {
+        onProgress({ progress: { ...progress }, log: log.slice() });
+      } catch { /* ignore */ }
+    }
+  };
+
+  emit('Запуск сканирования каталога Xbox (AllDeals desc)');
+
   try {
     let encodedCT = '';
-    let pages = 0;
-    let totalFound = 0;
-    let totalUpdated = 0;
-    let emptyRuns = 0;
+    let cancelled = false;
     const seenTokens = new Set();
 
     do {
+      if (shouldCancel && shouldCancel()) {
+        cancelled = true;
+        progress.phase = 'cancelled';
+        emit('⛔ Сканирование отменено пользователем');
+        break;
+      }
+
       const raw = await fetchBrowsePage(encodedCT);
+      if (progress.totalItems === null && Number.isFinite(raw.totalItems)) {
+        progress.totalItems = raw.totalItems;
+        emit(`В каталоге всего позиций: ${raw.totalItems.toLocaleString('ru-RU')}`);
+      }
+
       const mapped = mapProducts(raw.products || []);
       const saleProducts = mapped.filter(
         (p) => p.price && p.price.discountPercent > 0 && !p.notAvailableSeparately,
       );
 
+      progress.page += 1;
+
       if (saleProducts.length === 0) {
-        emptyRuns += 1;
+        progress.emptyRuns += 1;
+        emit(`Страница ${progress.page}: скидок нет (пустых подряд ${progress.emptyRuns}/${STOP_EMPTY_RUNS})`);
       } else {
-        emptyRuns = 0;
-        totalFound += saleProducts.length;
-        totalUpdated += await upsertSaleProducts(saleProducts);
+        progress.emptyRuns = 0;
+        progress.productsFound += saleProducts.length;
+        const updated = await upsertSaleProducts(saleProducts);
+        progress.productsUpdated += updated;
+        emit(`Страница ${progress.page}: +${saleProducts.length} со скидкой · сохранено всего ${progress.productsUpdated}`);
       }
 
-      pages += 1;
+      progress.pagesScanned = progress.page;
+
       const nextToken = raw.encodedCT || '';
-      if (!nextToken || seenTokens.has(nextToken)) break;
+      if (!nextToken || seenTokens.has(nextToken)) {
+        emit('Достигнут конец каталога');
+        break;
+      }
       seenTokens.add(nextToken);
       encodedCT = nextToken;
 
-      if (emptyRuns >= STOP_EMPTY_RUNS) {
-        logger.info('[SaleIndex] No deals on last pages, stopping early', { pages });
+      if (progress.emptyRuns >= STOP_EMPTY_RUNS) {
+        emit(`Скидок не найдено на ${STOP_EMPTY_RUNS} страницах подряд — завершаем досрочно`);
+        logger.info('[SaleIndex] No deals on last pages, stopping early', { pages: progress.page });
         break;
       }
-    } while (pages < MAX_PAGES);
+    } while (progress.page < MAX_PAGES);
+
+    if (cancelled) {
+      const finishedAt = new Date();
+      await pool.query(
+        `UPDATE sale_index_runs SET status='cancelled', products_found=$2,
+           products_updated=$3, pages_scanned=$4, total_items=$5, log=$6, finished_at=$7 WHERE id=$1`,
+        [runId, progress.productsFound, progress.productsUpdated, progress.pagesScanned,
+          progress.totalItems, JSON.stringify(log), finishedAt],
+      );
+      logger.info('[SaleIndex] Refresh cancelled', { pages: progress.pagesScanned });
+      emit('Сканирование остановлено. Устаревшие записи НЕ удалялись.');
+      return {
+        runId, status: 'cancelled', progress: { ...progress }, log: log.slice(),
+        pagesScanned: progress.pagesScanned, productsFound: progress.productsFound,
+        productsUpdated: progress.productsUpdated,
+      };
+    }
 
     // Remove stale records (not seen in this run)
-    await pool.query(
+    progress.phase = 'cleanup';
+    emit('Удаление устаревших записей (скидки, которых больше нет)...');
+    const del = await pool.query(
       `DELETE FROM sale_products WHERE last_seen_at < $1`,
       [startedAt],
     );
+    progress.productsDeleted = del.rowCount || 0;
+    emit(`Удалено устаревших: ${progress.productsDeleted}`);
 
+    progress.phase = 'done';
     const finishedAt = new Date();
     await pool.query(
       `UPDATE sale_index_runs SET status='success', products_found=$2,
-         products_updated=$3, pages_scanned=$4, finished_at=$5 WHERE id=$1`,
-      [runId, totalFound, totalUpdated, pages, finishedAt],
+         products_updated=$3, pages_scanned=$4, products_deleted=$5, total_items=$6,
+         log=$7, finished_at=$8 WHERE id=$1`,
+      [runId, progress.productsFound, progress.productsUpdated, progress.pagesScanned,
+        progress.productsDeleted, progress.totalItems, JSON.stringify(log), finishedAt],
     );
 
-    logger.info('[SaleIndex] Refresh complete', { pages, found: totalFound, updated: totalUpdated });
-    return { runId, pagesScanned: pages, productsFound: totalFound, productsUpdated: totalUpdated };
+    emit(`✅ Готово: страниц ${progress.pagesScanned}, найдено ${progress.productsFound}, удалено ${progress.productsDeleted}`);
+    logger.info('[SaleIndex] Refresh complete', {
+      pages: progress.pagesScanned, found: progress.productsFound, updated: progress.productsUpdated,
+    });
+    return {
+      runId, status: 'success', progress: { ...progress }, log: log.slice(),
+      pagesScanned: progress.pagesScanned, productsFound: progress.productsFound,
+      productsUpdated: progress.productsUpdated,
+    };
   } catch (err) {
+    progress.phase = 'error';
+    emit(`❌ Ошибка: ${err.message}`);
     await pool.query(
-      `UPDATE sale_index_runs SET status='failed', error=$2, finished_at=NOW() WHERE id=$1`,
-      [runId, err.message],
+      `UPDATE sale_index_runs SET status='failed', error=$2, pages_scanned=$3,
+         products_found=$4, products_updated=$5, log=$6, finished_at=NOW() WHERE id=$1`,
+      [runId, err.message, progress.pagesScanned, progress.productsFound,
+        progress.productsUpdated, JSON.stringify(log)],
     ).catch(() => {});
     logger.error('[SaleIndex] Refresh failed', { runId, message: err.message });
     throw err;
@@ -158,7 +246,8 @@ async function getProductsByEndDay(date) {
 
 async function getLastRun() {
   const { rows } = await pool.query(
-    `SELECT id, status, products_found, products_updated, pages_scanned, error, started_at, finished_at
+    `SELECT id, status, products_found, products_updated, pages_scanned,
+            products_deleted, total_items, log, error, started_at, finished_at
      FROM sale_index_runs
      ORDER BY started_at DESC LIMIT 1`,
   );

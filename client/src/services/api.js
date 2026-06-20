@@ -419,6 +419,11 @@ export async function stopAdminSaleIndex() {
   return data;
 }
 
+export async function cancelAdminSaleIndex() {
+  const { data } = await api.post('/admin/sale-index/cancel');
+  return data;
+}
+
 export async function fetchAdminSaleIndexRuns(limit = 20) {
   const { data } = await api.get('/admin/sale-index/runs', { params: { limit } });
   return data?.runs || [];

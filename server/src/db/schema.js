@@ -303,6 +303,11 @@ async function initDb() {
       finished_at TIMESTAMPTZ
     );
 
+    ALTER TABLE sale_index_runs
+      ADD COLUMN IF NOT EXISTS products_deleted INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS total_items INTEGER,
+      ADD COLUMN IF NOT EXISTS log JSONB NOT NULL DEFAULT '[]'::jsonb;
+
     -- User subscriptions for deal-end reminders.
     CREATE TABLE IF NOT EXISTS sale_end_reminders (
       id BIGSERIAL PRIMARY KEY,

@@ -6645,6 +6645,100 @@ code {
   color: #ff7b5c;
 }
 
+.admin-status-warn {
+  background: rgba(224, 164, 88, 0.14);
+  color: #e0a458;
+}
+
+/* ===== Sale index: controls, live progress, counters ===== */
+.admin-sale-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+.admin-btn-danger {
+  background: rgba(216, 59, 1, 0.16);
+  color: #ff7b5c;
+  border: 1px solid rgba(216, 59, 1, 0.35);
+}
+
+.admin-btn-danger:not(:disabled):hover {
+  background: rgba(216, 59, 1, 0.28);
+}
+
+.admin-sale-live.is-running {
+  border-color: rgba(45, 189, 116, 0.4);
+  box-shadow: 0 0 0 1px rgba(45, 189, 116, 0.18), 0 0 24px rgba(45, 189, 116, 0.08);
+}
+
+.admin-sale-pulse {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #20d66b;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  animation: admin-sale-blink 1s ease-in-out infinite;
+}
+
+@keyframes admin-sale-blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(32, 214, 107, 0.5); }
+  50% { opacity: 0.4; box-shadow: 0 0 0 5px rgba(32, 214, 107, 0); }
+}
+
+.admin-sale-counters {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.7rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.admin-sale-counter {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 0.85rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-sale-counter-num {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-sale-counter-num.accent { color: #7dc8ff; }
+.admin-sale-counter-num.ok { color: #20d66b; }
+
+.admin-sale-counter-label {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.admin-sale-run-error {
+  margin: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 8px;
+  background: rgba(216, 59, 1, 0.1);
+  border: 1px solid rgba(216, 59, 1, 0.3);
+  color: #ff7b5c;
+  font-size: 0.82rem;
+  word-break: break-word;
+}
+
+@media (max-width: 720px) {
+  .admin-sale-counters {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* Chips container */
 .admin-chips {
   display: flex;

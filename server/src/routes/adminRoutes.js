@@ -733,11 +733,17 @@ router.post('/sale-index/stop', requireAdmin, (_req, res) => {
   res.json({ stopped: true, state: saleIndexScheduler.getState() });
 });
 
+router.post('/sale-index/cancel', requireAdmin, (_req, res) => {
+  const result = saleIndexScheduler.cancel();
+  res.json({ ...result, state: saleIndexScheduler.getState() });
+});
+
 router.get('/sale-index/runs', requireAdmin, async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 20, 100);
     const { rows } = await pool.query(
-      `SELECT id, status, products_found, products_updated, pages_scanned, error, started_at, finished_at
+      `SELECT id, status, products_found, products_updated, pages_scanned,
+              products_deleted, total_items, log, error, started_at, finished_at
        FROM sale_index_runs
        ORDER BY started_at DESC LIMIT $1`,
       [limit],

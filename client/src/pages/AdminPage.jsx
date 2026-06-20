@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   checkAdmin,
@@ -41,6 +41,7 @@ import {
   fetchAdminSaleIndex,
   refreshAdminSaleIndex,
   stopAdminSaleIndex,
+  cancelAdminSaleIndex,
   fetchAdminSaleIndexRuns,
 } from '../services/api';
 
@@ -129,6 +130,26 @@ function dealRunReasonLabel(reason) {
 function dealRunChannelLabel(channel) {
   const map = { email: 'Email', telegram: 'Telegram' };
   return map[channel] || '—';
+}
+
+const SALE_PHASE_LABELS = {
+  scanning: 'Сканирование каталога',
+  cleanup: 'Очистка устаревших',
+  done: 'Готово',
+  cancelled: 'Отменено',
+  error: 'Ошибка',
+};
+
+function saleRunStatusLabel(status) {
+  const map = { success: 'успех', failed: 'ошибка', cancelled: 'отменён', running: 'выполняется' };
+  return map[status] || status || '—';
+}
+
+function saleRunStatusClass(status) {
+  if (status === 'success') return 'admin-status-ok';
+  if (status === 'failed') return 'admin-status-err';
+  if (status === 'cancelled') return 'admin-status-warn';
+  return '';
 }
 
 const EMPTY_DIG_RATE_STATE = { lastRun: null, samples: [] };
@@ -421,6 +442,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [saleIndexRuns, setSaleIndexRuns] = useState([]);
   const [saleIndexLoading, setSaleIndexLoading] = useState(false);
   const [saleIndexMessage, setSaleIndexMessage] = useState('');
+  const [expandedRunId, setExpandedRunId] = useState(null);
+  const saleWasRunningRef = useRef(false);
 
   // Auth check
   useEffect(() => {
@@ -618,13 +641,22 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     return () => clearInterval(timer);
   }, [authorized, tab, russianIndexState?.isBuilding, loadRussianIndex]);
 
-  // Poll sale index while it's running.
+  // Poll sale index live while it's running (fast cadence for the log feed).
   useEffect(() => {
     if (!authorized || tab !== 'scheduler') return undefined;
     if (!saleIndex?.scheduler?.isRunning) return undefined;
-    const timer = setInterval(loadSaleIndex, 3000);
+    const timer = setInterval(loadSaleIndex, 1500);
     return () => clearInterval(timer);
   }, [authorized, tab, saleIndex?.scheduler?.isRunning, loadSaleIndex]);
+
+  // When a run finishes, refresh the history table once.
+  useEffect(() => {
+    const running = Boolean(saleIndex?.scheduler?.isRunning);
+    if (saleWasRunningRef.current && !running) {
+      loadSaleIndexRuns();
+    }
+    saleWasRunningRef.current = running;
+  }, [saleIndex?.scheduler?.isRunning, loadSaleIndexRuns]);
 
   const handleUserSearch = (e) => {
     e.preventDefault();
@@ -1060,12 +1092,32 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     setSaleIndexMessage('');
     try {
       await stopAdminSaleIndex();
-      setSaleIndexMessage('Планировщик остановлен');
+      setSaleIndexMessage('Авто-обновление остановлено (таймер выключен)');
       await loadSaleIndex();
     } catch (err) {
       setSaleIndexMessage('Ошибка: ' + (err.response?.data?.error || err.message));
     }
   };
+
+  const handleSaleIndexCancel = async () => {
+    setSaleIndexMessage('');
+    try {
+      const result = await cancelAdminSaleIndex();
+      setSaleIndexMessage(result.running ? 'Отмена запрошена — завершаем текущую страницу...' : 'Сканирование сейчас не выполняется');
+      await loadSaleIndex();
+    } catch (err) {
+      setSaleIndexMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  // Derived sale-index state for the live panel.
+  const saleSched = saleIndex?.scheduler;
+  const saleRunning = Boolean(saleSched?.isRunning);
+  const saleCancelling = Boolean(saleSched?.cancelRequested);
+  const saleProgress = saleSched?.progress || (saleRunning ? null : null);
+  const saleLog = (saleSched?.log && saleSched.log.length)
+    ? saleSched.log
+    : (saleIndex?.lastRun?.log || []);
 
   // Not logged in
   if (!currentUser) {
@@ -2381,31 +2433,40 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 <div>
                   <h3>Индекс скидок Xbox</h3>
                   <p className="admin-card-desc">
-                    Сканирует каталог Xbox по сортировке «AllDeals desc», сохраняет игры со скидками и даты окончания. Автообновление: каждый час.
+                    Сканирует каталог Xbox по сортировке «AllDeals desc», сохраняет игры
+                    со скидками и даты окончания. Автообновление каждый час.
                   </p>
                 </div>
               </div>
 
-              <div className="admin-scheduler-action" style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+              <div className="admin-sale-actions">
                 <button
                   className="admin-btn admin-btn-accent"
                   onClick={handleSaleIndexStart}
-                  disabled={saleIndexLoading || saleIndex?.scheduler?.isRunning}
+                  disabled={saleIndexLoading || saleRunning}
                 >
-                  {saleIndex?.scheduler?.isRunning ? 'Сканирование...' : (saleIndexLoading ? 'Запуск...' : 'Запустить сейчас')}
+                  {saleRunning ? '● Сканирование...' : (saleIndexLoading ? 'Запуск...' : '▶ Запустить сейчас')}
+                </button>
+                <button
+                  className="admin-btn admin-btn-danger"
+                  onClick={handleSaleIndexCancel}
+                  disabled={!saleRunning || saleCancelling}
+                >
+                  {saleCancelling ? 'Отменяем...' : '✕ Отменить'}
                 </button>
                 <button
                   className="admin-btn admin-btn-secondary"
                   onClick={handleSaleIndexStop}
-                  disabled={saleIndexLoading}
+                  disabled={saleIndexLoading || !saleSched?.timerActive}
+                  title="Выключить автоматический ежечасный запуск"
                 >
-                  Остановить таймер
+                  ⏸ Остановить таймер
                 </button>
                 <button
                   className="admin-btn admin-btn-sm"
                   onClick={() => { loadSaleIndex(); loadSaleIndexRuns(); }}
                 >
-                  Обновить
+                  ⟳ Обновить
                 </button>
               </div>
               {saleIndexMessage && <p className="admin-scheduler-result" style={{ marginTop: '0.75rem' }}>{saleIndexMessage}</p>}
@@ -2415,44 +2476,110 @@ export default function AdminPage({ currentUser, onLoginClick }) {
             <div className="admin-card">
               <h3>Статус планировщика</h3>
               {saleIndex ? (
-                <>
-                  <dl className="admin-dl">
-                    <dt>Всего игр в базе</dt>
-                    <dd>{(saleIndex.totalProducts ?? 0).toLocaleString('ru-RU')}</dd>
-                    <dt>Интервал</dt>
-                    <dd>{saleIndex.scheduler?.intervalHours}ч</dd>
-                    <dt>Последний запуск</dt>
-                    <dd>{formatDate(saleIndex.scheduler?.lastRunAt)}</dd>
-                    <dt>Результат</dt>
-                    <dd>
-                      <span className={`admin-status ${saleIndex.scheduler?.lastRunStatus === 'success' ? 'admin-status-ok' : saleIndex.scheduler?.lastRunStatus ? 'admin-status-err' : ''}`}>
-                        {saleIndex.scheduler?.lastRunStatus || 'не запускался'}
-                      </span>
-                    </dd>
-                    <dt>Следующий запуск</dt>
-                    <dd>{formatDate(saleIndex.scheduler?.nextRunAt)}</dd>
-                    <dt>Работает</dt>
-                    <dd>{saleIndex.scheduler?.isRunning ? 'Да (в процессе)' : 'Нет'}</dd>
-                  </dl>
-                  {saleIndex.lastRun && (
-                    <div className="admin-report-stats" style={{ marginTop: '1rem' }}>
-                      <div className="admin-report-stat"><strong>{saleIndex.lastRun.pages_scanned ?? '—'}</strong><span>страниц</span></div>
-                      <div className="admin-report-stat"><strong>{saleIndex.lastRun.products_found ?? '—'}</strong><span>найдено</span></div>
-                      <div className="admin-report-stat"><strong>{saleIndex.lastRun.products_updated ?? '—'}</strong><span>обновлено</span></div>
-                    </div>
-                  )}
-                </>
+                <dl className="admin-dl">
+                  <dt>Всего игр в базе</dt>
+                  <dd>{(saleIndex.totalProducts ?? 0).toLocaleString('ru-RU')}</dd>
+                  <dt>Авто-таймер</dt>
+                  <dd>
+                    <span className={`admin-status ${saleSched?.timerActive ? 'admin-status-ok' : 'admin-status-warn'}`}>
+                      {saleSched?.timerActive ? `включён (каждые ${saleSched?.intervalHours}ч)` : 'выключен'}
+                    </span>
+                  </dd>
+                  <dt>Последний запуск</dt>
+                  <dd>{formatDate(saleSched?.lastRunAt)}</dd>
+                  <dt>Результат</dt>
+                  <dd>
+                    <span className={`admin-status ${saleSched?.lastRunStatus === 'success' ? 'admin-status-ok' : saleSched?.lastRunStatus === 'cancelled' ? 'admin-status-warn' : saleSched?.lastRunStatus ? 'admin-status-err' : ''}`}>
+                      {saleSched?.lastRunStatus || 'не запускался'}
+                    </span>
+                  </dd>
+                  <dt>Следующий запуск</dt>
+                  <dd>{saleSched?.nextRunAt ? formatDate(saleSched.nextRunAt) : '—'}</dd>
+                  <dt>Сейчас работает</dt>
+                  <dd>{saleRunning ? 'Да (в процессе)' : 'Нет'}</dd>
+                </dl>
               ) : (
                 <p style={{ color: 'var(--text-muted)' }}>Загрузка...</p>
               )}
             </div>
           </div>
 
+          {/* Live progress + log */}
+          {(saleProgress || saleLog.length > 0) && (
+            <div className={`admin-card admin-sale-live ${saleRunning ? 'is-running' : ''}`}>
+              <div className="admin-card-head">
+                <div>
+                  <h3>
+                    {saleRunning && <span className="admin-sale-pulse" />}
+                    {saleRunning ? 'Прогресс сканирования' : 'Последний прогон'}
+                  </h3>
+                  <p className="admin-card-desc">
+                    {SALE_PHASE_LABELS[saleProgress?.phase] || (saleRunning ? 'Идёт сканирование...' : 'Завершено')}
+                    {saleProgress?.totalItems != null && ` · в каталоге ${saleProgress.totalItems.toLocaleString('ru-RU')} позиций`}
+                  </p>
+                </div>
+              </div>
+
+              {saleProgress && (
+                <>
+                  <div className="admin-sale-counters">
+                    <div className="admin-sale-counter">
+                      <span className="admin-sale-counter-num">{saleProgress.pagesScanned ?? 0}</span>
+                      <span className="admin-sale-counter-label">страниц просмотрено</span>
+                    </div>
+                    <div className="admin-sale-counter">
+                      <span className="admin-sale-counter-num accent">{saleProgress.productsFound ?? 0}</span>
+                      <span className="admin-sale-counter-label">игр со скидкой найдено</span>
+                    </div>
+                    <div className="admin-sale-counter">
+                      <span className="admin-sale-counter-num ok">{saleProgress.productsUpdated ?? 0}</span>
+                      <span className="admin-sale-counter-label">сохранено в базу</span>
+                    </div>
+                    <div className="admin-sale-counter">
+                      <span className="admin-sale-counter-num">{saleProgress.productsDeleted ?? 0}</span>
+                      <span className="admin-sale-counter-label">удалено устаревших</span>
+                    </div>
+                  </div>
+
+                  <div className="admin-index-progress">
+                    <div className="admin-index-progress-head">
+                      <span>{SALE_PHASE_LABELS[saleProgress.phase] || 'Сканирование'}</span>
+                      <span>
+                        {saleRunning
+                          ? `страница ${saleProgress.page ?? 0} / лимит ${saleProgress.maxPages ?? '—'}`
+                          : `завершено · ${saleProgress.pagesScanned ?? 0} стр.`}
+                      </span>
+                    </div>
+                    <div className="admin-index-progress-bar">
+                      <div
+                        className={`admin-index-progress-fill ${saleRunning && saleProgress.phase === 'scanning' ? 'indeterminate' : ''}`}
+                        style={!saleRunning || saleProgress.phase !== 'scanning'
+                          ? { width: '100%', background: saleProgress.phase === 'error' ? '#f87171' : saleProgress.phase === 'cancelled' ? '#e0a458' : undefined }
+                          : undefined}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {saleLog.length > 0 && (
+                <div className="admin-index-logs">
+                  {[...saleLog].reverse().map((entry, i) => (
+                    <div className="admin-index-log-row" key={`${entry.ts}-${i}`}>
+                      <span className="admin-index-log-time">{formatLogTime(entry.ts)}</span>
+                      <span>{entry.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Run history */}
           <div className="admin-card">
             <div className="admin-card-head">
               <h3>История запусков</h3>
-              <button className="admin-btn admin-btn-sm" onClick={loadSaleIndexRuns}>Обновить</button>
+              <button className="admin-btn admin-btn-sm" onClick={loadSaleIndexRuns}>⟳ Обновить</button>
             </div>
             <div className="admin-table-wrap">
               <table className="admin-table admin-table-compact">
@@ -2460,36 +2587,72 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                   <tr>
                     <th>#</th>
                     <th>Начало</th>
-                    <th>Конец</th>
+                    <th>Длит.</th>
                     <th>Статус</th>
-                    <th>Страниц</th>
+                    <th>Стр.</th>
                     <th>Найдено</th>
-                    <th>Обновлено</th>
-                    <th>Ошибка</th>
+                    <th>Сохр.</th>
+                    <th>Удал.</th>
+                    <th>Лог</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {saleIndexRuns.map((run) => (
-                    <tr key={run.id}>
-                      <td className="admin-mono">{run.id}</td>
-                      <td>{formatDate(run.started_at)}</td>
-                      <td>{run.finished_at ? formatDate(run.finished_at) : <span style={{ color: 'var(--text-muted)' }}>в процессе</span>}</td>
-                      <td>
-                        <span className={`admin-status ${run.status === 'success' ? 'admin-status-ok' : run.status === 'failed' ? 'admin-status-err' : ''}`}>
-                          {run.status}
-                        </span>
-                      </td>
-                      <td>{run.pages_scanned ?? '—'}</td>
-                      <td>{run.products_found ?? '—'}</td>
-                      <td>{run.products_updated ?? '—'}</td>
-                      <td style={{ color: run.error ? '#f87171' : 'var(--text-muted)', maxWidth: 220, wordBreak: 'break-word' }}>
-                        {run.error || '—'}
-                      </td>
-                    </tr>
-                  ))}
+                  {saleIndexRuns.map((run) => {
+                    const durSec = run.finished_at
+                      ? Math.max(0, Math.round((new Date(run.finished_at) - new Date(run.started_at)) / 1000))
+                      : null;
+                    const log = Array.isArray(run.log) ? run.log : [];
+                    const expanded = expandedRunId === run.id;
+                    return (
+                      <React.Fragment key={run.id}>
+                        <tr>
+                          <td className="admin-mono">{run.id}</td>
+                          <td>{formatDate(run.started_at)}</td>
+                          <td>{durSec != null ? `${durSec}с` : <span style={{ color: 'var(--text-muted)' }}>идёт</span>}</td>
+                          <td>
+                            <span className={`admin-status ${saleRunStatusClass(run.status)}`}>
+                              {saleRunStatusLabel(run.status)}
+                            </span>
+                          </td>
+                          <td>{run.pages_scanned ?? '—'}</td>
+                          <td>{run.products_found ?? '—'}</td>
+                          <td>{run.products_updated ?? '—'}</td>
+                          <td>{run.products_deleted ?? '—'}</td>
+                          <td>
+                            {(log.length > 0 || run.error) ? (
+                              <button
+                                className="admin-btn admin-btn-sm"
+                                onClick={() => setExpandedRunId(expanded ? null : run.id)}
+                              >
+                                {expanded ? 'Скрыть' : `Лог (${log.length})`}
+                              </button>
+                            ) : '—'}
+                          </td>
+                        </tr>
+                        {expanded && (
+                          <tr>
+                            <td colSpan={9} style={{ background: 'rgba(0,0,0,0.2)', padding: 0 }}>
+                              {run.error && (
+                                <div className="admin-sale-run-error">Ошибка: {run.error}</div>
+                              )}
+                              <div className="admin-index-logs" style={{ margin: '0.6rem', maxHeight: 260 }}>
+                                {log.length === 0 && <div style={{ color: 'var(--text-muted)' }}>Лог пуст</div>}
+                                {[...log].reverse().map((entry, i) => (
+                                  <div className="admin-index-log-row" key={`${entry.ts}-${i}`}>
+                                    <span className="admin-index-log-time">{formatLogTime(entry.ts)}</span>
+                                    <span>{entry.message}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                   {saleIndexRuns.length === 0 && (
                     <tr>
-                      <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                         Запусков ещё не было
                       </td>
                     </tr>

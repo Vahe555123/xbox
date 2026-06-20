@@ -7,6 +7,11 @@ let timer = null;
 let lastRunAt = null;
 let lastRunStatus = null;
 let isRunning = false;
+let cancelRequested = false;
+
+// Live snapshot of the currently running scan (or the last finished one).
+let liveProgress = null;
+let liveLog = [];
 
 function getState() {
   return {
@@ -15,24 +20,38 @@ function getState() {
     lastRunAt,
     lastRunStatus,
     isRunning,
-    nextRunAt: lastRunAt
+    cancelRequested,
+    timerActive: Boolean(timer),
+    nextRunAt: timer && lastRunAt
       ? new Date(new Date(lastRunAt).getTime() + INTERVAL_MS).toISOString()
       : null,
+    progress: liveProgress,
+    log: liveLog,
   };
 }
 
 async function tick() {
   if (isRunning) return;
   isRunning = true;
+  cancelRequested = false;
   lastRunAt = new Date().toISOString();
+  liveProgress = null;
+  liveLog = [];
   try {
-    await saleIndexService.refreshSaleProducts();
-    lastRunStatus = 'success';
+    const result = await saleIndexService.refreshSaleProducts({
+      onProgress: ({ progress, log }) => {
+        liveProgress = progress;
+        liveLog = log;
+      },
+      shouldCancel: () => cancelRequested,
+    });
+    lastRunStatus = result?.status === 'cancelled' ? 'cancelled' : 'success';
   } catch (err) {
     lastRunStatus = `error: ${err.message}`;
     logger.error('[SaleIndexScheduler] Tick failed', { message: err.message });
   } finally {
     isRunning = false;
+    cancelRequested = false;
   }
 }
 
@@ -40,6 +59,14 @@ async function runNow() {
   if (isRunning) return { alreadyRunning: true };
   await tick();
   return { success: lastRunStatus === 'success', state: getState() };
+}
+
+// Cancel the scan that is currently running (no-op if idle).
+function cancel() {
+  if (!isRunning) return { running: false };
+  cancelRequested = true;
+  logger.info('[SaleIndexScheduler] Cancel requested');
+  return { running: true, cancelRequested: true };
 }
 
 function start() {
@@ -51,6 +78,7 @@ function start() {
   logger.info('[SaleIndexScheduler] Started, interval=1h, first run in 60s');
 }
 
+// Stop the automatic hourly timer (does not abort an in-progress scan).
 function stop() {
   if (timer) {
     clearInterval(timer);
@@ -58,4 +86,4 @@ function stop() {
   }
 }
 
-module.exports = { getState, runNow, start, stop };
+module.exports = { getState, runNow, cancel, start, stop };
