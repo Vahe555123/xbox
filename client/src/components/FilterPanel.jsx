@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 const SKIP_FILTER_KEYS = ['orderby', 'MaturityRating', 'Accessibility', 'SupportedLanguages'];
 // These filters allow only one value at a time (radio behaviour)
 const RADIO_FILTER_KEYS = new Set(['Genre', 'Multiplayer', 'IncludedInSubscription', 'Collections']);
+// These radio filters get a "Все" (clear) option at the top
+const CLEAR_OPTION_KEYS = new Set(['Genre', 'Multiplayer', 'IncludedInSubscription']);
 const FILTER_ORDER = [
   'Collections',
   'LanguageMode',
@@ -209,6 +211,7 @@ export default function FilterPanel({
 }) {
   const [internalExpanded, setInternalExpanded] = useState(true);
   const expanded = isOpen !== undefined ? isOpen : internalExpanded;
+  const [openDropdownKey, setOpenDropdownKey] = useState(null);
 
   function handleToggle() {
     if (onToggle) {
@@ -397,6 +400,14 @@ export default function FilterPanel({
       : filter.choices
   );
 
+  const clearFilterKey = (key) => {
+    setDraftFilters((prev) => {
+      const next = cloneFilters(prev);
+      delete next[key];
+      return next;
+    });
+  };
+
   return (
     <section className={`filter-panel ${expanded ? 'filter-panel-open' : ''}`}>
       <div className="filter-top-row">
@@ -531,8 +542,19 @@ export default function FilterPanel({
                   choices={choices}
                   activeValues={draftFilters[key] || []}
                   getTitle={(choice) => choiceTitle(key, choice)}
-                  onToggle={(valueId) => updateDraftFilter(key, valueId)}
+                  isOpen={openDropdownKey === key}
+                  onOpen={() => setOpenDropdownKey(key)}
+                  onClose={() => setOpenDropdownKey(null)}
+                  onToggle={(valueId) => {
+                    updateDraftFilter(key, valueId);
+                    setOpenDropdownKey(null);
+                  }}
                   isRadio={RADIO_FILTER_KEYS.has(key)}
+                  hasClearOption={CLEAR_OPTION_KEYS.has(key)}
+                  onClear={() => {
+                    clearFilterKey(key);
+                    setOpenDropdownKey(null);
+                  }}
                 />
               );
             })}
@@ -551,59 +573,90 @@ export default function FilterPanel({
   );
 }
 
-function FilterDropdown({ title, choices, activeValues, getTitle, onToggle, isRadio = false }) {
+function FilterDropdown({
+  title,
+  choices,
+  activeValues,
+  getTitle,
+  onToggle,
+  isRadio = false,
+  isOpen = false,
+  onOpen,
+  onClose,
+  hasClearOption = false,
+  onClear,
+}) {
   const selectedChoices = choices.filter((choice) => activeValues.includes(choice.id));
   const selectedLabel = selectedChoices.length > 0
     ? selectedChoices.slice(0, 2).map((choice) => getTitle(choice)).join(', ')
     : title;
 
-  // Stable group name for radio inputs (not for accessibility, just for DOM grouping)
   const groupName = `filter-radio-${title}`;
 
   return (
-    <details className="filter-dropdown">
-      <summary>
+    <div className={`filter-dropdown${isOpen ? ' filter-dropdown--open' : ''}`}>
+      <button
+        type="button"
+        className="filter-dropdown-summary"
+        onClick={() => (isOpen ? onClose() : onOpen())}
+      >
         <span>{selectedLabel}</span>
-      </summary>
-      <div className="filter-dropdown-menu">
-        {choices.map((choice) => {
-          if (choice.isLabelOnly) {
-            return (
-              <span key={choice.id} className="filter-label-only">
-                {getTitle(choice)}
-              </span>
-            );
-          }
+      </button>
+      {isOpen && (
+        <div className="filter-dropdown-menu">
+          {hasClearOption && (
+            <label
+              className={`filter-checkbox filter-radio-item${activeValues.length === 0 ? ' active' : ''}`}
+              onClick={onClear}
+            >
+              <input
+                type="radio"
+                name={groupName}
+                checked={activeValues.length === 0}
+                onChange={onClear}
+              />
+              <span className="filter-checkbox-label">Все</span>
+            </label>
+          )}
+          {choices.map((choice) => {
+            if (choice.isLabelOnly) {
+              return (
+                <span key={choice.id} className="filter-label-only">
+                  {getTitle(choice)}
+                </span>
+              );
+            }
 
-          const isActive = activeValues.includes(choice.id);
+            const isActive = activeValues.includes(choice.id);
 
-          if (isRadio) {
+            if (isRadio) {
+              return (
+                <label key={choice.id} className={`filter-checkbox filter-radio-item ${isActive ? 'active' : ''}`}>
+                  <input
+                    type="radio"
+                    name={groupName}
+                    checked={isActive}
+                    onChange={() => onToggle(choice.id)}
+                    onClick={() => { if (isActive) onToggle(choice.id); }}
+                  />
+                  <span className="filter-checkbox-label">{getTitle(choice)}</span>
+                </label>
+              );
+            }
+
             return (
-              <label key={choice.id} className={`filter-checkbox filter-radio-item ${isActive ? 'active' : ''}`}>
+              <label key={choice.id} className={`filter-checkbox ${isActive ? 'active' : ''}`}>
                 <input
-                  type="radio"
-                  name={groupName}
+                  type="checkbox"
                   checked={isActive}
                   onChange={() => onToggle(choice.id)}
-                  onClick={() => { if (isActive) onToggle(choice.id); }}
                 />
                 <span className="filter-checkbox-label">{getTitle(choice)}</span>
               </label>
             );
-          }
-
-          return (
-            <label key={choice.id} className={`filter-checkbox ${isActive ? 'active' : ''}`}>
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={() => onToggle(choice.id)}
-              />
-              <span className="filter-checkbox-label">{getTitle(choice)}</span>
-            </label>
-          );
-        })}
-      </div>
-    </details>
+          })}
+        </div>
+      )}
+    </div>
   );
 }
