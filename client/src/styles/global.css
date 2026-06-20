@@ -9275,60 +9275,85 @@ body.mobile-menu-open {
 .bc-hint-row code { background: rgba(255,255,255,0.08); padding: 0.05em 0.3em; border-radius: 3px; font-size: 0.85em; color: #a8d8ff; }
 
 /* ==================== Special-offer notify ==================== */
-.so-layout { display: flex; flex-direction: column; gap: 1.2rem; }
 
-.so-label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary, #ccc); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.4rem; }
-
-.so-search-wrap { position: relative; max-width: 520px; }
-
-.so-input {
-  width: 100%; box-sizing: border-box;
-  background: #1a1f2e; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
-  color: #fff; font-size: 0.95rem; padding: 0.65rem 0.9rem; outline: none;
-  transition: border-color 0.15s;
+/* Top row: combobox + send button */
+.so-toprow {
+  display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
 }
-.so-input:focus { border-color: #107c10; }
+.so-send-btn { white-space: nowrap; flex-shrink: 0; align-self: stretch; }
 
+/* Combobox wrapper */
+.so-combobox { position: relative; flex: 1; min-width: 260px; max-width: 560px; }
+
+/* Trigger button (looks like a select) */
+.so-trigger {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: #1a1f2e; border: 1px solid rgba(255,255,255,0.14); border-radius: 8px;
+  color: #fff; font-size: 0.9rem; padding: 0.6rem 0.85rem; cursor: pointer;
+  text-align: left; transition: border-color 0.15s; min-height: 42px;
+}
+.so-trigger:hover { border-color: rgba(255,255,255,0.25); }
+.so-trigger--open { border-color: #107c10; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.so-trigger-img { width: 28px; height: 28px; border-radius: 5px; object-fit: cover; flex-shrink: 0; background: #2a2f3f; }
+.so-trigger-title { flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.so-trigger-id { font-size: 0.7rem; font-family: monospace; color: var(--text-muted, #888); flex-shrink: 0; }
+.so-trigger-placeholder { flex: 1; color: var(--text-muted, #888); }
+.so-trigger-arrow { font-size: 0.65rem; color: var(--text-muted, #888); flex-shrink: 0; margin-left: auto; padding-left: 6px; }
+
+/* Dropdown panel */
 .so-dropdown {
-  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200;
-  background: #1e2335; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5); overflow: hidden;
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+  background: #1a1f2e; border: 1px solid #107c10; border-top: none;
+  border-radius: 0 0 10px 10px; box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+  overflow: hidden;
 }
+.so-drop-search-wrap { padding: 8px 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.so-drop-search {
+  width: 100%; box-sizing: border-box;
+  background: #111520; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;
+  color: #fff; font-size: 0.88rem; padding: 0.5rem 0.75rem; outline: none;
+  transition: border-color 0.12s;
+}
+.so-drop-search:focus { border-color: #107c10; }
+.so-drop-search::placeholder { color: var(--text-muted, #888); }
+.so-drop-list { max-height: 280px; overflow-y: auto; }
+.so-drop-empty { padding: 0.75rem 0.9rem; font-size: 0.83rem; color: var(--text-muted, #888); text-align: center; }
 .so-drop-item {
   display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 0.6rem 0.9rem; border: none; background: transparent;
-  color: #fff; cursor: pointer; text-align: left; transition: background 0.12s;
+  padding: 0.55rem 0.85rem; border: none; background: transparent;
+  color: #fff; cursor: pointer; text-align: left; transition: background 0.1s;
 }
 .so-drop-item:hover { background: rgba(255,255,255,0.07); }
-.so-drop-img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: #2a2f3f; }
-.so-drop-title { flex: 1; font-size: 0.88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.so-drop-id { font-size: 0.72rem; color: var(--text-muted, #888); font-family: monospace; flex-shrink: 0; }
+.so-drop-item--active { background: rgba(16,124,16,0.15); }
+.so-drop-img { width: 34px; height: 34px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: #2a2f3f; }
+.so-drop-title { flex: 1; font-size: 0.87rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.so-drop-id { font-size: 0.7rem; color: var(--text-muted, #888); font-family: monospace; flex-shrink: 0; }
 
+/* Selected game card */
 .so-selected-card {
-  display: flex; align-items: center; gap: 14px; max-width: 520px;
-  background: #1a1f2e; border: 1px solid rgba(16,124,16,0.4); border-radius: 10px;
-  padding: 0.85rem 1rem;
+  display: flex; align-items: center; gap: 14px;
+  background: #141820; border: 1px solid rgba(16,124,16,0.35); border-radius: 10px;
+  padding: 0.8rem 1rem; margin-bottom: 14px;
 }
-.so-card-img { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background: #2a2f3f; flex-shrink: 0; }
+.so-card-img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: #2a2f3f; flex-shrink: 0; }
 .so-card-info { flex: 1; min-width: 0; }
-.so-card-title { font-size: 0.95rem; font-weight: 700; color: #fff; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.so-card-id { font-size: 0.72rem; font-family: monospace; color: var(--text-muted, #888); margin-bottom: 4px; }
+.so-card-title { font-size: 0.92rem; font-weight: 700; color: #fff; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.so-card-id { font-size: 0.7rem; font-family: monospace; color: var(--text-muted, #888); margin-bottom: 3px; }
 .so-card-count { font-size: 0.82rem; color: #20d66b; }
 
-.so-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-.so-message { font-size: 0.88rem; margin: 0; padding: 0.4rem 0.8rem; border-radius: 6px; background: rgba(16,124,16,0.15); color: #8ef58d; }
+.so-message { font-size: 0.88rem; margin: 0 0 14px; padding: 0.45rem 0.9rem; border-radius: 6px; background: rgba(16,124,16,0.15); color: #8ef58d; display: inline-block; }
 .so-message--warn { background: rgba(255,120,0,0.12); color: #ffb347; }
 
 .so-report { background: #141820; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 1rem 1.1rem; }
-.so-report-title { font-size: 0.8rem; font-weight: 700; color: var(--text-secondary, #ccc); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.7rem; }
-.so-report-stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; font-size: 0.85rem; color: var(--text-secondary, #ccc); margin-bottom: 0.9rem; }
+.so-report-title { font-size: 0.78rem; font-weight: 700; color: var(--text-secondary, #ccc); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.65rem; }
+.so-report-stats { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; font-size: 0.84rem; color: var(--text-secondary, #ccc); margin-bottom: 0.85rem; }
 .so-report-stats b { color: #fff; }
 .so-report-err { color: #ff7070; }
-.so-report-entries { display: flex; flex-direction: column; gap: 4px; max-height: 280px; overflow-y: auto; }
-.so-report-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0.35rem 0.7rem; border-radius: 6px; font-size: 0.82rem; background: rgba(255,255,255,0.04); }
+.so-report-entries { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+.so-report-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0.32rem 0.65rem; border-radius: 6px; font-size: 0.81rem; background: rgba(255,255,255,0.04); }
 .so-report-entry--sent { background: rgba(16,124,16,0.1); }
 .so-report-entry--failed { background: rgba(255,50,50,0.08); }
 .so-entry-name { color: #fff; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.so-entry-status { font-size: 0.78rem; color: var(--text-muted, #888); white-space: nowrap; flex-shrink: 0; }
+.so-entry-status { font-size: 0.77rem; color: var(--text-muted, #888); white-space: nowrap; flex-shrink: 0; }
 .so-report-entry--sent .so-entry-status { color: #8ef58d; }
 .so-report-entry--failed .so-entry-status { color: #ff7070; }

@@ -1865,90 +1865,122 @@ export default function AdminPage({ currentUser, onLoginClick }) {
           <h3 className="admin-section-title" style={{ marginBottom: 16 }}>Уведомление о Спецпредложении</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 16 }}>
             Выберите игру — все клиенты, у которых она в Избранном, получат уведомление о спецпредложении (Telegram или Email).
-            <br />Повторная отправка одному клиенту возможна только на следующий день.
+            Повторная отправка одному клиенту возможна только на следующий день.
           </p>
-          <div className="so-layout">
-            <div className="so-search-wrap" ref={soSearchRef}>
-              <label className="so-label">Игра</label>
-              <input
-                className="so-input"
-                type="text"
-                placeholder="Введите название или ID игры..."
-                value={soQuery}
-                onChange={(e) => handleSoSearch(e.target.value)}
-                onFocus={() => soResults.length > 0 && setSoDropOpen(true)}
-                autoComplete="off"
-              />
-              {soDropOpen && soResults.length > 0 && (
+
+          {/* Top row: combobox + send button */}
+          <div className="so-toprow">
+            <div className="so-combobox" ref={soSearchRef}>
+              {/* Trigger */}
+              <button
+                type="button"
+                className={`so-trigger${soDropOpen ? ' so-trigger--open' : ''}`}
+                onClick={() => setSoDropOpen((v) => !v)}
+              >
+                {soSelected ? (
+                  <>
+                    {soSelected.image && <img src={soSelected.image} alt="" className="so-trigger-img" />}
+                    <span className="so-trigger-title">{soSelected.title || soSelected.id}</span>
+                    <span className="so-trigger-id">{soSelected.id}</span>
+                  </>
+                ) : (
+                  <span className="so-trigger-placeholder">Выберите игру...</span>
+                )}
+                <span className="so-trigger-arrow">{soDropOpen ? '▲' : '▼'}</span>
+              </button>
+
+              {/* Dropdown panel */}
+              {soDropOpen && (
                 <div className="so-dropdown">
-                  {soResults.map((p) => (
-                    <button
-                      key={p.id}
-                      className="so-drop-item"
-                      onMouseDown={(e) => { e.preventDefault(); handleSoSelect(p); }}
-                    >
-                      {p.image && <img src={p.image} alt="" className="so-drop-img" />}
-                      <span className="so-drop-title">{p.title || p.id}</span>
-                      <span className="so-drop-id">{p.id}</span>
-                    </button>
+                  <div className="so-drop-search-wrap">
+                    <input
+                      className="so-drop-search"
+                      type="text"
+                      placeholder="Поиск по названию или ID..."
+                      value={soQuery}
+                      onChange={(e) => handleSoSearch(e.target.value)}
+                      autoComplete="off"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="so-drop-list">
+                    {soResults.length === 0 && soQuery.trim() && (
+                      <div className="so-drop-empty">Ничего не найдено</div>
+                    )}
+                    {soResults.length === 0 && !soQuery.trim() && (
+                      <div className="so-drop-empty">Начните вводить название или ID игры</div>
+                    )}
+                    {soResults.map((p) => (
+                      <button
+                        key={p.id}
+                        className={`so-drop-item${soSelected?.id === p.id ? ' so-drop-item--active' : ''}`}
+                        onMouseDown={(e) => { e.preventDefault(); handleSoSelect(p); }}
+                      >
+                        {p.image && <img src={p.image} alt="" className="so-drop-img" />}
+                        <span className="so-drop-title">{p.title || p.id}</span>
+                        <span className="so-drop-id">{p.id}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              className="admin-btn so-send-btn"
+              disabled={!soSelected || soSending}
+              onClick={handleSoSend}
+            >
+              {soSending ? 'Отправляем...' : 'Отправить уведомление'}
+            </button>
+          </div>
+
+          {/* Selected game card */}
+          {soSelected && (
+            <div className="so-selected-card">
+              {soSelected.image && <img src={soSelected.image} alt="" className="so-card-img" />}
+              <div className="so-card-info">
+                <div className="so-card-title">{soSelected.title}</div>
+                <div className="so-card-id">{soSelected.id}</div>
+                {soFavCount !== null && (
+                  <div className="so-card-count">
+                    В избранном у <b>{soFavCount}</b> {soFavCount === 1 ? 'клиента' : 'клиентов'}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Message after send */}
+          {soMessage && (
+            <p className={`so-message ${soReport?.totals?.failed > 0 ? 'so-message--warn' : ''}`}>{soMessage}</p>
+          )}
+
+          {/* Report */}
+          {soReport && (
+            <div className="so-report">
+              <div className="so-report-title">Результат рассылки</div>
+              <div className="so-report-stats">
+                <span>В избранном: <b>{soReport.totals.usersInFavorites}</b></span>
+                <span>Отправлено: <b>{soReport.totals.sent}</b></span>
+                <span>Telegram: <b>{soReport.totals.telegram}</b></span>
+                <span>Email: <b>{soReport.totals.email}</b></span>
+                <span>Уже получили: <b>{soReport.totals.skippedAlreadyNotified}</b></span>
+                <span>Нет контакта: <b>{soReport.totals.skippedNoContact}</b></span>
+                {soReport.totals.failed > 0 && <span className="so-report-err">Ошибок: <b>{soReport.totals.failed}</b></span>}
+              </div>
+              {soReport.entries.length > 0 && (
+                <div className="so-report-entries">
+                  {soReport.entries.map((e, i) => (
+                    <div key={i} className={`so-report-entry so-report-entry--${e.status}`}>
+                      <span className="so-entry-name">{e.name || e.email || e.userId?.slice(0, 8)}</span>
+                      <span className="so-entry-status">{e.status === 'sent' ? `✓ ${e.channel}` : e.reason || e.status}</span>
+                    </div>
                   ))}
                 </div>
               )}
             </div>
-
-            {soSelected && (
-              <div className="so-selected-card">
-                {soSelected.image && <img src={soSelected.image} alt="" className="so-card-img" />}
-                <div className="so-card-info">
-                  <div className="so-card-title">{soSelected.title}</div>
-                  <div className="so-card-id">{soSelected.id}</div>
-                  {soFavCount !== null && (
-                    <div className="so-card-count">
-                      В избранном у <b>{soFavCount}</b> {soFavCount === 1 ? 'клиента' : soFavCount < 5 ? 'клиентов' : 'клиентов'}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="so-actions">
-              <button
-                className="admin-btn"
-                disabled={!soSelected || soSending}
-                onClick={handleSoSend}
-              >
-                {soSending ? 'Отправляем...' : 'Отправить уведомление'}
-              </button>
-              {soMessage && (
-                <p className={`so-message ${soReport?.totals?.failed > 0 ? 'so-message--warn' : ''}`}>{soMessage}</p>
-              )}
-            </div>
-
-            {soReport && (
-              <div className="so-report">
-                <div className="so-report-title">Результат рассылки</div>
-                <div className="so-report-stats">
-                  <span>В избранном: <b>{soReport.totals.usersInFavorites}</b></span>
-                  <span>Отправлено: <b>{soReport.totals.sent}</b></span>
-                  <span>Telegram: <b>{soReport.totals.telegram}</b></span>
-                  <span>Email: <b>{soReport.totals.email}</b></span>
-                  <span>Уже получили: <b>{soReport.totals.skippedAlreadyNotified}</b></span>
-                  <span>Нет контакта: <b>{soReport.totals.skippedNoContact}</b></span>
-                  {soReport.totals.failed > 0 && <span className="so-report-err">Ошибок: <b>{soReport.totals.failed}</b></span>}
-                </div>
-                {soReport.entries.length > 0 && (
-                  <div className="so-report-entries">
-                    {soReport.entries.map((e, i) => (
-                      <div key={i} className={`so-report-entry so-report-entry--${e.status}`}>
-                        <span className="so-entry-name">{e.name || e.email || e.userId?.slice(0, 8)}</span>
-                        <span className="so-entry-status">{e.status === 'sent' ? `✓ ${e.channel}` : e.reason || e.status}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          )}
         </div>
       )}
 
