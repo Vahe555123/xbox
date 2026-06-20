@@ -482,7 +482,7 @@ export default function GameDetailPage() {
     if (!data?.id) return;
     const currentPrice = data.releaseInfo?.status === 'unreleased' ? null : data.price;
     const currentDiscountPercent = currentPrice?.discountPercent ? Math.round(currentPrice.discountPercent) : null;
-    const currentDealEndDateText = currentDiscountPercent && currentPrice?.dealEndDate
+    const currentDealEndDateText = (currentDiscountPercent || Number(data.gamePassSavingsPercent) > 0) && currentPrice?.dealEndDate
       ? formatDealEndDateShort(currentPrice.dealEndDate)
       : null;
     // Debug log for missing discount end date on product page.
@@ -531,7 +531,7 @@ export default function GameDetailPage() {
     ? Math.round(Number(data.gamePassSavingsPercent))
     : null;
   const paymentPriceEntries = getPaymentPriceEntries(data, { includeUnavailable: true });
-  const dealEndDateText = discountPercent && price?.dealEndDate
+  const dealEndDateText = (discountPercent || gamePassSavingsBadgePercent) && price?.dealEndDate
     ? formatDealEndDateShort(price.dealEndDate)
     : null;
   const reviewSummary = getRatingSummary(data.usage);

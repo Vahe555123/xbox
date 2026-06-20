@@ -25,7 +25,7 @@ async function getStorePageRelatedProducts({ productId, storeUrl }) {
 async function getStorePageProductData({ productId, storeUrl, languageOnly = false }) {
   if (!productId || !storeUrl) return { relatedProducts: [], languageInfo: null };
   const normalizedProductId = String(productId).toUpperCase();
-  const fullCacheKey = `xbox-store-page-product:${normalizedProductId}`;
+  const fullCacheKey = `xbox-store-page-product:v2:${normalizedProductId}`;
   const cachedFull = cache.get(fullCacheKey);
   if (cachedFull) return cachedFull;
 
