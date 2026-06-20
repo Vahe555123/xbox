@@ -5,11 +5,15 @@ const catalogService = require('./xboxCatalogService');
 const { mapProducts } = require('../mappers/productMapper');
 const { encodeFilters } = require('../mappers/filtersMapper');
 
-const MAX_PAGES = Number(process.env.SALE_INDEX_MAX_PAGES) || 80;
-const STOP_EMPTY_RUNS = 3; // stop scanning if N consecutive pages have no deals
+const MAX_PAGES = Number(process.env.SALE_INDEX_MAX_PAGES) || 400;
 
-// Encode browse filters for the "AllDeals desc" sort
-const DEALS_ENCODED_FILTERS = encodeFilters({ orderby: ['AllDeals desc'] });
+// Same query the site's "Скидки" filter sends: the Price=OnSale facet returns
+// ONLY discounted games, so we can page through every result to the end.
+// Sorted by discount desc so biggest deals come first.
+const DEALS_ENCODED_FILTERS = encodeFilters({
+  Price: ['OnSale'],
+  orderby: ['DiscountPercentage desc'],
+});
 
 async function fetchBrowsePage(encodedCT) {
   return catalogService.browseGames({
@@ -86,8 +90,7 @@ async function refreshSaleProducts({ onProgress, shouldCancel } = {}) {
     productsUpdated: 0,
     productsDeleted: 0,
     totalItems: null,
-    emptyRuns: 0,
-    stopEmptyRuns: STOP_EMPTY_RUNS,
+    estimatedPages: null,
     maxPages: MAX_PAGES,
   };
 
@@ -100,11 +103,12 @@ async function refreshSaleProducts({ onProgress, shouldCancel } = {}) {
     }
   };
 
-  emit('Запуск сканирования каталога Xbox (AllDeals desc)');
+  emit('Запуск сканирования игр со скидкой (фильтр Price=OnSale)');
 
   try {
     let encodedCT = '';
     let cancelled = false;
+    let pageSize = 0;
     const seenTokens = new Set();
 
     do {
@@ -116,45 +120,40 @@ async function refreshSaleProducts({ onProgress, shouldCancel } = {}) {
       }
 
       const raw = await fetchBrowsePage(encodedCT);
-      if (progress.totalItems === null && Number.isFinite(raw.totalItems)) {
-        progress.totalItems = raw.totalItems;
-        emit(`В каталоге всего позиций: ${raw.totalItems.toLocaleString('ru-RU')}`);
-      }
 
       const mapped = mapProducts(raw.products || []);
+      if (!pageSize && mapped.length) pageSize = mapped.length;
+      if (progress.totalItems === null && Number.isFinite(raw.totalItems)) {
+        progress.totalItems = raw.totalItems;
+        if (pageSize) progress.estimatedPages = Math.ceil(raw.totalItems / pageSize);
+        emit(`Игр со скидкой всего: ${raw.totalItems.toLocaleString('ru-RU')}${progress.estimatedPages ? ` (~${progress.estimatedPages} стр.)` : ''}`);
+      }
+
       const saleProducts = mapped.filter(
         (p) => p.price && p.price.discountPercent > 0 && !p.notAvailableSeparately,
       );
 
       progress.page += 1;
-
-      if (saleProducts.length === 0) {
-        progress.emptyRuns += 1;
-        emit(`Страница ${progress.page}: скидок нет (пустых подряд ${progress.emptyRuns}/${STOP_EMPTY_RUNS})`);
-      } else {
-        progress.emptyRuns = 0;
-        progress.productsFound += saleProducts.length;
-        const updated = await upsertSaleProducts(saleProducts);
-        progress.productsUpdated += updated;
-        emit(`Страница ${progress.page}: +${saleProducts.length} со скидкой · сохранено всего ${progress.productsUpdated}`);
-      }
-
+      progress.productsFound += saleProducts.length;
+      const updated = await upsertSaleProducts(saleProducts);
+      progress.productsUpdated += updated;
       progress.pagesScanned = progress.page;
+
+      const totalLabel = progress.totalItems != null ? ` из ~${progress.totalItems.toLocaleString('ru-RU')}` : '';
+      emit(`Страница ${progress.page}${progress.estimatedPages ? `/${progress.estimatedPages}` : ''}: +${saleProducts.length} · сохранено всего ${progress.productsUpdated}${totalLabel}`);
 
       const nextToken = raw.encodedCT || '';
       if (!nextToken || seenTokens.has(nextToken)) {
-        emit('Достигнут конец каталога');
+        emit('Достигнут конец списка скидок');
         break;
       }
       seenTokens.add(nextToken);
       encodedCT = nextToken;
-
-      if (progress.emptyRuns >= STOP_EMPTY_RUNS) {
-        emit(`Скидок не найдено на ${STOP_EMPTY_RUNS} страницах подряд — завершаем досрочно`);
-        logger.info('[SaleIndex] No deals on last pages, stopping early', { pages: progress.page });
-        break;
-      }
     } while (progress.page < MAX_PAGES);
+
+    if (!cancelled && progress.page >= MAX_PAGES) {
+      emit(`Достигнут лимит страниц (${MAX_PAGES})`);
+    }
 
     if (cancelled) {
       const finishedAt = new Date();

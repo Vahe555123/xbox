@@ -2515,7 +2515,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                   </h3>
                   <p className="admin-card-desc">
                     {SALE_PHASE_LABELS[saleProgress?.phase] || (saleRunning ? 'Идёт сканирование...' : 'Завершено')}
-                    {saleProgress?.totalItems != null && ` · в каталоге ${saleProgress.totalItems.toLocaleString('ru-RU')} позиций`}
+                    {saleProgress?.totalItems != null && ` · игр со скидкой: ${saleProgress.totalItems.toLocaleString('ru-RU')}`}
                   </p>
                 </div>
               </div>
@@ -2541,24 +2541,32 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                     </div>
                   </div>
 
-                  <div className="admin-index-progress">
-                    <div className="admin-index-progress-head">
-                      <span>{SALE_PHASE_LABELS[saleProgress.phase] || 'Сканирование'}</span>
-                      <span>
-                        {saleRunning
-                          ? `страница ${saleProgress.page ?? 0} / лимит ${saleProgress.maxPages ?? '—'}`
-                          : `завершено · ${saleProgress.pagesScanned ?? 0} стр.`}
-                      </span>
-                    </div>
-                    <div className="admin-index-progress-bar">
-                      <div
-                        className={`admin-index-progress-fill ${saleRunning && saleProgress.phase === 'scanning' ? 'indeterminate' : ''}`}
-                        style={!saleRunning || saleProgress.phase !== 'scanning'
-                          ? { width: '100%', background: saleProgress.phase === 'error' ? '#f87171' : saleProgress.phase === 'cancelled' ? '#e0a458' : undefined }
-                          : undefined}
-                      />
-                    </div>
-                  </div>
+                  {(() => {
+                    const est = saleProgress.estimatedPages || 0;
+                    const determinate = saleRunning && saleProgress.phase === 'scanning' && est > 0;
+                    const percent = determinate ? Math.min(100, Math.round((saleProgress.page / est) * 100)) : null;
+                    const done = !saleRunning || saleProgress.phase !== 'scanning';
+                    return (
+                      <div className="admin-index-progress">
+                        <div className="admin-index-progress-head">
+                          <span>{SALE_PHASE_LABELS[saleProgress.phase] || 'Сканирование'}</span>
+                          <span>
+                            {saleRunning
+                              ? `страница ${saleProgress.page ?? 0}${est ? ` / ~${est}` : ''}${percent !== null ? ` · ${percent}%` : ''}`
+                              : `завершено · ${saleProgress.pagesScanned ?? 0} стр.`}
+                          </span>
+                        </div>
+                        <div className="admin-index-progress-bar">
+                          <div
+                            className={`admin-index-progress-fill ${determinate || done ? '' : 'indeterminate'}`}
+                            style={done
+                              ? { width: '100%', background: saleProgress.phase === 'error' ? '#f87171' : saleProgress.phase === 'cancelled' ? '#e0a458' : undefined }
+                              : (percent !== null ? { width: `${percent}%` } : undefined)}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </>
               )}
 
