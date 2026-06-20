@@ -6733,6 +6733,20 @@ code {
 .admin-sale-broadcast .admin-search-select {
   flex: 1;
   min-width: 240px;
+  background: #151c27;
+  color: #e6edf5;
+  color-scheme: dark;
+}
+
+/* Make native dropdown lists dark so option text is visible on Windows */
+.admin-search-select {
+  color-scheme: dark;
+}
+
+.admin-search-select option,
+.admin-sale-broadcast .admin-search-select option {
+  background: #151c27;
+  color: #e6edf5;
 }
 
 .admin-sale-run-error {

@@ -218,7 +218,7 @@ async function refreshSaleProducts({ onProgress, shouldCancel } = {}) {
 async function listSaleEndDates() {
   const today = new Date().toISOString().slice(0, 10);
   const { rows } = await pool.query(
-    `SELECT deal_end_day, COUNT(*)::int AS product_count
+    `SELECT to_char(deal_end_day, 'YYYY-MM-DD') AS deal_end_day, COUNT(*)::int AS product_count
      FROM sale_products
      WHERE deal_end_day IS NOT NULL AND deal_end_day >= $1
      GROUP BY deal_end_day

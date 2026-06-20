@@ -60,6 +60,14 @@ function providerLabel(p) {
   return map[p] || p;
 }
 
+// Format a YYYY-MM-DD (or ISO) date string as a Russian day label.
+function formatDayRu(dateStr) {
+  if (!dateStr) return '—';
+  const [y, m, d] = String(dateStr).slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return String(dateStr);
+  return new Date(y, m - 1, d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 function formatLogTime(ts) {
   if (!ts) return '';
   try {
@@ -1132,7 +1140,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     if (!reminderDate) return;
     const dateItem = saleEndDates.find((d) => d.date === reminderDate);
     const count = dateItem?.productCount || 0;
-    if (!window.confirm(`Разослать напоминание клиентам, у которых в избранном игры со скидкой до ${reminderDate} (${count} игр)?`)) return;
+    if (!window.confirm(`Разослать напоминание клиентам, у которых в избранном игры со скидкой до ${formatDayRu(reminderDate)} (${count} игр)?`)) return;
     setReminderSending(true);
     setReminderMessage('');
     setReminderReport(null);
@@ -2642,16 +2650,11 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 onChange={(e) => { setReminderDate(e.target.value); setReminderReport(null); }}
               >
                 <option value="">— выберите дату окончания —</option>
-                {saleEndDates.map((item) => {
-                  const [y, m, d] = item.date.split('-');
-                  const label = new Date(Number(y), Number(m) - 1, Number(d))
-                    .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-                  return (
-                    <option key={item.date} value={item.date}>
-                      {label} — {item.productCount} {item.productCount === 1 ? 'игра' : 'игр'}
-                    </option>
-                  );
-                })}
+                {saleEndDates.map((item) => (
+                  <option key={item.date} value={item.date}>
+                    {formatDayRu(item.date)} — {item.productCount} {item.productCount === 1 ? 'игра' : 'игр'}
+                  </option>
+                ))}
               </select>
               <button
                 className="admin-btn admin-btn-accent"
