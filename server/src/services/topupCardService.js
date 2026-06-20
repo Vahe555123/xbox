@@ -761,12 +761,101 @@ async function createCardPayApiUrl(card, { quantity = 1, purchaseEmail, optionCa
 }
 
 async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp, failPageUrl } = {}) {
-  const combo = await computeCombo(priceUsd);
-  if (!combo?.available) return combo;
-  const state = await getTopupState();
-  const cardMap = new Map(state.cards.map((c) => [c.usdValue, c]));
+  // At purchase time bypass the 60s cache — stock can change between scheduler runs.
+  let finalCombo = await computeCombo(priceUsd, { useCache: false });
+  if (!finalCombo?.available) return finalCombo;
 
-  const links = combo.items.map((item) => {
+  const state = await getTopupState();
+  let cardMap = new Map(state.cards.map((c) => [c.usdValue, c]));
+
+  let cartUid = null;
+  let cartPaymentUrl = null;
+  let cartError = null;
+
+  // Track denominations that failed at cart-add time (confirmed out-of-stock on Digiseller).
+  const confirmedUnavailable = new Set();
+
+  if (state.optionCategoryId) {
+    for (let attempt = 0; attempt <= 1; attempt++) {
+      if (attempt === 1) {
+        if (confirmedUnavailable.size === 0) break;
+        // Recompute combo without the failed denomination(s) and retry once.
+        const retried = await computeCombo(priceUsd, {
+          useCache: false,
+          excludeDenominations: confirmedUnavailable,
+        });
+        if (!retried?.available) {
+          cartError = 'cannot_cover_price_after_substitution';
+          break;
+        }
+        finalCombo = retried;
+        // Persist unavailability to DB so the scheduler data stays accurate (fire-and-forget).
+        for (const usd of confirmedUnavailable) {
+          pool.query(
+            `UPDATE xbox_topup_cards SET in_stock = FALSE, updated_at = NOW() WHERE usd_value = $1`,
+            [usd],
+          ).catch(() => {});
+        }
+        invalidateCache();
+        const freshCards = await listCards({ useCache: false });
+        cardMap = new Map(freshCards.map((c) => [c.usdValue, c]));
+        cartUid = null; // start a fresh Digiseller cart for the new combo
+      }
+
+      const addResults = [];
+      let attemptCartUid = null;
+      let failedUsd = null;
+
+      for (const item of finalCombo.items) {
+        const card = cardMap.get(item.usdValue);
+        for (let i = 0; i < item.count; i += 1) {
+          const result = await addItemToCart(attemptCartUid || '', {
+            card,
+            quantity: 1,
+            optionCategoryId: state.optionCategoryId,
+            purchaseEmail,
+            buyerIp,
+          });
+          addResults.push(result);
+          if (!result.ok) {
+            failedUsd = item.usdValue;
+            break;
+          }
+          attemptCartUid = result.cartUid;
+        }
+        if (failedUsd !== null) break;
+      }
+
+      const failures = addResults.filter((r) => !r.ok);
+      if (failures.length === 0 && attemptCartUid) {
+        cartUid = attemptCartUid;
+        cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail, failPageUrl });
+        break;
+      }
+
+      cartError = failures[0]?.retdesc || failures[0]?.reason || 'cart_add_failed';
+      if (failedUsd !== null) {
+        logger.warn('Topup cart add failed for denomination; will retry without it', {
+          usdValue: failedUsd,
+          attempt,
+          cartErr: failures[0]?.cartErr || null,
+          retdesc: failures[0]?.retdesc || null,
+        });
+        confirmedUnavailable.add(failedUsd);
+      } else {
+        logger.warn('Cart build failed, falling back to per-card links', {
+          failures: failures.length,
+          total: finalCombo.items.length,
+        });
+        break;
+      }
+    }
+  } else {
+    cartError = 'option_category_id_missing';
+  }
+
+  // Build links from the final (possibly retried) combo.
+  const links = finalCombo.items.map((item) => {
     const card = cardMap.get(item.usdValue);
     const fallbackUrl = buildCardPayUrl(card, {
       quantity: item.count,
@@ -784,47 +873,9 @@ async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp, failPageUr
     };
   });
 
-  let cartUid = null;
-  let cartPaymentUrl = null;
-  let cartError = null;
-
-  if (state.optionCategoryId) {
-    const addResults = [];
-    for (const item of combo.items) {
-      const card = cardMap.get(item.usdValue);
-      for (let i = 0; i < item.count; i += 1) {
-        const result = await addItemToCart(cartUid || '', {
-          card,
-          quantity: 1,
-          optionCategoryId: state.optionCategoryId,
-          purchaseEmail,
-          buyerIp,
-        });
-        addResults.push(result);
-        if (!result.ok) break;
-        cartUid = result.cartUid;
-      }
-      if (addResults.some((r) => !r.ok)) break;
-    }
-    const failures = addResults.filter((r) => !r.ok);
-    if (failures.length === 0 && cartUid) {
-      cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail, failPageUrl });
-    } else {
-      cartError = failures[0]?.retdesc || failures[0]?.reason || 'cart_add_failed';
-      logger.warn('Cart build failed, falling back to per-card links', {
-        cartUid,
-        failures: failures.length,
-        total: combo.items.length,
-      });
-      cartUid = null;
-    }
-  } else {
-    cartError = 'option_category_id_missing';
-  }
-
   let primaryPaymentUrl = cartPaymentUrl;
   if (!primaryPaymentUrl) {
-    const perCardApi = await Promise.all(combo.items.map(async (item) => {
+    const perCardApi = await Promise.all(finalCombo.items.map(async (item) => {
       const card = cardMap.get(item.usdValue);
       const apiUrl = await createCardPayApiUrl(card, {
         quantity: item.count,
@@ -849,7 +900,7 @@ async function buildComboPurchase(priceUsd, { purchaseEmail, buyerIp, failPageUr
   }
 
   return {
-    ...combo,
+    ...finalCombo,
     optionCategoryId: state.optionCategoryId,
     cartUid,
     cartError,
@@ -864,71 +915,179 @@ async function buildCartComboPurchase(products, { purchaseEmail, buyerIp, failPa
   }
 
   const state = await getTopupState();
-  const cardMap = new Map(state.cards.map((c) => [c.usdValue, c]));
-  const productCombos = [];
-  const combinedItemsMap = new Map();
-  let totalUsd = 0;
-  let totalRub = 0;
-  let totalRubKnown = true;
-  let cardsCount = 0;
+  const confirmedUnavailable = new Set();
 
-  for (const product of products) {
-    const productTitle = String(product?.title || product?.productTitle || product?.id || product?.productId || '').trim() || 'товара';
-    const priceUsd = Math.max(0, Number(product?.priceUsd) || 0);
-    const combo = await computeCombo(priceUsd);
+  // Helper: compute aggregated combo for all products, excluding known-unavailable denominations.
+  async function computeAllCombos(excludeDenominations) {
+    let cardMap = new Map(state.cards.map((c) => [c.usdValue, c]));
+    if (excludeDenominations && excludeDenominations.size > 0) {
+      const freshCards = await listCards({ useCache: false });
+      cardMap = new Map(freshCards.map((c) => [c.usdValue, c]));
+    }
 
-    if (!combo?.available) {
-      return {
-        available: false,
-        reason: combo?.reason || 'combo_unavailable',
+    const productCombosOut = [];
+    const combinedItemsMapOut = new Map();
+    let totalUsdOut = 0;
+    let totalRubOut = 0;
+    let totalRubKnownOut = true;
+    let cardsCountOut = 0;
+
+    for (const product of products) {
+      const productTitle = String(product?.title || product?.productTitle || product?.id || product?.productId || '').trim() || 'товара';
+      const priceUsd = Math.max(0, Number(product?.priceUsd) || 0);
+      // At purchase time bypass 60s cache; also exclude confirmed-unavailable denominations.
+      const combo = await computeCombo(priceUsd, { useCache: false, excludeDenominations });
+
+      if (!combo?.available) {
+        return {
+          error: {
+            available: false,
+            reason: combo?.reason || 'combo_unavailable',
+            productId: product?.productId || product?.id || null,
+            productTitle,
+            priceUsd,
+          },
+        };
+      }
+
+      productCombosOut.push({
         productId: product?.productId || product?.id || null,
-        productTitle,
-        priceUsd,
-      };
+        title: productTitle,
+        priceUsd: combo.price,
+        totalUsd: combo.totalUsd,
+        totalRub: combo.totalRub,
+        totalRubFormatted: combo.totalRubFormatted,
+        cardsCount: combo.cardsCount,
+        substituted: Boolean(combo.substituted),
+        items: combo.items,
+      });
+
+      totalUsdOut += Number(combo.totalUsd || 0);
+      cardsCountOut += Number(combo.cardsCount || 0);
+      if (combo.totalRub != null) {
+        totalRubOut += Number(combo.totalRub);
+      } else {
+        totalRubKnownOut = false;
+      }
+
+      for (const item of combo.items || []) {
+        const current = combinedItemsMapOut.get(item.usdValue) || {
+          usdValue: item.usdValue,
+          count: 0,
+          priceRub: item.priceRub ?? cardMap.get(item.usdValue)?.priceRub ?? null,
+        };
+        current.count += Number(item.count || 0);
+        if (current.priceRub == null && item.priceRub != null) current.priceRub = item.priceRub;
+        combinedItemsMapOut.set(item.usdValue, current);
+      }
     }
 
-    productCombos.push({
-      productId: product?.productId || product?.id || null,
-      title: productTitle,
-      priceUsd: combo.price,
-      totalUsd: combo.totalUsd,
-      totalRub: combo.totalRub,
-      totalRubFormatted: combo.totalRubFormatted,
-      cardsCount: combo.cardsCount,
-      substituted: Boolean(combo.substituted),
-      items: combo.items,
-    });
+    totalUsdOut = Math.round(totalUsdOut * 100) / 100;
 
-    totalUsd += Number(combo.totalUsd || 0);
-    cardsCount += Number(combo.cardsCount || 0);
-    if (combo.totalRub != null) {
-      totalRub += Number(combo.totalRub);
-    } else {
-      totalRubKnown = false;
-    }
+    const combinedItemsOut = [...combinedItemsMapOut.values()]
+      .sort((a, b) => b.usdValue - a.usdValue)
+      .map((item) => ({
+        ...item,
+        subtotalRub: item.priceRub != null ? item.priceRub * item.count : null,
+        subtotalRubFormatted: item.priceRub != null ? formatRub(item.priceRub * item.count) : null,
+      }));
 
-    for (const item of combo.items || []) {
-      const current = combinedItemsMap.get(item.usdValue) || {
-        usdValue: item.usdValue,
-        count: 0,
-        priceRub: item.priceRub ?? cardMap.get(item.usdValue)?.priceRub ?? null,
-      };
-      current.count += Number(item.count || 0);
-      if (current.priceRub == null && item.priceRub != null) current.priceRub = item.priceRub;
-      combinedItemsMap.set(item.usdValue, current);
-    }
+    return {
+      cardMap,
+      productCombos: productCombosOut,
+      combinedItems: combinedItemsOut,
+      totalUsd: totalUsdOut,
+      totalRub: totalRubOut,
+      totalRubKnown: totalRubKnownOut,
+      cardsCount: cardsCountOut,
+    };
   }
 
-  totalUsd = Math.round(totalUsd * 100) / 100;
+  const firstPass = await computeAllCombos(null);
+  if (firstPass.error) return firstPass.error;
 
-  const combinedItems = [...combinedItemsMap.values()]
-    .sort((a, b) => b.usdValue - a.usdValue)
-    .map((item) => ({
-      ...item,
-      subtotalRub: item.priceRub != null ? item.priceRub * item.count : null,
-      subtotalRubFormatted: item.priceRub != null ? formatRub(item.priceRub * item.count) : null,
-    }));
+  let { cardMap, productCombos, combinedItems, totalUsd, totalRub, totalRubKnown, cardsCount } = firstPass;
 
+  let cartUid = null;
+  let cartPaymentUrl = null;
+  let cartError = null;
+
+  if (state.optionCategoryId) {
+    for (let attempt = 0; attempt <= 1; attempt++) {
+      if (attempt === 1) {
+        if (confirmedUnavailable.size === 0) break;
+        // Recompute all combos without the failed denomination(s) and retry once.
+        const retried = await computeAllCombos(confirmedUnavailable);
+        if (retried.error) {
+          cartError = retried.error.reason || 'cannot_cover_price_after_substitution';
+          break;
+        }
+        ({ cardMap, productCombos, combinedItems, totalUsd, totalRub, totalRubKnown, cardsCount } = retried);
+        // Persist unavailability to DB (fire-and-forget).
+        for (const usd of confirmedUnavailable) {
+          pool.query(
+            `UPDATE xbox_topup_cards SET in_stock = FALSE, updated_at = NOW() WHERE usd_value = $1`,
+            [usd],
+          ).catch(() => {});
+        }
+        invalidateCache();
+        cartUid = null; // fresh cart for new combo
+      }
+
+      const addResults = [];
+      let attemptCartUid = null;
+      let failedUsd = null;
+
+      for (const item of combinedItems) {
+        const card = cardMap.get(item.usdValue);
+        for (let i = 0; i < item.count; i += 1) {
+          const result = await addItemToCart(attemptCartUid || '', {
+            card,
+            quantity: 1,
+            optionCategoryId: state.optionCategoryId,
+            purchaseEmail,
+            buyerIp,
+          });
+          addResults.push(result);
+          if (!result.ok) {
+            failedUsd = item.usdValue;
+            break;
+          }
+          attemptCartUid = result.cartUid;
+        }
+        if (failedUsd !== null) break;
+      }
+
+      const failures = addResults.filter((r) => !r.ok);
+      if (failures.length === 0 && attemptCartUid) {
+        cartUid = attemptCartUid;
+        cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail, failPageUrl });
+        break;
+      }
+
+      cartError = failures[0]?.retdesc || failures[0]?.reason || 'cart_add_failed';
+      if (failedUsd !== null) {
+        logger.warn('Topup cart add failed for denomination; will retry without it', {
+          usdValue: failedUsd,
+          attempt,
+          cartErr: failures[0]?.cartErr || null,
+          retdesc: failures[0]?.retdesc || null,
+        });
+        confirmedUnavailable.add(failedUsd);
+      } else {
+        logger.warn('Topup cart build failed, falling back to per-card links', {
+          failures: failures.length,
+          productsCount: productCombos.length,
+          itemsCount: combinedItems.length,
+        });
+        break;
+      }
+    }
+  } else {
+    cartError = 'option_category_id_missing';
+  }
+
+  // Build links from the final (possibly retried) combined items.
   const links = combinedItems.map((item) => {
     const card = cardMap.get(item.usdValue);
     const fallbackUrl = buildCardPayUrl(card, {
@@ -946,46 +1105,6 @@ async function buildCartComboPurchase(products, { purchaseEmail, buyerIp, failPa
       directUrl: fallbackUrl,
     };
   });
-
-  let cartUid = null;
-  let cartPaymentUrl = null;
-  let cartError = null;
-
-  if (state.optionCategoryId) {
-    const addResults = [];
-    for (const item of combinedItems) {
-      const card = cardMap.get(item.usdValue);
-      for (let i = 0; i < item.count; i += 1) {
-        const result = await addItemToCart(cartUid || '', {
-          card,
-          quantity: 1,
-          optionCategoryId: state.optionCategoryId,
-          purchaseEmail,
-          buyerIp,
-        });
-        addResults.push(result);
-        if (!result.ok) break;
-        cartUid = result.cartUid;
-      }
-      if (addResults.some((result) => !result.ok)) break;
-    }
-
-    const failures = addResults.filter((result) => !result.ok);
-    if (failures.length === 0 && cartUid) {
-      cartPaymentUrl = buildCartPayUrl(cartUid, { purchaseEmail, failPageUrl });
-    } else {
-      cartError = failures[0]?.retdesc || failures[0]?.reason || 'cart_add_failed';
-      logger.warn('Topup cart build failed, falling back to per-card links', {
-        cartUid,
-        failures: failures.length,
-        productsCount: productCombos.length,
-        itemsCount: combinedItems.length,
-      });
-      cartUid = null;
-    }
-  } else {
-    cartError = 'option_category_id_missing';
-  }
 
   let primaryPaymentUrl = cartPaymentUrl;
   if (!primaryPaymentUrl) {
@@ -1030,13 +1149,17 @@ async function buildCartComboPurchase(products, { purchaseEmail, buyerIp, failPa
   };
 }
 
-async function computeCombo(priceUsd) {
+async function computeCombo(priceUsd, { useCache = true, excludeDenominations = null } = {}) {
   const price = Math.max(0, Number(priceUsd) || 0);
   if (price <= 0) return { available: false, reason: 'price_invalid' };
 
-  const cards = await listCards();
+  const cards = await listCards({ useCache });
   const enabledCards = cards.filter((c) => c.enabled);
-  const availableCards = enabledCards.filter((c) => c.inStock);
+  const availableCards = enabledCards.filter((c) => {
+    if (!c.inStock) return false;
+    if (excludeDenominations && excludeDenominations.has(c.usdValue)) return false;
+    return true;
+  });
   const cardMap = new Map(enabledCards.map((c) => [c.usdValue, c]));
 
   if (availableCards.length === 0) {
