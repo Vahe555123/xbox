@@ -45,6 +45,7 @@ import {
   fetchAdminSaleIndexRuns,
   fetchAdminSaleEndDates,
   sendAdminSaleReminders,
+  sendAdminBroadcast,
 } from '../services/api';
 
 function formatDate(d) {
@@ -463,6 +464,16 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [reminderSending, setReminderSending] = useState(false);
   const [reminderReport, setReminderReport] = useState(null);
   const [reminderMessage, setReminderMessage] = useState('');
+
+  // Manual broadcast (TG / VK / Email)
+  const [bcText, setBcText] = useState('');
+  const [bcPhotoUrl, setBcPhotoUrl] = useState('');
+  const [bcButtons, setBcButtons] = useState([]);
+  const [bcEmailSubject, setBcEmailSubject] = useState('');
+  const [bcChannels, setBcChannels] = useState({ telegram: true, vk: false, email: false });
+  const [bcSending, setBcSending] = useState(false);
+  const [bcMessage, setBcMessage] = useState('');
+  const [bcReport, setBcReport] = useState(null);
 
   // Auth check
   useEffect(() => {
@@ -1156,6 +1167,86 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     }
   };
 
+  // ---- Broadcast handlers ----
+  const bcTextareaRef = useRef(null);
+
+  const bcWrapSelection = (tag) => {
+    const el = bcTextareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = bcText.slice(start, end);
+    const insert = `<${tag}>${selected || 'текст'}</${tag}>`;
+    const next = bcText.slice(0, start) + insert + bcText.slice(end);
+    setBcText(next);
+    requestAnimationFrame(() => {
+      const newPos = start + insert.length;
+      el.setSelectionRange(newPos, newPos);
+      el.focus();
+    });
+  };
+
+  const [bcLinkMode, setBcLinkMode] = React.useState(false);
+  const [bcLinkUrl, setBcLinkUrl] = React.useState('');
+  const [bcSavedSel, setBcSavedSel] = React.useState({ start: 0, end: 0 });
+
+  const bcOpenLink = () => {
+    const el = bcTextareaRef.current;
+    setBcSavedSel({ start: el?.selectionStart ?? bcText.length, end: el?.selectionEnd ?? bcText.length });
+    setBcLinkUrl('');
+    setBcLinkMode(true);
+  };
+
+  const bcInsertLink = () => {
+    const url = bcLinkUrl.trim();
+    if (!url) { setBcLinkMode(false); return; }
+    const { start, end } = bcSavedSel;
+    const selected = bcText.slice(start, end);
+    const insert = `<a href="${url}">${selected || 'ссылка'}</a>`;
+    const next = bcText.slice(0, start) + insert + bcText.slice(end);
+    setBcText(next);
+    setBcLinkMode(false);
+    requestAnimationFrame(() => {
+      const el = bcTextareaRef.current;
+      if (el) { const pos = start + insert.length; el.setSelectionRange(pos, pos); el.focus(); }
+    });
+  };
+
+  const bcAddButton = () => setBcButtons((b) => [...b, { text: '', url: '' }]);
+  const bcUpdateButton = (i, field, val) => setBcButtons((b) => b.map((btn, idx) => idx === i ? { ...btn, [field]: val } : btn));
+  const bcRemoveButton = (i) => setBcButtons((b) => b.filter((_, idx) => idx !== i));
+
+  const handleSendBroadcast = async () => {
+    if (!bcText.trim()) { setBcMessage('Текст сообщения не может быть пустым'); return; }
+    if (!bcChannels.telegram && !bcChannels.vk && !bcChannels.email) {
+      setBcMessage('Выберите хотя бы один канал');
+      return;
+    }
+    const channelNames = [bcChannels.telegram && 'Telegram', bcChannels.vk && 'ВКонтакте', bcChannels.email && 'Email'].filter(Boolean).join(', ');
+    if (!window.confirm(`Отправить рассылку в: ${channelNames}?\n\nЭто действие нельзя отменить.`)) return;
+    setBcSending(true);
+    setBcMessage('');
+    setBcReport(null);
+    try {
+      const result = await sendAdminBroadcast({
+        text: bcText.trim(),
+        photoUrl: bcPhotoUrl.trim() || null,
+        buttons: bcButtons.filter((b) => b.text && b.url),
+        channels: bcChannels,
+        emailSubject: bcEmailSubject.trim() || null,
+      });
+      setBcReport(result.report || null);
+      const totals = Object.entries(result.report || {})
+        .map(([ch, r]) => `${ch}: ${r.sent}/${r.total}`)
+        .join(', ');
+      setBcMessage(`Рассылка завершена — ${totals}`);
+    } catch (err) {
+      setBcMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setBcSending(false);
+    }
+  };
+
   // Derived sale-index state for the live panel.
   const saleSched = saleIndex?.scheduler;
   const saleRunning = Boolean(saleSched?.isRunning);
@@ -1217,6 +1308,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
           ['products', 'Игры'],
           ['collections', 'Подборки'],
           ['scheduler', 'Планировщик'],
+          ['broadcast', 'Рассылка'],
           ['help', 'Помощь'],
           ['digiseller', 'Digiseller'],
           ['topup', 'Карты пополнения'],
@@ -3018,6 +3110,199 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== Broadcast ==================== */}
+      {tab === 'broadcast' && (
+        <div className="admin-panel">
+          <div className="bc-layout">
+
+            {/* Left — editor */}
+            <div className="bc-editor-col">
+              <div className="admin-card">
+                <h3>Текст сообщения</h3>
+
+                {/* Formatting toolbar */}
+                <div className="bc-toolbar">
+                  {[['b','B'],['i','I'],['u','U'],['s','S'],['code','&lt;code&gt;'],['pre','&lt;pre&gt;']].map(([tag, label]) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      className="bc-fmt-btn"
+                      dangerouslySetInnerHTML={{ __html: label }}
+                      onClick={() => bcWrapSelection(tag)}
+                    />
+                  ))}
+                  {bcLinkMode ? (
+                    <>
+                      <input
+                        autoFocus
+                        type="text"
+                        className="admin-rich-url-input"
+                        placeholder="https://..."
+                        value={bcLinkUrl}
+                        onChange={(e) => setBcLinkUrl(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); bcInsertLink(); }
+                          if (e.key === 'Escape') setBcLinkMode(false);
+                        }}
+                      />
+                      <button type="button" className="admin-btn admin-btn-sm" onClick={bcInsertLink}>ОК</button>
+                      <button type="button" className="admin-btn admin-btn-sm" onClick={() => setBcLinkMode(false)}>✕</button>
+                    </>
+                  ) : (
+                    <button type="button" className="bc-fmt-btn bc-fmt-link" onClick={bcOpenLink}>
+                      🔗 Ссылка
+                    </button>
+                  )}
+                </div>
+
+                <textarea
+                  ref={bcTextareaRef}
+                  className="bc-textarea"
+                  rows={10}
+                  placeholder={'Текст сообщения (HTML):\n<b>жирный</b> · <i>курсив</i> · <a href="url">ссылка</a>'}
+                  value={bcText}
+                  onChange={(e) => setBcText(e.target.value)}
+                />
+                <div className="bc-char-count">{bcText.length} / 4096</div>
+
+                {/* Photo URL */}
+                <h4 className="bc-section-title">📷 Фото (URL, необязательно)</h4>
+                <input
+                  type="text"
+                  className="bc-url-input"
+                  placeholder="https://example.com/image.jpg"
+                  value={bcPhotoUrl}
+                  onChange={(e) => setBcPhotoUrl(e.target.value)}
+                />
+
+                {/* Email subject */}
+                {bcChannels.email && (
+                  <>
+                    <h4 className="bc-section-title">✉️ Тема письма (Email)</h4>
+                    <input
+                      type="text"
+                      className="bc-url-input"
+                      placeholder="Тема письма"
+                      value={bcEmailSubject}
+                      onChange={(e) => setBcEmailSubject(e.target.value)}
+                    />
+                  </>
+                )}
+
+                {/* Buttons */}
+                <div className="bc-buttons-head">
+                  <h4 className="bc-section-title" style={{ margin: 0 }}>Кнопки-ссылки</h4>
+                  <button type="button" className="bc-add-btn" onClick={bcAddButton}>+ Добавить кнопку</button>
+                </div>
+                {bcButtons.length === 0 && (
+                  <p className="bc-empty-hint">Кнопки не добавлены</p>
+                )}
+                {bcButtons.map((btn, i) => (
+                  <div key={i} className="bc-btn-row">
+                    <input
+                      type="text"
+                      className="bc-btn-text"
+                      placeholder="Текст кнопки"
+                      value={btn.text}
+                      onChange={(e) => bcUpdateButton(i, 'text', e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      className="bc-btn-url"
+                      placeholder="https://..."
+                      value={btn.url}
+                      onChange={(e) => bcUpdateButton(i, 'url', e.target.value)}
+                    />
+                    <button type="button" className="bc-remove-btn" onClick={() => bcRemoveButton(i)}>✕</button>
+                  </div>
+                ))}
+
+                {/* Channels */}
+                <h4 className="bc-section-title">Платформы</h4>
+                <div className="bc-channels">
+                  {[
+                    { key: 'telegram', icon: '✈️', label: 'Telegram' },
+                    { key: 'vk', icon: '💬', label: 'ВКонтакте' },
+                    { key: 'email', icon: '✉️', label: 'Email' },
+                  ].map(({ key, icon, label }) => (
+                    <label key={key} className={`bc-channel ${bcChannels[key] ? 'bc-channel--on' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bcChannels[key]}
+                        onChange={(e) => setBcChannels((c) => ({ ...c, [key]: e.target.checked }))}
+                      />
+                      <span>{icon} {label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  className="bc-send-btn"
+                  disabled={bcSending}
+                  onClick={handleSendBroadcast}
+                >
+                  {bcSending ? 'Отправляем...' : '✈ Отправить рассылку'}
+                </button>
+
+                {bcMessage && (
+                  <p className={`admin-scheduler-result ${bcMessage.startsWith('Ошибка') ? 'admin-status-err' : ''}`}>
+                    {bcMessage}
+                  </p>
+                )}
+
+                {bcReport && (
+                  <div className="bc-report">
+                    <h4>Результат</h4>
+                    {Object.entries(bcReport).map(([ch, r]) => (
+                      <div key={ch} className="bc-report-row">
+                        <span className="bc-report-ch">{ch}</span>
+                        <span className="bc-report-stat">
+                          отправлено <b style={{ color: '#8ff0a4' }}>{r.sent}</b> / {r.total}
+                          {r.failed > 0 && <span style={{ color: '#ff7b7b' }}> · ошибок {r.failed}</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right — preview */}
+            <div className="bc-preview-col">
+              <div className="admin-card bc-preview-card">
+                <h3>Предпросмотр</h3>
+                <div className="bc-preview-body">
+                  {bcPhotoUrl && (
+                    <img src={bcPhotoUrl} alt="" className="bc-preview-img" onError={(e) => { e.target.style.display = 'none'; }} />
+                  )}
+                  {bcText
+                    ? <div className="bc-preview-text" dangerouslySetInnerHTML={{ __html: bcText }} />
+                    : <p className="bc-preview-empty">Текст сообщения появится здесь...</p>
+                  }
+                  {bcButtons.filter((b) => b.text).length > 0 && (
+                    <div className="bc-preview-buttons">
+                      {bcButtons.filter((b) => b.text).map((btn, i) => (
+                        <a key={i} href={btn.url || '#'} target="_blank" rel="noopener noreferrer" className="bc-preview-btn">
+                          {btn.text}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="bc-preview-hints">
+                  <p className="bc-hint-title">Поддерживаемые HTML-теги:</p>
+                  <p className="bc-hint-row"><code>&lt;b&gt;</code> жирный · <code>&lt;i&gt;</code> курсив · <code>&lt;u&gt;</code> подчёркнутый · <code>&lt;s&gt;</code> зачёркнутый</p>
+                  <p className="bc-hint-row"><code>&lt;code&gt;</code> моношириный · <code>&lt;pre&gt;</code> блок кода</p>
+                  <p className="bc-hint-row"><code>&lt;a href="URL"&gt;текст&lt;/a&gt;</code> кликабельная ссылка</p>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       )}

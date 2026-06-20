@@ -369,11 +369,41 @@ function stopPolling() {
   }
 }
 
+// Send a broadcast message (text + optional photo URL + optional inline buttons) to one chat.
+async function sendBroadcastToChat(chatId, { text, photoUrl, buttons } = {}) {
+  if (!chatId) throw new Error('chat_id is required');
+
+  const replyMarkup = buttons && buttons.length > 0
+    ? { inline_keyboard: [buttons.map((b) => ({ text: b.text, url: b.url }))] }
+    : undefined;
+
+  if (photoUrl) {
+    const payload = {
+      chat_id: chatId,
+      photo: photoUrl,
+      caption: text || undefined,
+      parse_mode: 'HTML',
+    };
+    if (replyMarkup) payload.reply_markup = replyMarkup;
+    return callTelegram('sendPhoto', payload);
+  }
+
+  const payload = {
+    chat_id: chatId,
+    text: text || '',
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  };
+  if (replyMarkup) payload.reply_markup = replyMarkup;
+  return callTelegram('sendMessage', payload);
+}
+
 module.exports = {
   getChatIdForUser,
   linkTelegramChatToUser,
   sendTelegramMessage,
   sendTelegramPhoto,
+  sendBroadcastToChat,
   startPolling,
   stopPolling,
 };

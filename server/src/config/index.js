@@ -72,6 +72,7 @@ const config = {
       clientSecret: process.env.VK_CLIENT_SECRET || '',
       redirectUri: process.env.VK_REDIRECT_URI || '',
       apiVersion: process.env.VK_API_VERSION || '5.199',
+      communityToken: process.env.VK_COMMUNITY_TOKEN || '',
     },
     telegram: {
       botUsername: process.env.TELEGRAM_BOT_USERNAME || '',

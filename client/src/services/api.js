@@ -438,3 +438,8 @@ export async function sendAdminSaleReminders(date) {
   const { data } = await api.post('/admin/sale-index/send-reminders', { date }, { timeout: 180000 });
   return data;
 }
+
+export async function sendAdminBroadcast(payload) {
+  const { data } = await api.post('/admin/broadcast', payload, { timeout: 600000 });
+  return data;
+}

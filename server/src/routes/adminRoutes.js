@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { requireAdmin, requireAuth } = require('../middleware/auth');
 const pool = require('../db/pool');
+const { runBroadcast } = require('../services/broadcastService');
 const dealScheduler = require('../services/dealScheduler');
 const russianLanguageIndexScheduler = require('../services/russianLanguageIndexScheduler');
 const digisellerService = require('../services/digisellerService');
@@ -803,6 +804,37 @@ router.post('/sale-index/send-reminders', requireAdmin, async (req, res, next) =
     next(err);
   } finally {
     saleEndingBroadcastRunning = false;
+  }
+});
+
+// ----- Broadcast -----
+let broadcastRunning = false;
+router.post('/broadcast', requireAdmin, async (req, res, next) => {
+  if (broadcastRunning) {
+    return res.status(409).json({ error: 'Рассылка уже выполняется' });
+  }
+  const { text, photoUrl, buttons, channels, emailSubject } = req.body || {};
+  if (!text || !text.trim()) {
+    return res.status(400).json({ error: 'Текст сообщения не может быть пустым' });
+  }
+  const ch = channels || {};
+  if (!ch.telegram && !ch.vk && !ch.email) {
+    return res.status(400).json({ error: 'Выберите хотя бы один канал' });
+  }
+  broadcastRunning = true;
+  try {
+    const report = await runBroadcast({
+      text: String(text).trim(),
+      photoUrl: photoUrl ? String(photoUrl).trim() : null,
+      buttons: Array.isArray(buttons) ? buttons.filter((b) => b.text && b.url) : [],
+      channels: { telegram: Boolean(ch.telegram), vk: Boolean(ch.vk), email: Boolean(ch.email) },
+      emailSubject: emailSubject ? String(emailSubject).trim() : null,
+    });
+    res.json({ report });
+  } catch (err) {
+    next(err);
+  } finally {
+    broadcastRunning = false;
   }
 });
 
