@@ -6,6 +6,8 @@ const { initDb } = require('./db/schema');
 const dealScheduler = require('./services/dealScheduler');
 const russianLanguageIndexScheduler = require('./services/russianLanguageIndexScheduler');
 const collectionsScheduler = require('./services/collectionsScheduler');
+const priceRateScheduler = require('./services/priceRateScheduler');
+const topupCardScheduler = require('./services/topupCardScheduler');
 const telegramBotService = require('./services/telegramBotService');
 const { initCacheSettings } = require('./services/cacheSettingsService');
 
@@ -29,6 +31,8 @@ initDb()
     dealScheduler.start();
     russianLanguageIndexScheduler.start();
     collectionsScheduler.start();
+    priceRateScheduler.start();
+    topupCardScheduler.start();
     telegramBotService.startPolling();
   })
   .catch((err) => {
@@ -48,6 +52,8 @@ process.on('SIGTERM', () => {
   dealScheduler.stop();
   russianLanguageIndexScheduler.stop();
   collectionsScheduler.stop();
+  priceRateScheduler.stop();
+  topupCardScheduler.stop();
   telegramBotService.stopPolling();
   if (server) {
     server.close(() => process.exit(0));
