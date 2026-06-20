@@ -8852,3 +8852,201 @@ body.mobile-menu-open {
   .gp-modal { padding: 1.4rem 1.2rem 1rem; border-radius: 14px; }
   .gp-title { font-size: 1.2rem; }
 }
+
+/* ===== Game Pass Page ===== */
+.gp-page-card { position: relative; overflow: hidden; min-height: 420px; }
+
+.gp-page-bg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #0d3d0d 0%, #107c10 40%, #1a1a2e 100%);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.gp-page-art {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 220px;
+  max-width: 260px;
+}
+
+.gp-page-logo-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(16, 124, 16, 0.18);
+  border: 1px solid rgba(16, 124, 16, 0.35);
+  border-radius: 20px;
+  padding: 2rem 1.5rem;
+  backdrop-filter: blur(8px);
+}
+
+.gp-page-logo-icon { opacity: 0.9; }
+
+.gp-page-logo-badge {
+  font-size: 1.25rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #fff;
+  text-shadow: 0 0 20px rgba(16,124,16,0.8);
+}
+
+.gp-page-logo-sub {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: rgba(255,255,255,0.55);
+  text-transform: uppercase;
+}
+
+.ps-product-main { position: relative; z-index: 1; }
+
+.gp-page-subtitle {
+  color: rgba(255,255,255,0.7);
+  font-size: 0.95rem;
+  margin: 0.3rem 0 0.9rem;
+  line-height: 1.5;
+}
+
+.gp-page-delivery-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.4rem;
+}
+
+.gp-page-delivery-badge {
+  background: rgba(16,124,16,0.25);
+  border: 1px solid rgba(16,124,16,0.5);
+  color: #4caf50;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+  border-radius: 20px;
+  letter-spacing: 0.02em;
+}
+
+.gp-page-delivery-note {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.5);
+}
+
+.gp-page-loading { padding: 2rem 0; }
+
+.gp-page-option-group { margin-bottom: 1.4rem; }
+
+.gp-page-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+
+.gp-page-plan-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1.5px solid rgba(255,255,255,0.1);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.gp-page-plan-card input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.gp-page-plan-card:hover {
+  border-color: rgba(16,124,16,0.5);
+  background: rgba(16,124,16,0.08);
+}
+
+.gp-page-plan-card--selected {
+  border-color: #107c10;
+  background: rgba(16,124,16,0.15);
+  box-shadow: 0 0 0 1px #107c10;
+}
+
+.gp-page-plan-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.9);
+}
+
+.gp-page-plan-price {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.gp-page-buy-row { margin-top: 1.2rem; }
+
+.gp-page-total-price {
+  font-size: 2rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: -0.03em;
+}
+
+.gp-page-price-note {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.45);
+  margin-top: 0.15rem;
+}
+
+/* Game Pass features section */
+.gp-page-features {
+  margin-top: 2.5rem;
+  padding: 0 0.5rem;
+}
+
+.gp-page-features h2 {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin-bottom: 1.2rem;
+}
+
+.gp-page-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.gp-page-feature-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1.1rem 1.2rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+}
+
+.gp-page-feature-icon { font-size: 1.6rem; line-height: 1; }
+
+.gp-page-feature-card strong {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.gp-page-feature-card span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  .gp-page-art { min-width: unset; max-width: unset; width: 100%; }
+  .gp-page-logo-wrap { padding: 1.2rem 1rem; flex-direction: row; border-radius: 14px; }
+  .gp-page-plan-grid { grid-template-columns: repeat(2, 1fr); }
+}

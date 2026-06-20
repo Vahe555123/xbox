@@ -6,8 +6,8 @@ import FavoritesPage from './pages/FavoritesPage';
 import ProfilePage from './pages/ProfilePage';
 import AdminPage from './pages/AdminPage';
 import HelpPage from './pages/HelpPage';
+import GamePassPage from './pages/GamePassPage';
 import AuthModal from './components/AuthModal';
-import GamePassModal from './components/GamePassModal';
 import FilterPanel from './components/FilterPanel';
 import SupportWidget from './components/SupportWidget';
 import { useFavorites } from './context/FavoritesContext';
@@ -225,7 +225,6 @@ function readStoredUser() {
 
 export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [gamePassOpen, setGamePassOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(readStoredUser);
   const [authNotice, setAuthNotice] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
@@ -388,7 +387,7 @@ export default function App() {
   const handleProfileAction = () => {
     closeMobileMenu();
     if (currentUser) {
-      window.location.assign('/profile');
+      navigate('/profile');
       return;
     }
     setAuthModalOpen(true);
@@ -623,13 +622,12 @@ export default function App() {
               Скидки
             </Link>
 
-            <button
-              type="button"
-              className="top-nav-link top-nav-gamepass top-nav-button"
-              onClick={() => { closeMobileMenu(); setGamePassOpen(true); }}
+            <Link
+              to="/gamepass"
+              className="top-nav-link top-nav-gamepass"
             >
               Game Pass
-            </button>
+            </Link>
 
             <a className="top-nav-link" href="https://xboxportal.ru/category/152018">
               Игровая валюта
@@ -713,6 +711,7 @@ export default function App() {
             )}
           />
           <Route path="/game/:productId" element={<GameDetailPage />} />
+          <Route path="/gamepass" element={<GamePassPage />} />
           <Route
             path="/admin"
             element={(
@@ -738,7 +737,6 @@ export default function App() {
         onAuth={handleAuth}
         externalError={authNotice}
       />
-      {gamePassOpen && <GamePassModal onClose={() => setGamePassOpen(false)} />}
       <SupportWidget />
     </div>
   );
