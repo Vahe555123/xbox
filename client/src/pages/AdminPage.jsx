@@ -46,6 +46,7 @@ import {
   fetchAdminSaleEndDates,
   sendAdminSaleReminders,
   sendAdminBroadcast,
+  fetchSpecialOfferGames,
   fetchSpecialOfferFavoritesCount,
   sendAdminSpecialOfferNotify,
 } from '../services/api';
@@ -480,6 +481,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   // Manual special-offer notification
   const [soQuery, setSoQuery] = useState('');
   const [soResults, setSoResults] = useState([]);
+  const [soDefaultGames, setSoDefaultGames] = useState([]);
+  const [soDefaultLoaded, setSoDefaultLoaded] = useState(false);
   const [soSelected, setSoSelected] = useState(null); // { id, title, image }
   const [soFavCount, setSoFavCount] = useState(null);
   const [soSending, setSoSending] = useState(false);
@@ -1192,13 +1195,30 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   };
 
   // ---- Special-offer notify handlers ----
+  const loadSoDefaultGames = useCallback(async () => {
+    if (soDefaultLoaded) return;
+    try {
+      const games = await fetchSpecialOfferGames();
+      setSoDefaultGames(games);
+      setSoDefaultLoaded(true);
+    } catch {
+      setSoDefaultLoaded(true);
+    }
+  }, [soDefaultLoaded]);
+
+  const handleSoOpen = useCallback(() => {
+    setSoDropOpen((v) => {
+      if (!v) loadSoDefaultGames();
+      return !v;
+    });
+  }, [loadSoDefaultGames]);
+
   const handleSoSearch = useCallback(async (q) => {
     setSoQuery(q);
-    setSoDropOpen(true);
     if (!q.trim()) { setSoResults([]); return; }
     try {
-      const results = await searchAdminProducts({ q, limit: 8 });
-      setSoResults(results.slice(0, 8));
+      const results = await searchAdminProducts({ q, limit: 10 });
+      setSoResults(results.slice(0, 10));
     } catch {
       setSoResults([]);
     }
@@ -1875,7 +1895,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <button
                 type="button"
                 className={`so-trigger${soDropOpen ? ' so-trigger--open' : ''}`}
-                onClick={() => setSoDropOpen((v) => !v)}
+                onClick={handleSoOpen}
               >
                 {soSelected ? (
                   <>
@@ -1904,23 +1924,33 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                     />
                   </div>
                   <div className="so-drop-list">
-                    {soResults.length === 0 && soQuery.trim() && (
-                      <div className="so-drop-empty">Ничего не найдено</div>
-                    )}
-                    {soResults.length === 0 && !soQuery.trim() && (
-                      <div className="so-drop-empty">Начните вводить название или ID игры</div>
-                    )}
-                    {soResults.map((p) => (
-                      <button
-                        key={p.id}
-                        className={`so-drop-item${soSelected?.id === p.id ? ' so-drop-item--active' : ''}`}
-                        onMouseDown={(e) => { e.preventDefault(); handleSoSelect(p); }}
-                      >
-                        {p.image && <img src={p.image} alt="" className="so-drop-img" />}
-                        <span className="so-drop-title">{p.title || p.id}</span>
-                        <span className="so-drop-id">{p.id}</span>
-                      </button>
-                    ))}
+                    {(() => {
+                      const isSearching = soQuery.trim().length > 0;
+                      const list = isSearching ? soResults : soDefaultGames;
+                      if (list.length === 0 && isSearching) return <div className="so-drop-empty">Ничего не найдено</div>;
+                      if (list.length === 0) return <div className="so-drop-empty">Нет игр со спецпредложениями</div>;
+                      return (
+                        <>
+                          {!isSearching && (
+                            <div className="so-drop-section-label">Игры со спецпредложением</div>
+                          )}
+                          {list.map((p) => (
+                            <button
+                              key={p.id}
+                              className={`so-drop-item${soSelected?.id === p.id ? ' so-drop-item--active' : ''}`}
+                              onMouseDown={(e) => { e.preventDefault(); handleSoSelect(p); }}
+                            >
+                              {p.image && <img src={p.image} alt="" className="so-drop-img" />}
+                              <span className="so-drop-title">{p.title || p.id}</span>
+                              <span className="so-drop-id">{p.id}</span>
+                              {!isSearching && p.favorites_count > 0 && (
+                                <span className="so-drop-fav">{p.favorites_count} ★</span>
+                              )}
+                            </button>
+                          ))}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               )}

@@ -9318,6 +9318,8 @@ body.mobile-menu-open {
 .so-drop-search::placeholder { color: var(--text-muted, #888); }
 .so-drop-list { max-height: 280px; overflow-y: auto; }
 .so-drop-empty { padding: 0.75rem 0.9rem; font-size: 0.83rem; color: var(--text-muted, #888); text-align: center; }
+.so-drop-section-label { padding: 0.4rem 0.85rem 0.25rem; font-size: 0.7rem; font-weight: 700; color: var(--text-muted, #888); text-transform: uppercase; letter-spacing: 0.06em; }
+.so-drop-fav { font-size: 0.7rem; color: #f4c430; flex-shrink: 0; white-space: nowrap; margin-left: auto; padding-left: 6px; }
 .so-drop-item {
   display: flex; align-items: center; gap: 10px; width: 100%;
   padding: 0.55rem 0.85rem; border: none; background: transparent;

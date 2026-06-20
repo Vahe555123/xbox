@@ -810,6 +810,30 @@ router.post('/sale-index/send-reminders', requireAdmin, async (req, res, next) =
 // ----- Special-offer manual notification -----
 let specialOfferNotifyRunning = false;
 
+// Returns all games that have special_offer_url set, with title/image and favorites count
+router.get('/special-offer-notify/games', requireAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        po.product_id                                                  AS id,
+        COALESCE(po.title, cps.data->>'title', sp.title, po.product_id) AS title,
+        COALESCE(cps.data->>'image', sp.image)                         AS image,
+        po.special_offer_url,
+        COUNT(f.user_id)::int                                          AS favorites_count
+      FROM product_overrides po
+      LEFT JOIN collection_product_snapshots cps ON cps.product_id = po.product_id
+      LEFT JOIN sale_products sp ON sp.product_id = po.product_id
+      LEFT JOIN favorites f ON f.product_id = po.product_id
+      WHERE po.special_offer_url IS NOT NULL AND po.special_offer_url <> ''
+      GROUP BY po.product_id, po.title, cps.data, sp.title, sp.image, po.special_offer_url
+      ORDER BY COUNT(f.user_id) DESC, po.updated_at DESC
+    `);
+    res.json({ games: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Returns how many users have this game in their favorites (preview before sending)
 router.get('/special-offer-notify/count', requireAdmin, async (req, res, next) => {
   const productId = String(req.query.productId || '').trim().toUpperCase();

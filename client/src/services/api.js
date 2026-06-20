@@ -444,6 +444,11 @@ export async function sendAdminBroadcast(payload) {
   return data;
 }
 
+export async function fetchSpecialOfferGames() {
+  const { data } = await api.get('/admin/special-offer-notify/games');
+  return data?.games || [];
+}
+
 export async function fetchSpecialOfferFavoritesCount(productId) {
   const { data } = await api.get('/admin/special-offer-notify/count', { params: { productId } });
   return data?.count ?? 0;
