@@ -334,26 +334,31 @@ async function searchWithRelevanceRerank({
     ? mapFilters(raw.filters)
     : null;
   const languageFilterActive = isLanguageFilterActive(languageMode);
+
+  // When all Xbox API pages have been consumed (nextEncodedCT is null), we know
+  // the exact post-filter count. Use it instead of the raw Xbox total, which
+  // inflates the number by including free/unavailable products we hide.
+  const allPagesFetched = !nextEncodedCT;
+  const resolvedTotal = languageFilterActive
+    ? null
+    : allPagesFetched
+      ? rankedProducts.length
+      : Number.isFinite(raw?.totalItems)
+        ? raw.totalItems + extraKeywordProducts.length
+        : raw?.totalItems;
+
   const bufferedToken = remainingProducts.length
     ? writeRankedSearchBuffer({
         products: remainingProducts,
         nextExternalEncodedCT: nextEncodedCT || null,
-        totalItems: languageFilterActive
-          ? null
-          : Number.isFinite(raw?.totalItems)
-            ? raw.totalItems + extraKeywordProducts.length
-            : raw?.totalItems,
+        totalItems: resolvedTotal,
         totalIsApproximate: languageFilterActive,
       })
     : nextEncodedCT || null;
 
   return {
     products: pageProducts,
-    totalItems: languageFilterActive
-      ? null
-      : Number.isFinite(raw?.totalItems)
-        ? raw.totalItems + extraKeywordProducts.length
-        : raw?.totalItems,
+    totalItems: resolvedTotal,
     totalIsApproximate: languageFilterActive,
     totalPending: languageFilterActive,
     encodedCT: bufferedToken,
