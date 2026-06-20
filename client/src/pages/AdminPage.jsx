@@ -43,6 +43,8 @@ import {
   stopAdminSaleIndex,
   cancelAdminSaleIndex,
   fetchAdminSaleIndexRuns,
+  fetchAdminSaleEndDates,
+  sendAdminSaleReminders,
 } from '../services/api';
 
 function formatDate(d) {
@@ -123,6 +125,8 @@ function dealRunReasonLabel(reason) {
     telegram_and_email_failed: 'Telegram и email не отправились',
     email_failed: 'email не отправился',
     process_user_error: 'ошибка обработки клиента',
+    no_contact: 'нет Telegram и email',
+    send_failed: 'не удалось отправить',
   };
   return map[reason] || reason || '—';
 }
@@ -445,6 +449,13 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [expandedRunId, setExpandedRunId] = useState(null);
   const saleWasRunningRef = useRef(false);
 
+  // Sale-ending broadcast (manual reminders to users with these games in favorites)
+  const [saleEndDates, setSaleEndDates] = useState([]);
+  const [reminderDate, setReminderDate] = useState('');
+  const [reminderSending, setReminderSending] = useState(false);
+  const [reminderReport, setReminderReport] = useState(null);
+  const [reminderMessage, setReminderMessage] = useState('');
+
   // Auth check
   useEffect(() => {
     if (!currentUser) {
@@ -603,6 +614,13 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadSaleEndDates = useCallback(async () => {
+    try {
+      const dates = await fetchAdminSaleEndDates();
+      setSaleEndDates(dates);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     if (!authorized) return;
     if (tab === 'dashboard') {
@@ -622,8 +640,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     else if (tab === 'topup') loadTopupCards();
     else if (tab === 'purchases') loadPurchases(purchasesSort);
     else if (tab === 'collections') { loadCollections(); loadCollectionsRefresh(); }
-    else if (tab === 'scheduler') { loadSaleIndex(); loadSaleIndexRuns(); }
-  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadRussianIndex, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort, loadCollections, loadCollectionsRefresh, loadSaleIndex, loadSaleIndexRuns]);
+    else if (tab === 'scheduler') { loadSaleIndex(); loadSaleIndexRuns(); loadSaleEndDates(); }
+  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadRussianIndex, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort, loadCollections, loadCollectionsRefresh, loadSaleIndex, loadSaleIndexRuns, loadSaleEndDates]);
 
   // Poll snapshot-refresh status while a refresh is running.
   useEffect(() => {
@@ -1107,6 +1125,26 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       await loadSaleIndex();
     } catch (err) {
       setSaleIndexMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleSendSaleReminders = async () => {
+    if (!reminderDate) return;
+    const dateItem = saleEndDates.find((d) => d.date === reminderDate);
+    const count = dateItem?.productCount || 0;
+    if (!window.confirm(`Разослать напоминание клиентам, у которых в избранном игры со скидкой до ${reminderDate} (${count} игр)?`)) return;
+    setReminderSending(true);
+    setReminderMessage('');
+    setReminderReport(null);
+    try {
+      const result = await sendAdminSaleReminders(reminderDate);
+      setReminderReport(result.report || null);
+      const sent = result.report?.totals?.sent || 0;
+      setReminderMessage(`Готово: отправлено ${sent} клиентам`);
+    } catch (err) {
+      setReminderMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setReminderSending(false);
     }
   };
 
@@ -2582,6 +2620,111 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               )}
             </div>
           )}
+
+          {/* Sale-ending broadcast */}
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <div>
+                <h3>Рассылка «скидка заканчивается»</h3>
+                <p className="admin-card-desc">
+                  Выберите дату окончания скидок. Напоминание получат все клиенты,
+                  у которых эти игры в избранном (Telegram или email). Повторно одному
+                  клиенту по той же дате письмо не уходит.
+                </p>
+              </div>
+              <button className="admin-btn admin-btn-sm" onClick={loadSaleEndDates}>⟳ Обновить даты</button>
+            </div>
+
+            <div className="admin-sale-broadcast">
+              <select
+                className="admin-search-select"
+                value={reminderDate}
+                onChange={(e) => { setReminderDate(e.target.value); setReminderReport(null); }}
+              >
+                <option value="">— выберите дату окончания —</option>
+                {saleEndDates.map((item) => {
+                  const [y, m, d] = item.date.split('-');
+                  const label = new Date(Number(y), Number(m) - 1, Number(d))
+                    .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+                  return (
+                    <option key={item.date} value={item.date}>
+                      {label} — {item.productCount} {item.productCount === 1 ? 'игра' : 'игр'}
+                    </option>
+                  );
+                })}
+              </select>
+              <button
+                className="admin-btn admin-btn-accent"
+                onClick={handleSendSaleReminders}
+                disabled={!reminderDate || reminderSending}
+              >
+                {reminderSending ? 'Рассылаем...' : '✈ Разослать напоминание'}
+              </button>
+            </div>
+            {saleEndDates.length === 0 && (
+              <p className="admin-card-desc" style={{ marginTop: '0.5rem' }}>
+                Нет дат с известным окончанием скидок. Сначала запустите сканирование индекса.
+              </p>
+            )}
+            {reminderMessage && <p className="admin-scheduler-result" style={{ marginTop: '0.75rem' }}>{reminderMessage}</p>}
+
+            {reminderReport && (
+              <>
+                <div className="admin-report-stats" style={{ marginTop: '1rem' }}>
+                  <div className="admin-report-stat"><strong>{reminderReport.totals?.endingProducts || 0}</strong><span>игр в эту дату</span></div>
+                  <div className="admin-report-stat"><strong>{reminderReport.totals?.favoritedProducts || 0}</strong><span>в избранных</span></div>
+                  <div className="admin-report-stat"><strong>{reminderReport.totals?.clientsMatched || 0}</strong><span>клиентов с играми</span></div>
+                  <div className="admin-report-stat"><strong>{reminderReport.totals?.sent || 0}</strong><span>отправлено</span></div>
+                  <div className="admin-report-stat"><strong>{reminderReport.totals?.telegram || 0}</strong><span>Telegram</span></div>
+                  <div className="admin-report-stat"><strong>{reminderReport.totals?.email || 0}</strong><span>Email</span></div>
+                </div>
+
+                <div className="admin-table-wrap" style={{ marginTop: '0.75rem' }}>
+                  <table className="admin-table admin-table-compact">
+                    <thead>
+                      <tr><th>Клиент</th><th>Статус</th><th>Куда</th><th>Игры</th></tr>
+                    </thead>
+                    <tbody>
+                      {(reminderReport.entries || []).map((entry, index) => (
+                        <tr key={`${entry.userId || 'u'}-${index}`}>
+                          <td>
+                            <div>{entry.name || entry.email || entry.userId || '—'}</div>
+                            {entry.email && entry.name && <div className="admin-muted">{entry.email}</div>}
+                          </td>
+                          <td>
+                            <span className={`admin-report-status admin-report-status-${entry.status}`}>
+                              {dealRunStatusLabel(entry.status)}
+                            </span>
+                            {entry.reason && <div className="admin-muted">{dealRunReasonLabel(entry.reason)}</div>}
+                            {entry.error && <div className="admin-muted">{entry.error}</div>}
+                          </td>
+                          <td>
+                            <div>{dealRunChannelLabel(entry.channel)}</div>
+                            <div className="admin-muted">{entry.recipient || '—'}</div>
+                          </td>
+                          <td>
+                            <div className="admin-report-games">
+                              {(entry.games || []).map((g) => (
+                                <a key={g.productId} href={g.siteUrl} target="_blank" rel="noreferrer" className="admin-report-game">
+                                  {g.title}
+                                  {g.discountPercent ? <span>-{g.discountPercent}%</span> : null}
+                                </a>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {(reminderReport.entries || []).length === 0 && (
+                        <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          Никому не отправлено — ни у кого нет этих игр в избранном (или уже уведомляли).
+                        </td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Run history */}
           <div className="admin-card">

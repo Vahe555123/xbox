@@ -32,6 +32,7 @@ const collectionsService = require('../services/collectionsService');
 const collectionsScheduler = require('../services/collectionsScheduler');
 const saleIndexService = require('../services/saleIndexService');
 const saleIndexScheduler = require('../services/saleIndexScheduler');
+const { runSaleEndingBroadcast } = require('../services/dealNotifierService');
 const logger = require('../utils/logger');
 
 const router = Router();
@@ -770,6 +771,38 @@ router.get('/sale-index/products', requireAdmin, async (req, res, next) => {
     res.json({ products: rows });
   } catch (err) {
     next(err);
+  }
+});
+
+// List deal-end dates with product counts (for the broadcast date picker).
+router.get('/sale-index/end-dates', requireAdmin, async (_req, res, next) => {
+  try {
+    const dates = await saleIndexService.listSaleEndDates();
+    res.json({ dates });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Manually broadcast a "discount ending" reminder for a given end date to every
+// user who has one of those games in their favorites.
+let saleEndingBroadcastRunning = false;
+router.post('/sale-index/send-reminders', requireAdmin, async (req, res, next) => {
+  const date = String(req.body?.date || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'Некорректная дата (ожидается YYYY-MM-DD)' });
+  }
+  if (saleEndingBroadcastRunning) {
+    return res.status(409).json({ error: 'Рассылка уже выполняется' });
+  }
+  saleEndingBroadcastRunning = true;
+  try {
+    const report = await runSaleEndingBroadcast(date);
+    res.json({ report });
+  } catch (err) {
+    next(err);
+  } finally {
+    saleEndingBroadcastRunning = false;
   }
 });
 

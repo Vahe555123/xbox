@@ -6722,6 +6722,19 @@ code {
   color: var(--text-muted);
 }
 
+.admin-sale-broadcast {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.4rem;
+}
+
+.admin-sale-broadcast .admin-search-select {
+  flex: 1;
+  min-width: 240px;
+}
+
 .admin-sale-run-error {
   margin: 0.6rem;
   padding: 0.55rem 0.8rem;

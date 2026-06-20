@@ -428,3 +428,13 @@ export async function fetchAdminSaleIndexRuns(limit = 20) {
   const { data } = await api.get('/admin/sale-index/runs', { params: { limit } });
   return data?.runs || [];
 }
+
+export async function fetchAdminSaleEndDates() {
+  const { data } = await api.get('/admin/sale-index/end-dates');
+  return data?.dates || [];
+}
+
+export async function sendAdminSaleReminders(date) {
+  const { data } = await api.post('/admin/sale-index/send-reminders', { date }, { timeout: 180000 });
+  return data;
+}

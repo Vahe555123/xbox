@@ -1214,14 +1214,14 @@ async function runReleaseAndSpecialOfferNotifications(allUsers, productsById) {
   }
 }
 
-async function sendEventNotification(user, items, type) {
+async function deliverEventNotification(user, items, type, meta = {}) {
   const isTelegramUser = user.last_provider === 'telegram';
   if (isTelegramUser) {
     const chatId = await getTelegramChatId(user.user_id);
     if (chatId) {
-      const text = buildEventTelegramMessage(user.name, items, type);
+      const text = buildEventTelegramMessage(user.name, items, type, meta);
       await sendBotMessage(chatId, text, { parseMode: 'HTML', disableWebPagePreview: true });
-      return true;
+      return { channel: 'telegram', recipient: chatId };
     }
   }
   if (user.email) {
@@ -1229,22 +1229,31 @@ async function sendEventNotification(user, items, type) {
     await transporter.sendMail({
       from: getFromAddress(),
       to: user.email,
-      subject: buildEventEmailSubject(items, type),
-      html: buildEventEmailHtml(user.name, items, type),
+      subject: buildEventEmailSubject(items, type, meta),
+      html: buildEventEmailHtml(user.name, items, type, meta),
     });
-    return true;
+    return { channel: 'email', recipient: user.email };
   }
-  return false;
+  return null;
 }
 
-function buildEventTelegramMessage(userName, items, type) {
+async function sendEventNotification(user, items, type, meta = {}) {
+  const result = await deliverEventNotification(user, items, type, meta);
+  return Boolean(result);
+}
+
+function buildEventTelegramMessage(userName, items, type, meta = {}) {
   const header = type === 'release'
     ? `🎉 <b>Вышли игры из вашего Избранного!</b>`
-    : `🎯 <b>Спецпредложение на игры из Избранного!</b>`;
+    : type === 'sale_ending'
+      ? `⏳ <b>Скидки на ваши избранные скоро закончатся!</b>`
+      : `🎯 <b>Спецпредложение на игры из Избранного!</b>`;
 
   const subHeader = type === 'release'
     ? `Игры, которые вы ждали, теперь доступны для покупки:`
-    : `На эти игры появились специальные предложения:`;
+    : type === 'sale_ending'
+      ? `Скидка на эти игры из избранного действует ${meta.endDateText || 'недолго'} — успейте купить:`
+      : `На эти игры появились специальные предложения:`;
 
   const lines = [
     header,
@@ -1255,7 +1264,8 @@ function buildEventTelegramMessage(userName, items, type) {
   ];
 
   for (const item of items.slice(0, 10)) {
-    lines.push(`➬ <a href="${item.siteUrl}"><b>${escapeHtml(item.title)}</b></a>`);
+    const discount = type === 'sale_ending' && item.discountPercent ? ` <b>(-${item.discountPercent}%)</b>` : '';
+    lines.push(`➬ <a href="${item.siteUrl}"><b>${escapeHtml(item.title)}</b></a>${discount}`);
     if (item.paymentPrices) {
       const payLine = buildTelegramPaymentLine({ paymentPrices: item.paymentPrices });
       if (payLine) lines.push(payLine);
@@ -1270,28 +1280,42 @@ function buildEventTelegramMessage(userName, items, type) {
   return lines.join('\n');
 }
 
-function buildEventEmailSubject(items, type) {
+function buildEventEmailSubject(items, type, meta = {}) {
   if (type === 'release') {
     return items.length === 1
       ? `«${items[0].title}» вышла и доступна для покупки!`
       : `${items.length} ожидаемых игр теперь доступны`;
+  }
+  if (type === 'sale_ending') {
+    return items.length === 1
+      ? `Скидка на «${items[0].title}» скоро закончится`
+      : `Скидки на ${items.length} игр из избранного скоро закончатся`;
   }
   return items.length === 1
     ? `Спецпредложение на «${items[0].title}»`
     : `Спецпредложения на ${items.length} игр из избранного`;
 }
 
-function buildEventEmailHtml(userName, items, type) {
-  const heading = type === 'release' ? 'Вышли ваши ожидаемые игры!' : 'Спецпредложения на игры!';
-  const emoji = type === 'release' ? '🎉' : '🎯';
+function buildEventEmailHtml(userName, items, type, meta = {}) {
+  const heading = type === 'release'
+    ? 'Вышли ваши ожидаемые игры!'
+    : type === 'sale_ending'
+      ? 'Скидки скоро закончатся!'
+      : 'Спецпредложения на игры!';
+  const emoji = type === 'release' ? '🎉' : type === 'sale_ending' ? '⏳' : '🎯';
   const intro = type === 'release'
     ? `Игры, которые вы добавили в Избранное, теперь доступны для покупки:`
-    : `На игры из вашего Избранного появились специальные предложения:`;
+    : type === 'sale_ending'
+      ? `Скидка на эти игры из вашего Избранного действует ${meta.endDateText || 'недолго'} — успейте купить:`
+      : `На игры из вашего Избранного появились специальные предложения:`;
 
   const itemsHtml = items.slice(0, 10).map((item) => {
     const payHtml = item.paymentPrices
       ? `<div style="margin-top:4px;">${buildPaymentPairsHtml({ paymentPrices: item.paymentPrices })}</div>`
       : '';
+    const badge = type === 'sale_ending'
+      ? `${emoji} ${item.discountPercent ? `-${item.discountPercent}% • ` : ''}${escapeHtml(meta.endDateText || 'скоро закончится')}`
+      : `${emoji} ${type === 'release' ? 'Вышла!' : 'Спецпредложение'}`;
     return `
       <tr><td style="padding:14px 0;border-bottom:1px solid #1e1e1e;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -1307,7 +1331,7 @@ function buildEventEmailHtml(userName, items, type) {
                 ${escapeHtml(item.title)}
               </a>
               <span style="background:#107c10;color:#fff;font-weight:800;font-size:13px;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:6px;">
-                ${emoji} ${type === 'release' ? 'Вышла!' : 'Спецпредложение'}
+                ${badge}
               </span>
               ${payHtml}
             </td>
@@ -1355,4 +1379,161 @@ function buildEventEmailHtml(userName, items, type) {
 </html>`;
 }
 
-module.exports = { runDealNotifications };
+// ---------------------------------------------------------------------------
+// Sale-ending broadcast — admin-triggered, keyed on a deal end date.
+// Finds every user who has a game (whose discount ends on `endDay`) in their
+// favorites and notifies them once per (user, product, date).
+// ---------------------------------------------------------------------------
+
+function formatEndDayRu(endDay) {
+  if (!endDay) return '';
+  const str = typeof endDay === 'string' ? endDay.slice(0, 10) : new Date(endDay).toISOString().slice(0, 10);
+  const [y, m, d] = str.split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return new Date(y, m - 1, d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+async function runSaleEndingBroadcast(endDay) {
+  const saleIndexService = require('./saleIndexService');
+  const endDateText = `до ${formatEndDayRu(endDay)}`;
+  const report = {
+    endDay,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    status: 'running',
+    totals: {
+      endingProducts: 0, favoritedProducts: 0, clients: 0,
+      clientsMatched: 0, sent: 0, telegram: 0, email: 0,
+      skippedAlreadyNotified: 0, skippedNoContact: 0, failed: 0,
+    },
+    entries: [],
+    errors: [],
+  };
+
+  logger.info('[SaleEnding] Broadcast start', { endDay });
+
+  const endingRows = await saleIndexService.getProductsByEndDay(endDay);
+  report.totals.endingProducts = endingRows.length;
+  const endingIds = new Set(endingRows.map((r) => normalizeProductId(r.product_id)));
+  if (endingIds.size === 0) {
+    report.status = 'success';
+    report.finishedAt = new Date().toISOString();
+    return report;
+  }
+
+  const users = await getUsersWithFavorites();
+  report.totals.clients = users.length;
+
+  // Which ending products are actually in someone's favorites?
+  const neededIds = new Set();
+  for (const user of users) {
+    for (const pid of user.product_ids) {
+      const nid = normalizeProductId(pid);
+      if (endingIds.has(nid)) neededIds.add(nid);
+    }
+  }
+  report.totals.favoritedProducts = neededIds.size;
+
+  if (neededIds.size === 0) {
+    report.status = 'success';
+    report.finishedAt = new Date().toISOString();
+    logger.info('[SaleEnding] No favorites match this date', { endDay });
+    return report;
+  }
+
+  // Fetch fresh product data for ₽ prices; fall back to stored sale_products row.
+  const storedById = new Map(endingRows.map((r) => [normalizeProductId(r.product_id), r]));
+  let productsById = new Map();
+  try {
+    const rawProducts = await getProductsByIds([...neededIds]);
+    productsById = await enrichProductsForDealNotifications(rawProducts);
+  } catch (err) {
+    logger.error('[SaleEnding] Product fetch failed', { message: err.message });
+    report.errors.push({ stage: 'fetch_products', message: err.message });
+  }
+
+  const dealKeyForDate = `sale_ending:${typeof endDay === 'string' ? endDay.slice(0, 10) : endDay}`;
+
+  for (const user of users) {
+    try {
+      const userEndingIds = [...new Set(user.product_ids.map(normalizeProductId))]
+        .filter((pid) => neededIds.has(pid));
+      if (userEndingIds.length === 0) continue;
+
+      report.totals.clientsMatched += 1;
+
+      const pairs = userEndingIds.map((pid) => [pid, dealKeyForDate]);
+      const already = await getAlreadyNotified(user.user_id, pairs);
+      const newIds = userEndingIds.filter((pid) => !already.has(`${pid}::${dealKeyForDate}`));
+
+      if (newIds.length === 0) {
+        report.totals.skippedAlreadyNotified += 1;
+        report.entries.push({
+          userId: user.user_id, name: user.name, email: user.email,
+          provider: user.last_provider, status: 'skipped', reason: 'already_notified',
+          channel: null, recipient: null, games: [],
+        });
+        continue;
+      }
+
+      const items = newIds.map((pid) => {
+        const product = productsById.get(pid);
+        const stored = storedById.get(pid);
+        return {
+          productId: pid,
+          title: product?.title || stored?.title || pid,
+          image: product?.image || stored?.image || null,
+          siteUrl: `${config.clientOrigin}/game/${pid}`,
+          paymentPrices: product?.notificationPaymentPrices || null,
+          discountPercent: stored?.discount_percent ?? null,
+        };
+      });
+
+      let delivery = null;
+      try {
+        delivery = await deliverEventNotification(user, items, 'sale_ending', { endDateText });
+      } catch (err) {
+        report.totals.failed += 1;
+        report.errors.push({ stage: 'send', userId: user.user_id, message: err.message });
+        report.entries.push({
+          userId: user.user_id, name: user.name, email: user.email,
+          provider: user.last_provider, status: 'failed', reason: 'send_failed',
+          channel: null, recipient: null, games: items, error: err.message,
+        });
+        continue;
+      }
+
+      if (!delivery) {
+        report.totals.skippedNoContact += 1;
+        report.entries.push({
+          userId: user.user_id, name: user.name, email: user.email,
+          provider: user.last_provider, status: 'skipped', reason: 'no_contact',
+          channel: null, recipient: null, games: items,
+        });
+        continue;
+      }
+
+      await markNotified(user.user_id, newIds.map((pid) => [pid, dealKeyForDate]));
+      report.totals.sent += 1;
+      if (delivery.channel === 'telegram') report.totals.telegram += 1;
+      if (delivery.channel === 'email') report.totals.email += 1;
+      report.entries.push({
+        userId: user.user_id, name: user.name, email: user.email,
+        provider: user.last_provider, status: 'sent',
+        channel: delivery.channel, recipient: delivery.recipient, games: items,
+      });
+      logger.info('[SaleEnding] Sent', { userId: user.user_id, channel: delivery.channel, count: items.length });
+    } catch (err) {
+      report.totals.failed += 1;
+      report.errors.push({ stage: 'process_user', userId: user.user_id, message: err.message });
+      logger.error('[SaleEnding] User error', { userId: user.user_id, message: err.message });
+    }
+  }
+
+  report.status = report.totals.failed > 0 || report.errors.length > 0 ? 'partial' : 'success';
+  report.finishedAt = new Date().toISOString();
+  logger.info('[SaleEnding] Done', { endDay, sent: report.totals.sent, failed: report.totals.failed });
+  return report;
+}
+
+module.exports = { runDealNotifications, runSaleEndingBroadcast };
