@@ -81,6 +81,7 @@ async function getStorePageProductData({ productId, storeUrl, languageOnly = fal
       description: extractStoreDescriptionWithSource(productSummary, config.xbox.language || 'en-US'),
       bundleItems: extractBundleItems(channelData, productSummaries, normalizedProductId),
       compareEditionItems: extractCompareEditionItems(channelData, productSummaries, normalizedProductId),
+      saleEndDate: extractStoreSaleEndDate(productSummary),
     };
     cache.set(fullCacheKey, data, STORE_PAGE_CACHE_TTL);
     return data;
@@ -368,6 +369,34 @@ function getCachedLanguageInfo(productId) {
   const normalizedProductId = String(productId || '').toUpperCase();
   if (!normalizedProductId) return null;
   return cache.get(`xbox-store-language:${normalizedProductId}`) || null;
+}
+
+// Parse Xbox's "MM/DD/YYYY HH:MM:SS" UTC date string.
+// Returns an ISO 8601 string or null. Years > 3000 are sentinel "no-expiry" values.
+function parseXboxDateUtc(str) {
+  if (!str || str === 'undefined') return null;
+  const m = String(str).match(/^(\d{2})\/(\d{2})\/(\d{4})\s(\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const [, month, day, year, h, min, sec] = m;
+  const y = parseInt(year, 10);
+  if (y > 3000) return null; // sentinel "12/30/9998" means no expiry
+  return new Date(Date.UTC(y, parseInt(month, 10) - 1, parseInt(day, 10), parseInt(h, 10), parseInt(min, 10), parseInt(sec, 10))).toISOString();
+}
+
+// Extract the earliest real sale/deal end date from the store page productSummary.
+// Uses specificPrices.purchaseable[*].endDateUtc — each entry is scoped to its own
+// product ID in the state tree, so there's no cross-product ambiguity.
+function extractStoreSaleEndDate(productSummary) {
+  const purchaseable = productSummary?.specificPrices?.purchaseable;
+  if (!Array.isArray(purchaseable)) return null;
+
+  let earliest = null;
+  for (const entry of purchaseable) {
+    const iso = parseXboxDateUtc(entry?.endDateUtc);
+    if (!iso) continue;
+    if (!earliest || iso < earliest) earliest = iso;
+  }
+  return earliest;
 }
 
 module.exports = {

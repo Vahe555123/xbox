@@ -355,6 +355,15 @@ async function getProductDetail(req, res, next) {
       product.shortDescription = storePageProductData.description.shortDescription;
     }
 
+    // If the Display Catalog API didn't return a deal end date, use the one from
+    // the store page's specificPrices.purchaseable[*].endDateUtc — this is the most
+    // reliable source for Game Pass and promotional deal deadlines.
+    if (!product.price?.dealEndDate && storePageProductData.saleEndDate) {
+      if (product.price) {
+        product.price.dealEndDate = storePageProductData.saleEndDate;
+      }
+    }
+
     logger.info('Product deal date debug', {
       productId: product.id,
       priceValue: product.price?.value ?? null,
