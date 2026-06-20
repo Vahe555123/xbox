@@ -55,6 +55,7 @@ export function useSearch({
   const abortRef = useRef(null);
   const countAbortRef = useRef(null);
   const loadMoreLockRef = useRef(false);
+  const loadedCountRef = useRef(0);
   const latestStateRef = useRef(
     serializeSearchState({
       query: initialQuery,
@@ -124,11 +125,17 @@ export function useSearch({
 
       if (append) {
         setProducts((prev) => [...prev, ...result.products]);
+        loadedCountRef.current += result.products.length;
       } else {
         setProducts(result.products);
+        loadedCountRef.current = result.products.length;
       }
 
-      if (append) {
+      // When all pages are exhausted, we have the exact filtered count in loadedCountRef.
+      if (!result.hasMorePages) {
+        setTotal(loadedCountRef.current);
+        setTotalPending(false);
+      } else if (append) {
         if (result.totalPending) {
           setTotal((prev) => prev + result.products.length);
         } else if (Number.isFinite(result.total)) {
