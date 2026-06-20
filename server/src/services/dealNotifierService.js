@@ -1536,4 +1536,109 @@ async function runSaleEndingBroadcast(endDay) {
   return report;
 }
 
-module.exports = { runDealNotifications, runSaleEndingBroadcast };
+// ---------------------------------------------------------------------------
+// Manual special-offer notification — admin picks a game, we notify every
+// user who has it in favorites. Deduped per calendar day so the same user
+// won't get the same game twice in one day.
+// ---------------------------------------------------------------------------
+
+async function runManualSpecialOfferNotification(productId) {
+  const normalizedId = normalizeProductId(productId);
+  if (!normalizedId) throw new Error('Некорректный productId');
+
+  // Fetch & enrich
+  const rawProducts = await getProductsByIds([normalizedId]);
+  if (!rawProducts.length) throw new Error('Продукт не найден');
+  const productsById = await enrichProductsForDealNotifications(rawProducts);
+  const product = productsById.get(normalizedId);
+
+  const lp = rawProducts[0]?.LocalizedProperties?.[0] || {};
+  const item = {
+    productId: normalizedId,
+    title: product?.title || lp.ProductTitle || normalizedId,
+    image: product?.image || null,
+    siteUrl: `${config.clientOrigin}/game/${normalizedId}`,
+    paymentPrices: product?.notificationPaymentPrices || null,
+  };
+
+  // Find users who have this game in favorites
+  const { rows: users } = await pool.query(`
+    SELECT u.id AS user_id, u.email, u.name, u.last_provider
+    FROM users u
+    JOIN favorites f ON f.user_id = u.id
+    WHERE f.product_id = $1
+  `, [normalizedId]);
+
+  const todayKey = `special_offer_manual:${new Date().toISOString().slice(0, 10)}`;
+
+  const report = {
+    productId: normalizedId,
+    title: item.title,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    status: 'running',
+    totals: {
+      usersInFavorites: users.length,
+      sent: 0,
+      telegram: 0,
+      email: 0,
+      skippedAlreadyNotified: 0,
+      skippedNoContact: 0,
+      failed: 0,
+    },
+    entries: [],
+  };
+
+  for (const user of users) {
+    try {
+      const already = await getAlreadyNotified(user.user_id, [[normalizedId, todayKey]]);
+      if (already.has(`${normalizedId}::${todayKey}`)) {
+        report.totals.skippedAlreadyNotified += 1;
+        report.entries.push({ userId: user.user_id, name: user.name, status: 'skipped', reason: 'already_notified_today' });
+        continue;
+      }
+
+      const delivery = await deliverEventNotification(user, [item], 'special_offer');
+      if (!delivery) {
+        report.totals.skippedNoContact += 1;
+        report.entries.push({ userId: user.user_id, name: user.name, status: 'skipped', reason: 'no_contact' });
+        continue;
+      }
+
+      await markNotified(user.user_id, [[normalizedId, todayKey]]);
+      report.totals.sent += 1;
+      if (delivery.channel === 'telegram') report.totals.telegram += 1;
+      if (delivery.channel === 'email') report.totals.email += 1;
+      report.entries.push({
+        userId: user.user_id,
+        name: user.name,
+        email: user.email,
+        status: 'sent',
+        channel: delivery.channel,
+        recipient: delivery.recipient,
+      });
+      logger.info('[SpecialOfferNotify] Sent', { userId: user.user_id, channel: delivery.channel });
+    } catch (err) {
+      report.totals.failed += 1;
+      report.entries.push({ userId: user.user_id, name: user.name, status: 'failed', error: err.message });
+      logger.error('[SpecialOfferNotify] User error', { userId: user.user_id, message: err.message });
+    }
+  }
+
+  report.status = report.totals.failed > 0 ? 'partial' : 'success';
+  report.finishedAt = new Date().toISOString();
+  logger.info('[SpecialOfferNotify] Done', { productId: normalizedId, ...report.totals });
+  return report;
+}
+
+async function getFavoritesCountForProduct(productId) {
+  const normalizedId = normalizeProductId(productId);
+  if (!normalizedId) return 0;
+  const { rows } = await pool.query(
+    'SELECT COUNT(*)::int AS count FROM favorites WHERE product_id = $1',
+    [normalizedId],
+  );
+  return rows[0]?.count || 0;
+}
+
+module.exports = { runDealNotifications, runSaleEndingBroadcast, runManualSpecialOfferNotification, getFavoritesCountForProduct };

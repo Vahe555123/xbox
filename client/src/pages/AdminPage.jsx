@@ -46,6 +46,8 @@ import {
   fetchAdminSaleEndDates,
   sendAdminSaleReminders,
   sendAdminBroadcast,
+  fetchSpecialOfferFavoritesCount,
+  sendAdminSpecialOfferNotify,
 } from '../services/api';
 
 function formatDate(d) {
@@ -475,6 +477,17 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [bcMessage, setBcMessage] = useState('');
   const [bcReport, setBcReport] = useState(null);
 
+  // Manual special-offer notification
+  const [soQuery, setSoQuery] = useState('');
+  const [soResults, setSoResults] = useState([]);
+  const [soSelected, setSoSelected] = useState(null); // { id, title, image }
+  const [soFavCount, setSoFavCount] = useState(null);
+  const [soSending, setSoSending] = useState(false);
+  const [soReport, setSoReport] = useState(null);
+  const [soMessage, setSoMessage] = useState('');
+  const [soDropOpen, setSoDropOpen] = useState(false);
+  const soSearchRef = useRef(null);
+
   // Auth check
   useEffect(() => {
     if (!currentUser) {
@@ -485,6 +498,17 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       .then((isAdmin) => setAuthorized(isAdmin))
       .catch(() => setAuthorized(false));
   }, [currentUser]);
+
+  // Close special-offer dropdown on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (soSearchRef.current && !soSearchRef.current.contains(e.target)) {
+        setSoDropOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Load data when tab changes
   const loadDashboard = useCallback(async () => {
@@ -1167,6 +1191,53 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     }
   };
 
+  // ---- Special-offer notify handlers ----
+  const handleSoSearch = useCallback(async (q) => {
+    setSoQuery(q);
+    setSoDropOpen(true);
+    if (!q.trim()) { setSoResults([]); return; }
+    try {
+      const results = await searchAdminProducts({ q, limit: 8 });
+      setSoResults(results.slice(0, 8));
+    } catch {
+      setSoResults([]);
+    }
+  }, []);
+
+  const handleSoSelect = async (product) => {
+    setSoSelected(product);
+    setSoQuery(product.title || product.id);
+    setSoResults([]);
+    setSoDropOpen(false);
+    setSoReport(null);
+    setSoMessage('');
+    setSoFavCount(null);
+    try {
+      const count = await fetchSpecialOfferFavoritesCount(product.id);
+      setSoFavCount(count);
+    } catch {
+      setSoFavCount(null);
+    }
+  };
+
+  const handleSoSend = async () => {
+    if (!soSelected) { setSoMessage('Выберите игру'); return; }
+    if (!window.confirm(`Отправить уведомление о спецпредложении на «${soSelected.title}» всем клиентам, у которых она в избранном?`)) return;
+    setSoSending(true);
+    setSoMessage('');
+    setSoReport(null);
+    try {
+      const result = await sendAdminSpecialOfferNotify(soSelected.id);
+      setSoReport(result.report || null);
+      const sent = result.report?.totals?.sent ?? 0;
+      setSoMessage(`Готово: отправлено ${sent} клиентам`);
+    } catch (err) {
+      setSoMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setSoSending(false);
+    }
+  };
+
   // ---- Broadcast handlers ----
   const bcTextareaRef = useRef(null);
 
@@ -1785,6 +1856,99 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <button className="admin-btn admin-btn-sm" disabled={notifsPage >= Math.ceil(notifsTotal / 30)} onClick={() => loadNotifications(notifsPage + 1)}>Вперёд</button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ==================== Special-offer notify ==================== */}
+      {tab === 'notifications' && (
+        <div className="admin-panel" style={{ marginTop: 24 }}>
+          <h3 className="admin-section-title" style={{ marginBottom: 16 }}>Уведомление о Спецпредложении</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 16 }}>
+            Выберите игру — все клиенты, у которых она в Избранном, получат уведомление о спецпредложении (Telegram или Email).
+            <br />Повторная отправка одному клиенту возможна только на следующий день.
+          </p>
+          <div className="so-layout">
+            <div className="so-search-wrap" ref={soSearchRef}>
+              <label className="so-label">Игра</label>
+              <input
+                className="so-input"
+                type="text"
+                placeholder="Введите название или ID игры..."
+                value={soQuery}
+                onChange={(e) => handleSoSearch(e.target.value)}
+                onFocus={() => soResults.length > 0 && setSoDropOpen(true)}
+                autoComplete="off"
+              />
+              {soDropOpen && soResults.length > 0 && (
+                <div className="so-dropdown">
+                  {soResults.map((p) => (
+                    <button
+                      key={p.id}
+                      className="so-drop-item"
+                      onMouseDown={(e) => { e.preventDefault(); handleSoSelect(p); }}
+                    >
+                      {p.image && <img src={p.image} alt="" className="so-drop-img" />}
+                      <span className="so-drop-title">{p.title || p.id}</span>
+                      <span className="so-drop-id">{p.id}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {soSelected && (
+              <div className="so-selected-card">
+                {soSelected.image && <img src={soSelected.image} alt="" className="so-card-img" />}
+                <div className="so-card-info">
+                  <div className="so-card-title">{soSelected.title}</div>
+                  <div className="so-card-id">{soSelected.id}</div>
+                  {soFavCount !== null && (
+                    <div className="so-card-count">
+                      В избранном у <b>{soFavCount}</b> {soFavCount === 1 ? 'клиента' : soFavCount < 5 ? 'клиентов' : 'клиентов'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="so-actions">
+              <button
+                className="admin-btn"
+                disabled={!soSelected || soSending}
+                onClick={handleSoSend}
+              >
+                {soSending ? 'Отправляем...' : 'Отправить уведомление'}
+              </button>
+              {soMessage && (
+                <p className={`so-message ${soReport?.totals?.failed > 0 ? 'so-message--warn' : ''}`}>{soMessage}</p>
+              )}
+            </div>
+
+            {soReport && (
+              <div className="so-report">
+                <div className="so-report-title">Результат рассылки</div>
+                <div className="so-report-stats">
+                  <span>В избранном: <b>{soReport.totals.usersInFavorites}</b></span>
+                  <span>Отправлено: <b>{soReport.totals.sent}</b></span>
+                  <span>Telegram: <b>{soReport.totals.telegram}</b></span>
+                  <span>Email: <b>{soReport.totals.email}</b></span>
+                  <span>Уже получили: <b>{soReport.totals.skippedAlreadyNotified}</b></span>
+                  <span>Нет контакта: <b>{soReport.totals.skippedNoContact}</b></span>
+                  {soReport.totals.failed > 0 && <span className="so-report-err">Ошибок: <b>{soReport.totals.failed}</b></span>}
+                </div>
+                {soReport.entries.length > 0 && (
+                  <div className="so-report-entries">
+                    {soReport.entries.map((e, i) => (
+                      <div key={i} className={`so-report-entry so-report-entry--${e.status}`}>
+                        <span className="so-entry-name">{e.name || e.email || e.userId?.slice(0, 8)}</span>
+                        <span className="so-entry-status">{e.status === 'sent' ? `✓ ${e.channel}` : e.reason || e.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

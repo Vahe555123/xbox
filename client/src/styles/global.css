@@ -9273,3 +9273,62 @@ body.mobile-menu-open {
 .bc-hint-title { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary, #ccc); margin: 0 0 0.35rem; }
 .bc-hint-row { font-size: 0.78rem; color: var(--text-muted, #888); margin: 0 0 0.2rem; }
 .bc-hint-row code { background: rgba(255,255,255,0.08); padding: 0.05em 0.3em; border-radius: 3px; font-size: 0.85em; color: #a8d8ff; }
+
+/* ==================== Special-offer notify ==================== */
+.so-layout { display: flex; flex-direction: column; gap: 1.2rem; }
+
+.so-label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary, #ccc); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.4rem; }
+
+.so-search-wrap { position: relative; max-width: 520px; }
+
+.so-input {
+  width: 100%; box-sizing: border-box;
+  background: #1a1f2e; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
+  color: #fff; font-size: 0.95rem; padding: 0.65rem 0.9rem; outline: none;
+  transition: border-color 0.15s;
+}
+.so-input:focus { border-color: #107c10; }
+
+.so-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200;
+  background: #1e2335; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5); overflow: hidden;
+}
+.so-drop-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 0.6rem 0.9rem; border: none; background: transparent;
+  color: #fff; cursor: pointer; text-align: left; transition: background 0.12s;
+}
+.so-drop-item:hover { background: rgba(255,255,255,0.07); }
+.so-drop-img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: #2a2f3f; }
+.so-drop-title { flex: 1; font-size: 0.88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.so-drop-id { font-size: 0.72rem; color: var(--text-muted, #888); font-family: monospace; flex-shrink: 0; }
+
+.so-selected-card {
+  display: flex; align-items: center; gap: 14px; max-width: 520px;
+  background: #1a1f2e; border: 1px solid rgba(16,124,16,0.4); border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+.so-card-img { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background: #2a2f3f; flex-shrink: 0; }
+.so-card-info { flex: 1; min-width: 0; }
+.so-card-title { font-size: 0.95rem; font-weight: 700; color: #fff; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.so-card-id { font-size: 0.72rem; font-family: monospace; color: var(--text-muted, #888); margin-bottom: 4px; }
+.so-card-count { font-size: 0.82rem; color: #20d66b; }
+
+.so-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.so-message { font-size: 0.88rem; margin: 0; padding: 0.4rem 0.8rem; border-radius: 6px; background: rgba(16,124,16,0.15); color: #8ef58d; }
+.so-message--warn { background: rgba(255,120,0,0.12); color: #ffb347; }
+
+.so-report { background: #141820; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 1rem 1.1rem; }
+.so-report-title { font-size: 0.8rem; font-weight: 700; color: var(--text-secondary, #ccc); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.7rem; }
+.so-report-stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; font-size: 0.85rem; color: var(--text-secondary, #ccc); margin-bottom: 0.9rem; }
+.so-report-stats b { color: #fff; }
+.so-report-err { color: #ff7070; }
+.so-report-entries { display: flex; flex-direction: column; gap: 4px; max-height: 280px; overflow-y: auto; }
+.so-report-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0.35rem 0.7rem; border-radius: 6px; font-size: 0.82rem; background: rgba(255,255,255,0.04); }
+.so-report-entry--sent { background: rgba(16,124,16,0.1); }
+.so-report-entry--failed { background: rgba(255,50,50,0.08); }
+.so-entry-name { color: #fff; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.so-entry-status { font-size: 0.78rem; color: var(--text-muted, #888); white-space: nowrap; flex-shrink: 0; }
+.so-report-entry--sent .so-entry-status { color: #8ef58d; }
+.so-report-entry--failed .so-entry-status { color: #ff7070; }

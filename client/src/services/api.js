@@ -443,3 +443,13 @@ export async function sendAdminBroadcast(payload) {
   const { data } = await api.post('/admin/broadcast', payload, { timeout: 600000 });
   return data;
 }
+
+export async function fetchSpecialOfferFavoritesCount(productId) {
+  const { data } = await api.get('/admin/special-offer-notify/count', { params: { productId } });
+  return data?.count ?? 0;
+}
+
+export async function sendAdminSpecialOfferNotify(productId) {
+  const { data } = await api.post('/admin/special-offer-notify', { productId }, { timeout: 300000 });
+  return data;
+}

@@ -33,7 +33,7 @@ const collectionsService = require('../services/collectionsService');
 const collectionsScheduler = require('../services/collectionsScheduler');
 const saleIndexService = require('../services/saleIndexService');
 const saleIndexScheduler = require('../services/saleIndexScheduler');
-const { runSaleEndingBroadcast } = require('../services/dealNotifierService');
+const { runSaleEndingBroadcast, runManualSpecialOfferNotification, getFavoritesCountForProduct } = require('../services/dealNotifierService');
 const logger = require('../utils/logger');
 
 const router = Router();
@@ -804,6 +804,40 @@ router.post('/sale-index/send-reminders', requireAdmin, async (req, res, next) =
     next(err);
   } finally {
     saleEndingBroadcastRunning = false;
+  }
+});
+
+// ----- Special-offer manual notification -----
+let specialOfferNotifyRunning = false;
+
+// Returns how many users have this game in their favorites (preview before sending)
+router.get('/special-offer-notify/count', requireAdmin, async (req, res, next) => {
+  const productId = String(req.query.productId || '').trim().toUpperCase();
+  if (!productId) return res.status(400).json({ error: 'productId обязателен' });
+  try {
+    const count = await getFavoritesCountForProduct(productId);
+    res.json({ count });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Sends special-offer notifications to all users who have this game in favorites
+router.post('/special-offer-notify', requireAdmin, async (req, res, next) => {
+  if (specialOfferNotifyRunning) {
+    return res.status(409).json({ error: 'Рассылка уже выполняется' });
+  }
+  const productId = String(req.body?.productId || '').trim().toUpperCase();
+  if (!productId) return res.status(400).json({ error: 'productId обязателен' });
+
+  specialOfferNotifyRunning = true;
+  try {
+    const report = await runManualSpecialOfferNotification(productId);
+    res.json({ report });
+  } catch (err) {
+    next(err);
+  } finally {
+    specialOfferNotifyRunning = false;
   }
 });
 
