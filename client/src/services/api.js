@@ -413,3 +413,13 @@ export async function refreshAdminSaleIndex() {
   const { data } = await api.post('/admin/sale-index/refresh');
   return data;
 }
+
+export async function stopAdminSaleIndex() {
+  const { data } = await api.post('/admin/sale-index/stop');
+  return data;
+}
+
+export async function fetchAdminSaleIndexRuns(limit = 20) {
+  const { data } = await api.get('/admin/sale-index/runs', { params: { limit } });
+  return data?.runs || [];
+}

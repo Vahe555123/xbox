@@ -38,6 +38,10 @@ import {
   fetchAdminCollectionsRefreshState,
   refreshAdminCollections,
   updateAdminCollectionsSchedule,
+  fetchAdminSaleIndex,
+  refreshAdminSaleIndex,
+  stopAdminSaleIndex,
+  fetchAdminSaleIndexRuns,
 } from '../services/api';
 
 function formatDate(d) {
@@ -412,6 +416,12 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [collectionsRefresh, setCollectionsRefresh] = useState(null);
   const [scheduleForm, setScheduleForm] = useState({ hour: 4, minute: 0, enabled: true });
 
+  // Sale Index
+  const [saleIndex, setSaleIndex] = useState(null);
+  const [saleIndexRuns, setSaleIndexRuns] = useState([]);
+  const [saleIndexLoading, setSaleIndexLoading] = useState(false);
+  const [saleIndexMessage, setSaleIndexMessage] = useState('');
+
   // Auth check
   useEffect(() => {
     if (!currentUser) {
@@ -556,6 +566,20 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadSaleIndex = useCallback(async () => {
+    try {
+      const data = await fetchAdminSaleIndex();
+      setSaleIndex(data);
+    } catch { /* ignore */ }
+  }, []);
+
+  const loadSaleIndexRuns = useCallback(async () => {
+    try {
+      const runs = await fetchAdminSaleIndexRuns(20);
+      setSaleIndexRuns(runs);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     if (!authorized) return;
     if (tab === 'dashboard') {
@@ -575,7 +599,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     else if (tab === 'topup') loadTopupCards();
     else if (tab === 'purchases') loadPurchases(purchasesSort);
     else if (tab === 'collections') { loadCollections(); loadCollectionsRefresh(); }
-  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadRussianIndex, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort, loadCollections, loadCollectionsRefresh]);
+    else if (tab === 'scheduler') { loadSaleIndex(); loadSaleIndexRuns(); }
+  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadRussianIndex, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort, loadCollections, loadCollectionsRefresh, loadSaleIndex, loadSaleIndexRuns]);
 
   // Poll snapshot-refresh status while a refresh is running.
   useEffect(() => {
@@ -592,6 +617,14 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     const timer = setInterval(loadRussianIndex, 3000);
     return () => clearInterval(timer);
   }, [authorized, tab, russianIndexState?.isBuilding, loadRussianIndex]);
+
+  // Poll sale index while it's running.
+  useEffect(() => {
+    if (!authorized || tab !== 'scheduler') return undefined;
+    if (!saleIndex?.scheduler?.isRunning) return undefined;
+    const timer = setInterval(loadSaleIndex, 3000);
+    return () => clearInterval(timer);
+  }, [authorized, tab, saleIndex?.scheduler?.isRunning, loadSaleIndex]);
 
   const handleUserSearch = (e) => {
     e.preventDefault();
@@ -1001,6 +1034,36 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setDealCheckResult('Ошибка: ' + (err.response?.data?.error || err.message));
     } finally {
       setDealCheckLoading(false);
+    }
+  };
+
+  const handleSaleIndexStart = async () => {
+    setSaleIndexLoading(true);
+    setSaleIndexMessage('');
+    try {
+      const result = await refreshAdminSaleIndex();
+      if (result.alreadyRunning) {
+        setSaleIndexMessage('Сканирование уже запущено');
+      } else {
+        setSaleIndexMessage('Сканирование запущено — обновляется в фоне');
+        await loadSaleIndex();
+        await loadSaleIndexRuns();
+      }
+    } catch (err) {
+      setSaleIndexMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setSaleIndexLoading(false);
+    }
+  };
+
+  const handleSaleIndexStop = async () => {
+    setSaleIndexMessage('');
+    try {
+      await stopAdminSaleIndex();
+      setSaleIndexMessage('Планировщик остановлен');
+      await loadSaleIndex();
+    } catch (err) {
+      setSaleIndexMessage('Ошибка: ' + (err.response?.data?.error || err.message));
     }
   };
 
@@ -2304,6 +2367,136 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ==================== Sale Index block inside Scheduler ==================== */}
+      {tab === 'scheduler' && (
+        <div className="admin-panel">
+          <div className="admin-grid-2col">
+            {/* Left: controls */}
+            <div className="admin-card">
+              <div className="admin-card-head">
+                <div>
+                  <h3>Индекс скидок Xbox</h3>
+                  <p className="admin-card-desc">
+                    Сканирует каталог Xbox по сортировке «AllDeals desc», сохраняет игры со скидками и даты окончания. Автообновление: каждый час.
+                  </p>
+                </div>
+              </div>
+
+              <div className="admin-scheduler-action" style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                <button
+                  className="admin-btn admin-btn-accent"
+                  onClick={handleSaleIndexStart}
+                  disabled={saleIndexLoading || saleIndex?.scheduler?.isRunning}
+                >
+                  {saleIndex?.scheduler?.isRunning ? 'Сканирование...' : (saleIndexLoading ? 'Запуск...' : 'Запустить сейчас')}
+                </button>
+                <button
+                  className="admin-btn admin-btn-secondary"
+                  onClick={handleSaleIndexStop}
+                  disabled={saleIndexLoading}
+                >
+                  Остановить таймер
+                </button>
+                <button
+                  className="admin-btn admin-btn-sm"
+                  onClick={() => { loadSaleIndex(); loadSaleIndexRuns(); }}
+                >
+                  Обновить
+                </button>
+              </div>
+              {saleIndexMessage && <p className="admin-scheduler-result" style={{ marginTop: '0.75rem' }}>{saleIndexMessage}</p>}
+            </div>
+
+            {/* Right: status */}
+            <div className="admin-card">
+              <h3>Статус планировщика</h3>
+              {saleIndex ? (
+                <>
+                  <dl className="admin-dl">
+                    <dt>Всего игр в базе</dt>
+                    <dd>{(saleIndex.totalProducts ?? 0).toLocaleString('ru-RU')}</dd>
+                    <dt>Интервал</dt>
+                    <dd>{saleIndex.scheduler?.intervalHours}ч</dd>
+                    <dt>Последний запуск</dt>
+                    <dd>{formatDate(saleIndex.scheduler?.lastRunAt)}</dd>
+                    <dt>Результат</dt>
+                    <dd>
+                      <span className={`admin-status ${saleIndex.scheduler?.lastRunStatus === 'success' ? 'admin-status-ok' : saleIndex.scheduler?.lastRunStatus ? 'admin-status-err' : ''}`}>
+                        {saleIndex.scheduler?.lastRunStatus || 'не запускался'}
+                      </span>
+                    </dd>
+                    <dt>Следующий запуск</dt>
+                    <dd>{formatDate(saleIndex.scheduler?.nextRunAt)}</dd>
+                    <dt>Работает</dt>
+                    <dd>{saleIndex.scheduler?.isRunning ? 'Да (в процессе)' : 'Нет'}</dd>
+                  </dl>
+                  {saleIndex.lastRun && (
+                    <div className="admin-report-stats" style={{ marginTop: '1rem' }}>
+                      <div className="admin-report-stat"><strong>{saleIndex.lastRun.pages_scanned ?? '—'}</strong><span>страниц</span></div>
+                      <div className="admin-report-stat"><strong>{saleIndex.lastRun.products_found ?? '—'}</strong><span>найдено</span></div>
+                      <div className="admin-report-stat"><strong>{saleIndex.lastRun.products_updated ?? '—'}</strong><span>обновлено</span></div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p style={{ color: 'var(--text-muted)' }}>Загрузка...</p>
+              )}
+            </div>
+          </div>
+
+          {/* Run history */}
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <h3>История запусков</h3>
+              <button className="admin-btn admin-btn-sm" onClick={loadSaleIndexRuns}>Обновить</button>
+            </div>
+            <div className="admin-table-wrap">
+              <table className="admin-table admin-table-compact">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Начало</th>
+                    <th>Конец</th>
+                    <th>Статус</th>
+                    <th>Страниц</th>
+                    <th>Найдено</th>
+                    <th>Обновлено</th>
+                    <th>Ошибка</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {saleIndexRuns.map((run) => (
+                    <tr key={run.id}>
+                      <td className="admin-mono">{run.id}</td>
+                      <td>{formatDate(run.started_at)}</td>
+                      <td>{run.finished_at ? formatDate(run.finished_at) : <span style={{ color: 'var(--text-muted)' }}>в процессе</span>}</td>
+                      <td>
+                        <span className={`admin-status ${run.status === 'success' ? 'admin-status-ok' : run.status === 'failed' ? 'admin-status-err' : ''}`}>
+                          {run.status}
+                        </span>
+                      </td>
+                      <td>{run.pages_scanned ?? '—'}</td>
+                      <td>{run.products_found ?? '—'}</td>
+                      <td>{run.products_updated ?? '—'}</td>
+                      <td style={{ color: run.error ? '#f87171' : 'var(--text-muted)', maxWidth: 220, wordBreak: 'break-word' }}>
+                        {run.error || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                  {saleIndexRuns.length === 0 && (
+                    <tr>
+                      <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                        Запусков ещё не было
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
