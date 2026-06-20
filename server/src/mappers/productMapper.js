@@ -149,11 +149,14 @@ function extractDealEndDate(priceData, availability) {
   if (Array.isArray(availabilityConditions)) {
     for (const item of availabilityConditions) {
       const endDate = item?.EndDate || item?.endDate || null;
-      if (endDate) return endDate;
+      if (endDate) return normalizeXboxEndDate(endDate);
     }
   }
 
-  return priceData?.conditions?.endDate
+  const raw = priceData?.endDateUtc          // browse/search: "MM/DD/YYYY HH:MM:SS" (UTC)
+    || availability?.endDateUtc
+    || availability?.price?.endDateUtc
+    || priceData?.conditions?.endDate
     || priceData?.Conditions?.EndDate
     || priceData?.endDate
     || priceData?.EndDate
@@ -162,6 +165,28 @@ function extractDealEndDate(priceData, availability) {
     || availability?.endDate
     || availability?.EndDate
     || null;
+
+  return normalizeXboxEndDate(raw);
+}
+
+/**
+ * Xbox browse returns the sale end as `endDateUtc` in US format
+ * "MM/DD/YYYY HH:MM:SS" representing a UTC instant. Convert it to a proper
+ * ISO string so `new Date(...)` is unambiguous. Pass ISO strings through.
+ */
+function normalizeXboxEndDate(value) {
+  if (!value) return null;
+  const str = String(value).trim();
+
+  const usMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (usMatch) {
+    const [, mm, dd, yyyy, hh = '0', min = '0', ss = '0'] = usMatch;
+    const ms = Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min), Number(ss));
+    if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+  }
+
+  const parsed = new Date(str);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 function pickAvailabilityPrice(availability) {
