@@ -49,7 +49,7 @@ async function upsertSaleProducts(products) {
         p.image || null,
         p.price?.value ?? null,
         p.price?.original ?? null,
-        p.price?.discountPercent ?? null,
+        p.price?.discountPercent != null ? Math.round(p.price.discountPercent) : null,
         endDate ?? null,
         endDay,
         now,
