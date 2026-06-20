@@ -393,3 +393,23 @@ export async function fetchAdminPurchases({ sort = 'count', page = 1, limit = 50
   const { data } = await api.get('/admin/purchases', { params: { sort, page, limit } });
   return data;
 }
+
+export async function fetchSaleEndDates() {
+  const { data } = await api.get('/xbox/sale-end-dates');
+  return data?.dates || [];
+}
+
+export async function subscribeSaleEndReminder(date) {
+  const { data } = await api.post('/xbox/sale-end-reminder', { date });
+  return data;
+}
+
+export async function fetchAdminSaleIndex() {
+  const { data } = await api.get('/admin/sale-index');
+  return data;
+}
+
+export async function refreshAdminSaleIndex() {
+  const { data } = await api.post('/admin/sale-index/refresh');
+  return data;
+}

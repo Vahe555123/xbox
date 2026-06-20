@@ -8,6 +8,7 @@ const russianLanguageIndexScheduler = require('./services/russianLanguageIndexSc
 const collectionsScheduler = require('./services/collectionsScheduler');
 const priceRateScheduler = require('./services/priceRateScheduler');
 const topupCardScheduler = require('./services/topupCardScheduler');
+const saleIndexScheduler = require('./services/saleIndexScheduler');
 const telegramBotService = require('./services/telegramBotService');
 const { initCacheSettings } = require('./services/cacheSettingsService');
 
@@ -33,6 +34,7 @@ initDb()
     collectionsScheduler.start();
     priceRateScheduler.start();
     topupCardScheduler.start();
+    saleIndexScheduler.start();
     telegramBotService.startPolling();
   })
   .catch((err) => {
@@ -54,6 +56,7 @@ process.on('SIGTERM', () => {
   collectionsScheduler.stop();
   priceRateScheduler.stop();
   topupCardScheduler.stop();
+  saleIndexScheduler.stop();
   telegramBotService.stopPolling();
   if (server) {
     server.close(() => process.exit(0));

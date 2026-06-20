@@ -269,6 +269,54 @@ async function initDb() {
       data JSONB NOT NULL,
       refreshed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    -- Index of games currently on sale, refreshed hourly.
+    CREATE TABLE IF NOT EXISTS sale_products (
+      product_id TEXT PRIMARY KEY,
+      title TEXT,
+      image TEXT,
+      price_usd NUMERIC,
+      original_price_usd NUMERIC,
+      discount_percent INTEGER,
+      deal_end_date TIMESTAMPTZ,
+      deal_end_day DATE,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sale_products_deal_end_day
+      ON sale_products (deal_end_day)
+      WHERE deal_end_day IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_sale_products_last_seen
+      ON sale_products (last_seen_at DESC);
+
+    -- Tracks each refresh run of the sale index.
+    CREATE TABLE IF NOT EXISTS sale_index_runs (
+      id BIGSERIAL PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'running',
+      products_found INTEGER NOT NULL DEFAULT 0,
+      products_updated INTEGER NOT NULL DEFAULT 0,
+      pages_scanned INTEGER NOT NULL DEFAULT 0,
+      error TEXT,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      finished_at TIMESTAMPTZ
+    );
+
+    -- User subscriptions for deal-end reminders.
+    CREATE TABLE IF NOT EXISTS sale_end_reminders (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      deal_end_day DATE NOT NULL,
+      notified BOOLEAN NOT NULL DEFAULT FALSE,
+      notified_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (user_id, deal_end_day)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sale_end_reminders_pending
+      ON sale_end_reminders (deal_end_day)
+      WHERE notified = FALSE;
   `);
 
   logger.info('PostgreSQL schema ready');

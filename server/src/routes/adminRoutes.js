@@ -30,6 +30,8 @@ const { getHelpContent, updateHelpContent } = require('../services/helpContentSe
 const { getSupportLinks, updateSupportLinks } = require('../services/supportLinksService');
 const collectionsService = require('../services/collectionsService');
 const collectionsScheduler = require('../services/collectionsScheduler');
+const saleIndexService = require('../services/saleIndexService');
+const saleIndexScheduler = require('../services/saleIndexScheduler');
 const logger = require('../utils/logger');
 
 const router = Router();
@@ -699,6 +701,47 @@ router.put('/collections/:id/products', requireAdmin, async (req, res, next) => 
     const productIds = Array.isArray(req.body?.productIds) ? req.body.productIds : [];
     const ids = await collectionsService.setCollectionProducts(req.params.id, productIds);
     res.json({ success: true, productIds: ids });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==================== Sale Index (игры со скидками) ====================
+
+router.get('/sale-index', requireAdmin, async (_req, res, next) => {
+  try {
+    const state = await saleIndexService.getState();
+    res.json({ ...state, scheduler: saleIndexScheduler.getState() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/sale-index/refresh', requireAdmin, async (_req, res) => {
+  const schedulerState = saleIndexScheduler.getState();
+  if (schedulerState.isRunning) {
+    return res.json({ started: false, alreadyRunning: true });
+  }
+  saleIndexScheduler.runNow().catch((err) => {
+    logger.error('Manual sale index refresh failed', { message: err.message });
+  });
+  res.json({ started: true });
+});
+
+router.get('/sale-index/products', requireAdmin, async (req, res, next) => {
+  try {
+    const date = req.query.date || null;
+    if (date) {
+      const products = await saleIndexService.getProductsByEndDay(date);
+      return res.json({ products });
+    }
+    const { rows } = await pool.query(
+      `SELECT product_id, title, discount_percent, deal_end_day, last_seen_at
+       FROM sale_products
+       ORDER BY discount_percent DESC NULLS LAST, last_seen_at DESC
+       LIMIT 100`,
+    );
+    res.json({ products: rows });
   } catch (err) {
     next(err);
   }

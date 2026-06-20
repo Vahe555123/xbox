@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { fetchSaleEndDates } from '../services/api';
+import SaleEndReminderModal from './SaleEndReminderModal';
 
 const SKIP_FILTER_KEYS = ['orderby', 'MaturityRating', 'Accessibility', 'SupportedLanguages'];
 // These filters allow only one value at a time (radio behaviour)
@@ -208,10 +210,14 @@ export default function FilterPanel({
   onToggle,
   priceRubBoundaries,
   collections,
+  currentUser,
+  onNeedAuth,
 }) {
   const [internalExpanded, setInternalExpanded] = useState(true);
   const expanded = isOpen !== undefined ? isOpen : internalExpanded;
   const [openDropdownKey, setOpenDropdownKey] = useState(null);
+  const [saleEndDates, setSaleEndDates] = useState([]);
+  const [reminderOpen, setReminderOpen] = useState(false);
 
   function handleToggle() {
     if (onToggle) {
@@ -236,6 +242,11 @@ export default function FilterPanel({
   useEffect(() => {
     setDraftQuery(query || '');
   }, [query]);
+
+  // Load sale end dates once on mount
+  useEffect(() => {
+    fetchSaleEndDates().then(setSaleEndDates).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if ((draftQuery || '') === (query || '')) return undefined;
@@ -504,16 +515,24 @@ export default function FilterPanel({
 
           {saleChipActive && (
             <div className="filter-sale-date-row">
-              <label className="filter-sale-date-label">
-                Скидка действует до
-                <input
-                  type="date"
-                  className="filter-sale-date-input"
-                  value={saleEndDate}
-                  onChange={(e) => setSaleEndDate(e.target.value)}
-                  min={new Date().toISOString().slice(0, 10)}
-                />
-              </label>
+              <span className="filter-sale-date-label">Скидки до:</span>
+              <select
+                className="filter-sale-date-select"
+                value={saleEndDate}
+                onChange={(e) => setSaleEndDate(e.target.value)}
+              >
+                <option value="">Выберите дату</option>
+                {saleEndDates.map((item) => {
+                  const [y, m, d] = item.date.split('-');
+                  const label = new Date(Number(y), Number(m) - 1, Number(d))
+                    .toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric', year: 'numeric' });
+                  return (
+                    <option key={item.date} value={item.date}>
+                      {label} — {item.productCount} {item.productCount === 1 ? 'товар' : 'товаров'}
+                    </option>
+                  );
+                })}
+              </select>
               {saleEndDate && (
                 <button
                   type="button"
@@ -522,6 +541,16 @@ export default function FilterPanel({
                   aria-label="Сбросить дату"
                 >
                   &times;
+                </button>
+              )}
+              {saleEndDates.length > 0 && (
+                <button
+                  type="button"
+                  className="filter-sale-reminder-btn"
+                  onClick={() => setReminderOpen(true)}
+                  title="Получить напоминание об окончании скидок"
+                >
+                  🔔
                 </button>
               )}
             </div>
@@ -568,6 +597,15 @@ export default function FilterPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {reminderOpen && (
+        <SaleEndReminderModal
+          dates={saleEndDates}
+          onClose={() => setReminderOpen(false)}
+          isLoggedIn={Boolean(currentUser)}
+          onNeedAuth={onNeedAuth}
+        />
       )}
     </section>
   );

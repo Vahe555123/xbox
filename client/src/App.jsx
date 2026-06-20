@@ -684,6 +684,8 @@ export default function App() {
           }}
           priceRubBoundaries={priceRubBoundaries}
           collections={collections}
+          currentUser={currentUser}
+          onNeedAuth={() => setAuthModalOpen(true)}
         />
 
         <Routes>
