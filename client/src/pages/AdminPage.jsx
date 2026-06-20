@@ -1882,87 +1882,86 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       {/* ==================== Special-offer notify ==================== */}
       {tab === 'notifications' && (
         <div className="admin-panel" style={{ marginTop: 24 }}>
-          <h3 className="admin-section-title" style={{ marginBottom: 16 }}>Уведомление о Спецпредложении</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 16 }}>
-            Выберите игру — все клиенты, у которых она в Избранном, получат уведомление о спецпредложении (Telegram или Email).
+          <h3 className="admin-section-title" style={{ marginBottom: 12 }}>Уведомление о Спецпредложении</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 18 }}>
+            Выберите игру — клиенты, у которых она в Избранном, получат уведомление сразу в Telegram и на Email.
             Повторная отправка одному клиенту возможна только на следующий день.
           </p>
 
-          {/* Top row: combobox + send button */}
-          <div className="so-toprow">
-            <div className="so-combobox" ref={soSearchRef}>
-              {/* Trigger */}
-              <button
-                type="button"
-                className={`so-trigger${soDropOpen ? ' so-trigger--open' : ''}`}
-                onClick={handleSoOpen}
-              >
-                {soSelected ? (
-                  <>
-                    {soSelected.image && <img src={soSelected.image} alt="" className="so-trigger-img" />}
-                    <span className="so-trigger-title">{soSelected.title || soSelected.id}</span>
-                    <span className="so-trigger-id">{soSelected.id}</span>
-                  </>
-                ) : (
-                  <span className="so-trigger-placeholder">Выберите игру...</span>
-                )}
-                <span className="so-trigger-arrow">{soDropOpen ? '▲' : '▼'}</span>
-              </button>
+          {/* Send button — TOP, full width */}
+          <button
+            className="so-send-top-btn"
+            disabled={!soSelected || soSending}
+            onClick={handleSoSend}
+          >
+            {soSending
+              ? '⏳ Отправляем...'
+              : soSelected
+                ? `📢 Отправить уведомление — ${soSelected.title || soSelected.id}`
+                : '📢 Выберите игру ниже и нажмите «Отправить»'}
+          </button>
 
-              {/* Dropdown panel */}
-              {soDropOpen && (
-                <div className="so-dropdown">
-                  <div className="so-drop-search-wrap">
-                    <input
-                      className="so-drop-search"
-                      type="text"
-                      placeholder="Поиск по названию или ID..."
-                      value={soQuery}
-                      onChange={(e) => handleSoSearch(e.target.value)}
-                      autoComplete="off"
-                      autoFocus
-                    />
-                  </div>
-                  <div className="so-drop-list">
-                    {(() => {
-                      const isSearching = soQuery.trim().length > 0;
-                      const list = isSearching ? soResults : soDefaultGames;
-                      if (list.length === 0 && isSearching) return <div className="so-drop-empty">Ничего не найдено</div>;
-                      if (list.length === 0) return <div className="so-drop-empty">Нет игр со спецпредложениями</div>;
-                      return (
-                        <>
-                          {!isSearching && (
-                            <div className="so-drop-section-label">Игры со спецпредложением</div>
-                          )}
-                          {list.map((p) => (
-                            <button
-                              key={p.id}
-                              className={`so-drop-item${soSelected?.id === p.id ? ' so-drop-item--active' : ''}`}
-                              onMouseDown={(e) => { e.preventDefault(); handleSoSelect(p); }}
-                            >
-                              {p.image && <img src={p.image} alt="" className="so-drop-img" />}
-                              <span className="so-drop-title">{p.title || p.id}</span>
-                              <span className="so-drop-id">{p.id}</span>
-                              {!isSearching && p.favorites_count > 0 && (
-                                <span className="so-drop-fav">{p.favorites_count} ★</span>
-                              )}
-                            </button>
-                          ))}
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              )}
-            </div>
-
+          {/* Combobox */}
+          <div className="so-combobox" ref={soSearchRef} style={{ marginTop: 14, maxWidth: 600 }}>
             <button
-              className="admin-btn so-send-btn"
-              disabled={!soSelected || soSending}
-              onClick={handleSoSend}
+              type="button"
+              className={`so-trigger${soDropOpen ? ' so-trigger--open' : ''}`}
+              onClick={handleSoOpen}
             >
-              {soSending ? 'Отправляем...' : 'Отправить уведомление'}
+              {soSelected ? (
+                <>
+                  {soSelected.image && <img src={soSelected.image} alt="" className="so-trigger-img" />}
+                  <span className="so-trigger-title">{soSelected.title || soSelected.id}</span>
+                  <span className="so-trigger-id">{soSelected.id}</span>
+                </>
+              ) : (
+                <span className="so-trigger-placeholder">Выберите игру...</span>
+              )}
+              <span className="so-trigger-arrow">{soDropOpen ? '▲' : '▼'}</span>
             </button>
+
+            {soDropOpen && (
+              <div className="so-dropdown">
+                <div className="so-drop-search-wrap">
+                  <input
+                    className="so-drop-search"
+                    type="text"
+                    placeholder="Поиск по названию или ID..."
+                    value={soQuery}
+                    onChange={(e) => handleSoSearch(e.target.value)}
+                    autoComplete="off"
+                    autoFocus
+                  />
+                </div>
+                <div className="so-drop-list">
+                  {(() => {
+                    const isSearching = soQuery.trim().length > 0;
+                    const list = isSearching ? soResults : soDefaultGames;
+                    if (list.length === 0 && isSearching) return <div className="so-drop-empty">Ничего не найдено</div>;
+                    if (list.length === 0) return <div className="so-drop-empty">Нет игр со спецпредложениями</div>;
+                    return (
+                      <>
+                        {!isSearching && <div className="so-drop-section-label">Игры со спецпредложением</div>}
+                        {list.map((p) => (
+                          <button
+                            key={p.id}
+                            className={`so-drop-item${soSelected?.id === p.id ? ' so-drop-item--active' : ''}`}
+                            onMouseDown={(e) => { e.preventDefault(); handleSoSelect(p); }}
+                          >
+                            {p.image && <img src={p.image} alt="" className="so-drop-img" />}
+                            <span className="so-drop-title">{p.title || p.id}</span>
+                            <span className="so-drop-id">{p.id}</span>
+                            {!isSearching && p.favorites_count > 0 && (
+                              <span className="so-drop-fav">{p.favorites_count} ★</span>
+                            )}
+                          </button>
+                        ))}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Selected game card */}

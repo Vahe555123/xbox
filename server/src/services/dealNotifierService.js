@@ -1598,8 +1598,38 @@ async function runManualSpecialOfferNotification(productId) {
         continue;
       }
 
-      const delivery = await deliverEventNotification(user, [item], 'special_offer');
-      if (!delivery) {
+      // Send to ALL available channels for this user (Telegram AND Email, not exclusive)
+      const channels = [];
+      const text = buildEventTelegramMessage(user.name, [item], 'special_offer');
+
+      const chatId = await getTelegramChatId(user.user_id);
+      if (chatId) {
+        try {
+          await sendBotMessage(chatId, text, { parseMode: 'HTML', disableWebPagePreview: true });
+          channels.push('telegram');
+          report.totals.telegram += 1;
+        } catch (err) {
+          logger.warn('[SpecialOfferNotify] Telegram failed', { userId: user.user_id, message: err.message });
+        }
+      }
+
+      if (user.email) {
+        try {
+          const transporter = createSmtpTransport();
+          await transporter.sendMail({
+            from: getFromAddress(),
+            to: user.email,
+            subject: buildEventEmailSubject([item], 'special_offer'),
+            html: buildEventEmailHtml(user.name, [item], 'special_offer'),
+          });
+          channels.push('email');
+          report.totals.email += 1;
+        } catch (err) {
+          logger.warn('[SpecialOfferNotify] Email failed', { userId: user.user_id, message: err.message });
+        }
+      }
+
+      if (channels.length === 0) {
         report.totals.skippedNoContact += 1;
         report.entries.push({ userId: user.user_id, name: user.name, status: 'skipped', reason: 'no_contact' });
         continue;
@@ -1607,17 +1637,15 @@ async function runManualSpecialOfferNotification(productId) {
 
       await markNotified(user.user_id, [[normalizedId, todayKey]]);
       report.totals.sent += 1;
-      if (delivery.channel === 'telegram') report.totals.telegram += 1;
-      if (delivery.channel === 'email') report.totals.email += 1;
       report.entries.push({
         userId: user.user_id,
         name: user.name,
         email: user.email,
         status: 'sent',
-        channel: delivery.channel,
-        recipient: delivery.recipient,
+        channel: channels.join('+'),
+        recipient: channels.join('+'),
       });
-      logger.info('[SpecialOfferNotify] Sent', { userId: user.user_id, channel: delivery.channel });
+      logger.info('[SpecialOfferNotify] Sent', { userId: user.user_id, channels });
     } catch (err) {
       report.totals.failed += 1;
       report.entries.push({ userId: user.user_id, name: user.name, status: 'failed', error: err.message });

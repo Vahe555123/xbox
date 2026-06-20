@@ -9276,11 +9276,16 @@ body.mobile-menu-open {
 
 /* ==================== Special-offer notify ==================== */
 
-/* Top row: combobox + send button */
-.so-toprow {
-  display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+/* Top send button — full-width, prominent */
+.so-send-top-btn {
+  display: block; width: 100%; padding: 0.85rem 1.2rem;
+  background: #107c10; border: none; border-radius: 10px;
+  color: #fff; font-size: 1rem; font-weight: 700; cursor: pointer;
+  text-align: center; transition: background 0.15s, opacity 0.15s;
+  letter-spacing: 0.01em;
 }
-.so-send-btn { white-space: nowrap; flex-shrink: 0; align-self: stretch; }
+.so-send-top-btn:hover:not(:disabled) { background: #138a13; }
+.so-send-top-btn:disabled { background: #1e2a1e; color: rgba(255,255,255,0.35); cursor: not-allowed; }
 
 /* Combobox wrapper */
 .so-combobox { position: relative; flex: 1; min-width: 260px; max-width: 560px; }
