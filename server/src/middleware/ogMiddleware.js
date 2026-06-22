@@ -47,7 +47,7 @@ module.exports = async function ogMiddleware(req, res, next) {
   if (!SOCIAL_BOT_RE.test(ua)) return next();
 
   const config = require('../config');
-  const origin = config.clientOrigin.replace(/\/$/, '');
+  const origin = config.clientOrigin.replace(/\/$/, '').toLowerCase();
   const url = `${origin}${req.path}`;
 
   // Страница игры: /game/<productId>
