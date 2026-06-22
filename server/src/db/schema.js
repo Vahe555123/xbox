@@ -59,6 +59,9 @@ async function initDb() {
     ALTER TABLE oauth_states
       ADD COLUMN IF NOT EXISTS link_user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
 
+    ALTER TABLE oauth_states
+      ADD COLUMN IF NOT EXISTS code_verifier TEXT;
+
     CREATE TABLE IF NOT EXISTS oauth_sessions (
       id TEXT PRIMARY KEY,
       payload JSONB NOT NULL,

@@ -334,31 +334,43 @@ async function createOAuthStartUrl(provider, linkUserId = null) {
   assertOAuthProvider(provider);
 
   const state = crypto.randomBytes(24).toString('hex');
+
+  if (provider === 'vk') {
+    const codeVerifier = crypto.randomBytes(72).toString('base64url');
+    const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+
+    await pool.query(
+      `INSERT INTO oauth_states (state, provider, expires_at, link_user_id, code_verifier)
+       VALUES ($1, $2, NOW() + ($3::int * INTERVAL '1 second'), $4, $5)`,
+      [state, provider, config.auth.oauthStateTtlSeconds, linkUserId || null, codeVerifier],
+    );
+
+    const url = new URL('https://oauth.vk.com/authorize');
+    url.searchParams.set('client_id', config.auth.vk.clientId);
+    url.searchParams.set('display', 'page');
+    url.searchParams.set('redirect_uri', getRedirectUri('vk'));
+    url.searchParams.set('scope', 'email');
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('v', config.auth.vk.apiVersion);
+    url.searchParams.set('state', state);
+    url.searchParams.set('code_challenge', codeChallenge);
+    url.searchParams.set('code_challenge_method', 'S256');
+    return url.toString();
+  }
+
   await pool.query(
     `INSERT INTO oauth_states (state, provider, expires_at, link_user_id)
      VALUES ($1, $2, NOW() + ($3::int * INTERVAL '1 second'), $4)`,
     [state, provider, config.auth.oauthStateTtlSeconds, linkUserId || null],
   );
 
-  if (provider === 'google') {
-    const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-    url.searchParams.set('client_id', config.auth.google.clientId);
-    url.searchParams.set('redirect_uri', getRedirectUri('google'));
-    url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', 'openid email profile');
-    url.searchParams.set('state', state);
-    url.searchParams.set('prompt', 'select_account');
-    return url.toString();
-  }
-
-  const url = new URL('https://oauth.vk.com/authorize');
-  url.searchParams.set('client_id', config.auth.vk.clientId);
-  url.searchParams.set('display', 'page');
-  url.searchParams.set('redirect_uri', getRedirectUri('vk'));
-  url.searchParams.set('scope', 'email');
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  url.searchParams.set('client_id', config.auth.google.clientId);
+  url.searchParams.set('redirect_uri', getRedirectUri('google'));
   url.searchParams.set('response_type', 'code');
-  url.searchParams.set('v', config.auth.vk.apiVersion);
+  url.searchParams.set('scope', 'openid email profile');
   url.searchParams.set('state', state);
+  url.searchParams.set('prompt', 'select_account');
   return url.toString();
 }
 
@@ -392,14 +404,22 @@ async function exchangeGoogleCode(code) {
   };
 }
 
-async function exchangeVkCode(code) {
-  const tokenUrl = new URL('https://oauth.vk.com/access_token');
-  tokenUrl.searchParams.set('client_id', config.auth.vk.clientId);
-  tokenUrl.searchParams.set('client_secret', config.auth.vk.clientSecret);
-  tokenUrl.searchParams.set('redirect_uri', getRedirectUri('vk'));
-  tokenUrl.searchParams.set('code', code);
+async function exchangeVkCode(code, codeVerifier) {
+  const params = {
+    client_id: config.auth.vk.clientId,
+    client_secret: config.auth.vk.clientSecret,
+    redirect_uri: getRedirectUri('vk'),
+    code,
+  };
+  if (codeVerifier) {
+    params.code_verifier = codeVerifier;
+  }
 
-  const { data: token } = await axios.get(tokenUrl.toString());
+  const { data: token } = await axios.post(
+    'https://oauth.vk.com/access_token',
+    new URLSearchParams(params).toString(),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+  );
   if (token.error) {
     throw new Error(token.error_description || token.error);
   }
@@ -581,18 +601,18 @@ async function finishOAuthLogin(provider, query) {
   const stateResult = await pool.query(
     `DELETE FROM oauth_states
      WHERE state = $1 AND provider = $2 AND expires_at > NOW()
-     RETURNING state, link_user_id`,
+     RETURNING state, link_user_id, code_verifier`,
     [query.state, provider],
   );
   if (stateResult.rows.length === 0) {
     throw new Error('Invalid or expired OAuth state');
   }
 
-  const { link_user_id: linkUserId } = stateResult.rows[0];
+  const { link_user_id: linkUserId, code_verifier: codeVerifier } = stateResult.rows[0];
 
   const profile = provider === 'google'
     ? await exchangeGoogleCode(query.code)
-    : await exchangeVkCode(query.code);
+    : await exchangeVkCode(query.code, codeVerifier);
 
   if (linkUserId) {
     await linkProviderToUser(linkUserId, profile);
