@@ -345,13 +345,11 @@ async function createOAuthStartUrl(provider, linkUserId = null) {
       [state, provider, config.auth.oauthStateTtlSeconds, linkUserId || null, codeVerifier],
     );
 
-    const url = new URL('https://oauth.vk.com/authorize');
+    const url = new URL('https://id.vk.com/authorize');
     url.searchParams.set('client_id', config.auth.vk.clientId);
-    url.searchParams.set('display', 'page');
     url.searchParams.set('redirect_uri', getRedirectUri('vk'));
     url.searchParams.set('scope', 'email');
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('v', config.auth.vk.apiVersion);
     url.searchParams.set('state', state);
     url.searchParams.set('code_challenge', codeChallenge);
     url.searchParams.set('code_challenge_method', 'S256');
@@ -404,19 +402,23 @@ async function exchangeGoogleCode(code) {
   };
 }
 
-async function exchangeVkCode(code, codeVerifier) {
+async function exchangeVkCode(code, codeVerifier, deviceId) {
+  // VK ID (OAuth 2.1) token exchange — requires PKCE code_verifier and device_id
   const params = {
+    grant_type: 'authorization_code',
     client_id: config.auth.vk.clientId,
-    client_secret: config.auth.vk.clientSecret,
     redirect_uri: getRedirectUri('vk'),
     code,
   };
   if (codeVerifier) {
     params.code_verifier = codeVerifier;
   }
+  if (deviceId) {
+    params.device_id = deviceId;
+  }
 
   const { data: token } = await axios.post(
-    'https://oauth.vk.com/access_token',
+    'https://id.vk.com/oauth2/auth',
     new URLSearchParams(params).toString(),
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
   );
@@ -424,26 +426,29 @@ async function exchangeVkCode(code, codeVerifier) {
     throw new Error(token.error_description || token.error);
   }
 
-  const profileUrl = new URL('https://api.vk.com/method/users.get');
-  profileUrl.searchParams.set('user_ids', String(token.user_id));
-  profileUrl.searchParams.set('fields', 'photo_100');
-  profileUrl.searchParams.set('access_token', token.access_token);
-  profileUrl.searchParams.set('v', config.auth.vk.apiVersion);
-
-  const { data: profileResponse } = await axios.get(profileUrl.toString());
+  // VK ID user info endpoint
+  const { data: profileResponse } = await axios.post(
+    'https://id.vk.com/oauth2/user_info',
+    new URLSearchParams({
+      client_id: config.auth.vk.clientId,
+      access_token: token.access_token,
+    }).toString(),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+  );
   if (profileResponse.error) {
-    throw new Error(profileResponse.error.error_msg || 'VK profile request failed');
+    throw new Error(profileResponse.error_description || profileResponse.error || 'VK profile request failed');
   }
 
-  const profile = profileResponse.response?.[0] || {};
+  const profile = profileResponse.user || {};
   const name = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
+  const userId = profile.user_id || token.user_id;
 
   return {
     provider: 'vk',
-    providerId: String(token.user_id || profile.id),
-    email: normalizeEmail(token.email),
-    name: name || `VK ${token.user_id}`,
-    avatar: profile.photo_100 || '',
+    providerId: String(userId),
+    email: normalizeEmail(profile.email || token.email),
+    name: name || `VK ${userId}`,
+    avatar: profile.avatar || '',
   };
 }
 
@@ -612,7 +617,7 @@ async function finishOAuthLogin(provider, query) {
 
   const profile = provider === 'google'
     ? await exchangeGoogleCode(query.code)
-    : await exchangeVkCode(query.code, codeVerifier);
+    : await exchangeVkCode(query.code, codeVerifier, query.device_id);
 
   if (linkUserId) {
     await linkProviderToUser(linkUserId, profile);
