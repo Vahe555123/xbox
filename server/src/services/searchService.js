@@ -260,16 +260,20 @@ async function search({
     { languageMode, specialOffersOnly, freeOnly, saleEndBefore },
   );
 
-  // When the first page is entirely filtered out (e.g. Price asc returns free games
-  // first, which are hidden unless freeOnly is set), fetch extra pages until we get
-  // some visible products or run out of pages.
-  const MAX_SKIP_PAGES = 5;
+  // When free games crowd out paid games on a page (e.g. Price asc puts free games first),
+  // accumulate paid games across multiple pages until we have a full page worth.
+  // Trigger only when more than half the raw page was filtered — avoids extra requests
+  // on normal sorts where nearly all products survive the filter.
+  const PAGE_SIZE = config.xbox.pageSize;
+  const initialRawCount = rawProducts.length;
+  const MAX_SKIP_PAGES = 8;
   let skipAttempts = 0;
   while (
     !languageFilterActive
-    && enrichedProducts.length === 0
     && nextEncodedCT
     && skipAttempts < MAX_SKIP_PAGES
+    && enrichedProducts.length < PAGE_SIZE
+    && (skipAttempts > 0 || enrichedProducts.length * 2 < initialRawCount)
   ) {
     skipAttempts += 1;
     // eslint-disable-next-line no-await-in-loop
