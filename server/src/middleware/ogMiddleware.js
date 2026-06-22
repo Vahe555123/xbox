@@ -48,7 +48,10 @@ module.exports = async function ogMiddleware(req, res, next) {
 
   const config = require('../config');
   const origin = config.clientOrigin.replace(/\/$/, '').toLowerCase();
-  const url = `${origin}${req.path}`;
+  // originalUrl (не path) — чтобы query-параметры попадали в og:url.
+  // Без этого Telegram канонизирует любой URL обратно к "/" и переиспользует
+  // старый закэшированный результат, игнорируя обновления.
+  const url = `${origin}${req.originalUrl}`;
 
   // Страница игры: /game/<productId>
   const gameMatch = req.path.match(/^\/game\/([A-Za-z0-9]+)$/);
