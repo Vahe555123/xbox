@@ -115,6 +115,10 @@ const config = {
     productId: parseInt(process.env.GAMEPASS_PRODUCT_ID, 10) || 4687274,
   },
 
+  ubisoftPlus: {
+    productId: parseInt(process.env.UBISOFT_PLUS_PRODUCT_ID, 10) || 3711939,
+  },
+
   digiseller: {
     sellerId: process.env.DIGISELLER_SELLER_ID || '1279033',
     payBaseUrl: process.env.DIGISELLER_PAY_BASE_URL || 'https://www.oplata.info/asp2/pay_wm.asp',

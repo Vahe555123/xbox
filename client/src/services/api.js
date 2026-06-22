@@ -155,6 +155,16 @@ export async function createGamePassOrder(selections) {
   return data;
 }
 
+export async function fetchUbisoft() {
+  const { data } = await api.get('/ubisoft');
+  return data;
+}
+
+export async function createUbisoftOrder(selections) {
+  const { data } = await api.post('/ubisoft/order', { selections });
+  return data;
+}
+
 export function getOAuthLinkUrl(provider) {
   const base = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
   return `${base}/auth/oauth/${encodeURIComponent(provider)}/link`;

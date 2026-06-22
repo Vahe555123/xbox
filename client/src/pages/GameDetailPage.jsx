@@ -788,23 +788,13 @@ export default function GameDetailPage() {
                 {purchaseLoading ? 'Готовим ссылку...' : hasManagedPurchaseMode ? 'Купить' : 'Посмотреть'}
               </button>
               {data.subscriptions?.ubisoftPlus && !data.subscriptions?.gamePass ? (
-                <a
-                  className="ps-gamepass-button"
-                  href="https://www.oplata.info/asp2/pay_wm.asp?id_d=3711939&ai=1279033&_ow=0"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                <Link className="ps-gamepass-button" to="/ubisoft">
                   Купить Ubisoft+
-                </a>
+                </Link>
               ) : (
-                <a
-                  className="ps-gamepass-button"
-                  href="https://www.oplata.info/asp2/pay_wm.asp?id_d=4687274&ai=1279033&_ow=0"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                <Link className="ps-gamepass-button" to="/gamepass">
                   Купить Game Pass
-                </a>
+                </Link>
               )}
               <button
                 className={`ps-cart-button ${isInCart ? 'ps-cart-button--active' : ''}`}

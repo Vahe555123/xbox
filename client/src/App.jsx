@@ -7,6 +7,7 @@ import ProfilePage from './pages/ProfilePage';
 import AdminPage from './pages/AdminPage';
 import HelpPage from './pages/HelpPage';
 import GamePassPage from './pages/GamePassPage';
+import UbisoftPage from './pages/UbisoftPage';
 import AuthModal from './components/AuthModal';
 import FilterPanel from './components/FilterPanel';
 import SupportWidget from './components/SupportWidget';
@@ -712,6 +713,7 @@ export default function App() {
           />
           <Route path="/game/:productId" element={<GameDetailPage />} />
           <Route path="/gamepass" element={<GamePassPage />} />
+          <Route path="/ubisoft" element={<UbisoftPage />} />
           <Route
             path="/admin"
             element={(

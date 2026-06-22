@@ -6,6 +6,7 @@ const adminRoutes = require('./adminRoutes');
 const supportRoutes = require('./supportRoutes');
 const siteContentRoutes = require('./siteContentRoutes');
 const gamePassRoutes = require('./gamePassRoutes');
+const ubisoftRoutes = require('./ubisoftRoutes');
 const { getHealth } = require('../controllers/xboxController');
 
 const router = Router();
@@ -18,5 +19,6 @@ router.use('/admin', adminRoutes);
 router.use('/support-links', supportRoutes);
 router.use('/site/content', siteContentRoutes);
 router.use('/gamepass', gamePassRoutes);
+router.use('/ubisoft', ubisoftRoutes);
 
 module.exports = router;
