@@ -8,6 +8,34 @@ function formatPrice(rub) {
   return rub.toLocaleString('ru-RU') + ' ₽';
 }
 
+function OptionList({ opt, selections, basePrice, onChange }) {
+  return (
+    <div className="gp-page-option-group">
+      <p className="gp-option-label">{opt.label}</p>
+      <div className="gp-option-list">
+        {opt.variants.map((v) => {
+          const isSelected = selections[opt.id] === v.value;
+          const price = basePrice + v.modifyValue;
+          return (
+            <label key={v.value} className={`gp-option-row ${isSelected ? 'gp-option-row--selected' : ''}`}>
+              <input
+                type="radio"
+                name={`opt-${opt.id}`}
+                value={v.value}
+                checked={isSelected}
+                onChange={() => onChange(opt.id, v.value)}
+              />
+              <span className="gp-option-row-indicator" />
+              <span className="gp-option-row-text">{v.text}</span>
+              <span className="gp-option-row-price">{formatPrice(price)}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function GamePassPage() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -59,6 +87,9 @@ export default function GamePassPage() {
     }
   };
 
+  const handleChange = (optId, value) =>
+    setSelections((s) => ({ ...s, [optId]: value }));
+
   return (
     <div className="detail-page detail-store-page">
       <nav className="detail-breadcrumb">
@@ -97,12 +128,7 @@ export default function GamePassPage() {
             <div className="gp-error" style={{ marginTop: '1rem' }}>
               {error}
               <br />
-              <a
-                href="https://xboxportal.ru/product/4687274"
-                target="_blank"
-                rel="noreferrer"
-                className="gp-error-link"
-              >
+              <a href="https://xboxportal.ru/product/4687274" target="_blank" rel="noreferrer" className="gp-error-link">
                 Открыть на xboxportal.ru →
               </a>
             </div>
@@ -111,58 +137,13 @@ export default function GamePassPage() {
           {!loading && !error && product && (
             <>
               {product.options.map((opt) => (
-                <div key={opt.id} className="gp-page-option-group">
-                  <p className="gp-option-label">{opt.label}</p>
-
-                  {opt.type === 'radio' && (
-                    <div className="gp-page-plan-grid">
-                      {opt.variants.map((v) => {
-                        const price = product.basePrice + v.modifyValue;
-                        const isSelected = selections[opt.id] === v.value;
-                        return (
-                          <label
-                            key={v.value}
-                            className={`gp-page-plan-card ${isSelected ? 'gp-page-plan-card--selected' : ''}`}
-                          >
-                            <input
-                              type="radio"
-                              name={`opt-${opt.id}`}
-                              value={v.value}
-                              checked={isSelected}
-                              onChange={() => setSelections((s) => ({ ...s, [opt.id]: v.value }))}
-                            />
-                            <span className="gp-page-plan-name">{v.text}</span>
-                            <span className="gp-page-plan-price">{formatPrice(price)}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {opt.type === 'checkbox' && (
-                    <div className="gp-checkbox-list">
-                      {opt.variants.map((v) => {
-                        const isChecked = selections[opt.id] === v.value;
-                        return (
-                          <label key={v.value} className={`gp-checkbox-row ${isChecked ? 'selected' : ''}`}>
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => setSelections((s) => ({
-                                ...s,
-                                [opt.id]: e.target.checked ? v.value : undefined,
-                              }))}
-                            />
-                            <span className="gp-checkbox-text">{v.text}</span>
-                            {v.modifyValue > 0 && (
-                              <span className="gp-checkbox-add">+{formatPrice(v.modifyValue)}</span>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <OptionList
+                  key={opt.id}
+                  opt={opt}
+                  selections={selections}
+                  basePrice={product.basePrice}
+                  onChange={handleChange}
+                />
               ))}
 
               <div className="ps-buy-row gp-page-buy-row">
@@ -184,9 +165,7 @@ export default function GamePassPage() {
                 </div>
               </div>
 
-              {buyError && (
-                <p className="gp-error" style={{ marginTop: '0.75rem' }}>{buyError}</p>
-              )}
+              {buyError && <p className="gp-error" style={{ marginTop: '0.75rem' }}>{buyError}</p>}
 
               <p className="gp-pay-note" style={{ marginTop: '0.75rem' }}>
                 Безопасная оплата через <strong>oplata.info</strong> · Digiseller

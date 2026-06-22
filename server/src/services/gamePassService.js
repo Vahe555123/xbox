@@ -105,7 +105,7 @@ async function createGamePassOrder(selections = {}, productId = 4687274) {
   }, 0);
 
   const digiuid = randomUUID().toUpperCase();
-  const failPage = `https://xboxportal.ru/product/${productId}`;
+  const failPage = 'https://xboxtracker.ru/';
 
   // Build option fields using Digiseller's pay.asp format
   const optionFields = {};

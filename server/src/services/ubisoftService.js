@@ -101,7 +101,7 @@ async function createUbisoftOrder(selections = {}, productId) {
   }, 0);
 
   const digiuid = randomUUID().toUpperCase();
-  const failPage = `https://xboxportal.ru/product/${productId}`;
+  const failPage = 'https://xboxtracker.ru/';
 
   const optionFields = {};
   for (const opt of product.options || []) {
