@@ -106,7 +106,7 @@ const EMPTY_PURCHASE_FORM = {
   purchaseEmail: '',
   accountEmail: '',
   accountPassword: '',
-  paymentMode: 'key_activation',
+  paymentMode: 'topup_cards',
   saveToProfile: false,
 };
 
@@ -621,7 +621,7 @@ export default function GameDetailPage() {
       const settingsMissing = !hasPurchaseDelivery || !settings.xboxAccountEmail || !settings.hasXboxAccountPassword;
       setPurchaseForm((current) => ({
         ...current,
-        paymentMode: 'key_activation',
+        paymentMode: 'topup_cards',
         saveToProfile: settingsMissing,
       }));
     } catch {

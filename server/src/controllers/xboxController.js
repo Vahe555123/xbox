@@ -492,7 +492,7 @@ async function createProductPurchase(req, res, next) {
       registrationEmail: req.user?.email,
     });
     const buyerEmailForPayment = buildBuyerEmailForPayment(deliveryTarget);
-    const finalPaymentMode = paymentMode || savedSettings?.paymentMode || 'key_activation';
+    const finalPaymentMode = paymentMode || savedSettings?.paymentMode || 'topup_cards';
 
     if (req.user && saveToProfile) {
       const saveFields = {
@@ -804,7 +804,7 @@ async function createCartPurchase(req, res, next) {
     });
 
     const buyerEmailForPayment = buildBuyerEmailForPayment(deliveryTarget);
-    const finalPaymentMode = paymentMode || savedSettings?.paymentMode || 'key_activation';
+    const finalPaymentMode = paymentMode || savedSettings?.paymentMode || 'topup_cards';
 
     logger.info('Cart purchase final checkout params resolved', {
       cartLogId,
