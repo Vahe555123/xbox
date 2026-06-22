@@ -498,6 +498,12 @@ export default function GameDetailPage() {
     });
   }, [data]);
 
+  useEffect(() => {
+    if (purchaseResult?.paymentUrl && purchaseResult?.paymentType !== 'topup_cards') {
+      window.open(purchaseResult.paymentUrl, '_blank', 'noreferrer');
+    }
+  }, [purchaseResult]);
+
   const scrollRow = (key, dir) => {
     const el = scrollRefs.current[key];
     if (el) el.scrollBy({ left: dir * el.clientWidth * 0.75, behavior: 'smooth' });
@@ -579,8 +585,8 @@ export default function GameDetailPage() {
   const isSpecialOfferMode = purchaseForm.paymentMode === 'special_offer';
   const skipAccountFields = isKeyActivationMode || isTopupMode || isSpecialOfferMode;
   const needsPurchaseEmail = !hasSavedPurchaseEmail && !registrationEmail && !canUseTelegramDelivery;
-  const needsAccountEmail = !skipAccountFields && !hasSavedAccountEmail;
-  const needsAccountPassword = !skipAccountFields && !hasSavedAccountPassword;
+  const needsAccountEmail = !skipAccountFields;
+  const needsAccountPassword = !skipAccountFields;
   const hasMissingPurchaseFields = needsPurchaseEmail || needsAccountEmail || needsAccountPassword;
   const selectedPaymentPrice = getPaymentPrice(data, purchaseForm.paymentMode);
   const selectedPaymentFallback = purchaseForm.paymentMode === 'oplata'
@@ -623,6 +629,7 @@ export default function GameDetailPage() {
         ...current,
         paymentMode: 'topup_cards',
         saveToProfile: settingsMissing,
+        accountEmail: settings.xboxAccountEmail || current.accountEmail,
       }));
     } catch {
       setPurchaseProfile(null);
@@ -642,11 +649,11 @@ export default function GameDetailPage() {
       setPurchaseError('Введите email для покупки.');
       return;
     }
-    if (needsAccountEmail && !accountEmail) {
+    if (!skipAccountFields && !accountEmail) {
       setPurchaseError('Введите email аккаунта Xbox.');
       return;
     }
-    if (needsAccountPassword && !accountPassword) {
+    if (!skipAccountFields && !accountPassword && !hasSavedAccountPassword) {
       setPurchaseError('Введите пароль аккаунта Xbox.');
       return;
     }
@@ -668,8 +675,8 @@ export default function GameDetailPage() {
       const result = await createProductPurchase(data.id, {
         gameName: data.title,
         purchaseEmail: needsPurchaseEmail ? purchaseEmail : undefined,
-        accountEmail: needsAccountEmail ? accountEmail : undefined,
-        accountPassword: needsAccountPassword ? accountPassword : undefined,
+        accountEmail: !skipAccountFields ? (accountEmail || undefined) : undefined,
+        accountPassword: !skipAccountFields ? (purchaseForm.accountPassword || undefined) : undefined,
         paymentMode: purchaseForm.paymentMode,
         saveToProfile: purchaseCanSave && purchaseForm.saveToProfile,
       });
@@ -991,18 +998,6 @@ export default function GameDetailPage() {
                           <strong>Telegram</strong>
                         </div>
                       )}
-                      {hasSavedAccountEmail && !skipAccountFields && (
-                        <div className="purchase-data-row">
-                          <span>Аккаунт Xbox</span>
-                          <strong>{purchaseSettings.xboxAccountEmail}</strong>
-                        </div>
-                      )}
-                      {hasSavedAccountPassword && !skipAccountFields && (
-                        <div className="purchase-data-row">
-                          <span>Пароль Xbox</span>
-                          <strong>Сохранён в профиле</strong>
-                        </div>
-                      )}
 
                       {needsPurchaseEmail && (
                         <label>
@@ -1039,9 +1034,9 @@ export default function GameDetailPage() {
                             type="password"
                             value={purchaseForm.accountPassword}
                             onChange={handlePurchaseFieldChange}
-                            placeholder="Пароль"
+                            placeholder={hasSavedAccountPassword ? 'Оставьте пустым, чтобы использовать сохранённый' : 'Пароль'}
                             autoComplete="current-password"
-                            required
+                            required={!hasSavedAccountPassword}
                           />
                         </label>
                       )}
@@ -1105,15 +1100,15 @@ export default function GameDetailPage() {
                 </div>
               ) : purchaseResult?.paymentUrl ? (
                 <div className="purchase-result">
-                  <strong>Ссылка готова</strong>
                   <div className="purchase-result-actions">
-                    <button
+                    <a
                       className="purchase-primary"
-                      type="button"
-                      onClick={() => window.location.assign(purchaseResult.paymentUrl)}
+                      href={purchaseResult.paymentUrl}
+                      target="_blank"
+                      rel="noreferrer"
                     >
-                      Открыть оплату
-                    </button>
+                      Перейти к оплате
+                    </a>
                   </div>
                 </div>
               ) : (
