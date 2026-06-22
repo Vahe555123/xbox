@@ -454,6 +454,13 @@ img {
   white-space: nowrap;
 }
 
+@media (min-width: 901px) {
+  .auth-button {
+    order: 999;
+    margin-left: auto;
+  }
+}
+
 .auth-button:hover {
   border-color: rgba(125, 220, 255, 0.48);
   color: #fff;
