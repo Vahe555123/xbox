@@ -255,10 +255,40 @@ async function search({
   }
 
   const products = mapProducts(rawProducts);
-  const enrichedProducts = applyPostFilters(
+  let enrichedProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(products)),
     { languageMode, specialOffersOnly, freeOnly, saleEndBefore },
   );
+
+  // When the first page is entirely filtered out (e.g. Price asc returns free games
+  // first, which are hidden unless freeOnly is set), fetch extra pages until we get
+  // some visible products or run out of pages.
+  const MAX_SKIP_PAGES = 5;
+  let skipAttempts = 0;
+  while (
+    !languageFilterActive
+    && enrichedProducts.length === 0
+    && nextEncodedCT
+    && skipAttempts < MAX_SKIP_PAGES
+  ) {
+    skipAttempts += 1;
+    // eslint-disable-next-line no-await-in-loop
+    const nextRaw = await fetchCatalogPage({
+      query,
+      encodedFilters,
+      encodedCT: nextEncodedCT,
+      returnFilters: false,
+      channelId,
+    });
+    nextEncodedCT = nextRaw.encodedCT;
+    // eslint-disable-next-line no-await-in-loop
+    const nextEnriched = applyPostFilters(
+      // eslint-disable-next-line no-await-in-loop
+      await applyProductOverrides(await enrichProducts(mapProducts(nextRaw.products || []))),
+      { languageMode, specialOffersOnly, freeOnly, saleEndBefore },
+    );
+    enrichedProducts = [...enrichedProducts, ...nextEnriched];
+  }
   const extraKeywordProducts = query
     ? await loadOverrideKeywordProducts(query, enrichedProducts, { languageMode, specialOffersOnly, freeOnly, saleEndBefore })
     : [];
