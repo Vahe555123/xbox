@@ -77,8 +77,11 @@ export function FavoritesProvider({ children }) {
     }
 
     try {
-      const response = await fetchRelatedProducts(ids);
-      const products = response.products || [];
+      const CHUNK = 50;
+      const chunks = [];
+      for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
+      const responses = await Promise.all(chunks.map((chunk) => fetchRelatedProducts(chunk)));
+      const products = responses.flatMap((r) => r.products || []);
       const byId = new Map(products.map((product) => [String(product.id || '').toUpperCase(), product]));
       setItems(ids.map((id) => byId.get(id) || fallbackItems([id])[0]));
     } catch {

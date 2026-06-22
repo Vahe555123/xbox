@@ -503,6 +503,7 @@ function enrichProductsWithCatalogDetails(products, catalogProducts) {
       price: gamePassSavingsPercent && catalogPriceInfo.price ? catalogPriceInfo.price : product.price,
       subscriptions,
       subscriptionLabels,
+      isGiftable: catalogPriceInfo.isGiftable,
       gamePassSavingsPercent,
       gamePassSavingsAmount: catalogPriceInfo.gamePassSavingsAmount ?? product.gamePassSavingsAmount ?? null,
       gamePassSavingsFormatted: catalogPriceInfo.gamePassSavingsFormatted ?? product.gamePassSavingsFormatted ?? null,

@@ -329,10 +329,14 @@ function getCatalogProductPriceInfo(raw) {
   const skus = mapPricingSkus(raw?.DisplaySkuAvailabilities);
   const price = pickPrimaryPrice(skus);
   const gamePassSavings = extractGamePassSavings(skus);
+  const isGiftable = skus.some((sku) =>
+    (sku.availabilities || []).some((av) => (av.actions || []).includes('Gift')),
+  );
 
   return {
     price,
     hasPurchasePrice: Boolean(price),
+    isGiftable,
     gamePassSavingsPercent: gamePassSavings?.percent ?? null,
     gamePassSavingsAmount: gamePassSavings?.amount ?? null,
     gamePassSavingsFormatted: gamePassSavings?.formattedAmount ?? null,
