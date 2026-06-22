@@ -482,12 +482,13 @@ async function upsertSocialUser(profile) {
       );
       user = inserted.rows[0];
     } else {
+      // First-account priority: keep existing name/avatar, only fill blanks.
       const updated = await client.query(
         `UPDATE users
          SET
            verified = true,
-           name = COALESCE($2, name),
-           avatar = COALESCE($3, avatar),
+           name = COALESCE(name, $2),
+           avatar = COALESCE(avatar, $3),
            last_provider = $4,
            updated_at = NOW()
          WHERE id = $1
@@ -515,28 +516,128 @@ async function upsertSocialUser(profile) {
   }
 }
 
+// Merge all data of `mergedId` into `survivorId`, then delete the merged user.
+// `survivorId` stays the active account (keeps the current session valid);
+// on conflicting profile fields the OLDER account (first login) wins, while
+// favorites / purchase history / reminders from both accounts are combined.
+async function mergeUsers(client, survivorId, mergedId) {
+  if (!mergedId || survivorId === mergedId) return;
+
+  const { rows } = await client.query(
+    `SELECT id, email, name, avatar, password_hash, is_admin,
+            purchase_email, xbox_account_email, xbox_account_password_encrypted,
+            purchase_payment_mode, created_at
+       FROM users WHERE id IN ($1, $2)`,
+    [survivorId, mergedId],
+  );
+  const survivor = rows.find((r) => r.id === survivorId);
+  const merged = rows.find((r) => r.id === mergedId);
+  if (!survivor || !merged) return;
+
+  // First login (older created_at) takes priority on conflicting fields.
+  const survivorFirst = new Date(survivor.created_at) <= new Date(merged.created_at);
+  const primary = survivorFirst ? survivor : merged;
+  const secondary = survivorFirst ? merged : survivor;
+
+  // Reassign child data (dedup where a composite key would collide).
+  await client.query(
+    `UPDATE favorites SET user_id = $1
+       WHERE user_id = $2
+         AND product_id NOT IN (SELECT product_id FROM favorites WHERE user_id = $1)`,
+    [survivorId, mergedId],
+  );
+  await client.query(`DELETE FROM favorites WHERE user_id = $1`, [mergedId]);
+
+  await client.query(`UPDATE purchases SET user_id = $1 WHERE user_id = $2`, [survivorId, mergedId]);
+
+  await client.query(
+    `UPDATE deal_notifications SET user_id = $1
+       WHERE user_id = $2
+         AND (product_id, deal_key) NOT IN
+             (SELECT product_id, deal_key FROM deal_notifications WHERE user_id = $1)`,
+    [survivorId, mergedId],
+  );
+  await client.query(`DELETE FROM deal_notifications WHERE user_id = $1`, [mergedId]);
+
+  await client.query(
+    `UPDATE sale_end_reminders SET user_id = $1
+       WHERE user_id = $2
+         AND deal_end_day NOT IN (SELECT deal_end_day FROM sale_end_reminders WHERE user_id = $1)`,
+    [survivorId, mergedId],
+  );
+  await client.query(`DELETE FROM sale_end_reminders WHERE user_id = $1`, [mergedId]);
+
+  await client.query(`UPDATE telegram_bot_chats SET user_id = $1 WHERE user_id = $2`, [survivorId, mergedId]);
+  await client.query(`UPDATE oauth_accounts SET user_id = $1 WHERE user_id = $2`, [survivorId, mergedId]);
+
+  // Delete merged user only after all child rows were reassigned (avoids cascade loss).
+  await client.query(`DELETE FROM users WHERE id = $1`, [mergedId]);
+
+  await client.query(
+    `UPDATE users SET
+       email = COALESCE($2, $3),
+       name = COALESCE($4, $5),
+       avatar = COALESCE($6, $7),
+       password_hash = COALESCE($8, $9),
+       purchase_email = COALESCE($10, $11),
+       xbox_account_email = COALESCE($12, $13),
+       xbox_account_password_encrypted = COALESCE($14, $15),
+       purchase_payment_mode = COALESCE($16, $17),
+       is_admin = $18,
+       verified = true,
+       updated_at = NOW()
+     WHERE id = $1`,
+    [
+      survivorId,
+      primary.email, secondary.email,
+      primary.name, secondary.name,
+      primary.avatar, secondary.avatar,
+      primary.password_hash, secondary.password_hash,
+      primary.purchase_email, secondary.purchase_email,
+      primary.xbox_account_email, secondary.xbox_account_email,
+      primary.xbox_account_password_encrypted, secondary.xbox_account_password_encrypted,
+      primary.purchase_payment_mode, secondary.purchase_payment_mode,
+      Boolean(survivor.is_admin) || Boolean(merged.is_admin),
+    ],
+  );
+}
+
 async function linkProviderToUser(userId, profile) {
-  const conflict = await pool.query(
-    `SELECT user_id FROM oauth_accounts
-     WHERE provider = $1 AND provider_user_id = $2`,
-    [profile.provider, profile.providerId],
-  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (conflict.rows.length > 0 && conflict.rows[0].user_id !== userId) {
-    throw new Error('This account is already linked to a different user');
+    const existing = await client.query(
+      `SELECT user_id FROM oauth_accounts
+       WHERE provider = $1 AND provider_user_id = $2`,
+      [profile.provider, profile.providerId],
+    );
+
+    const otherUserId = existing.rows[0]?.user_id;
+    if (otherUserId && otherUserId !== userId) {
+      // Account already belongs to a separate user — merge it into the current one.
+      await mergeUsers(client, userId, otherUserId);
+    }
+
+    await client.query(
+      `INSERT INTO oauth_accounts (provider, provider_user_id, user_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (provider, provider_user_id) DO UPDATE SET user_id = EXCLUDED.user_id`,
+      [profile.provider, profile.providerId, userId],
+    );
+
+    await client.query(
+      `UPDATE users SET last_provider = $2, updated_at = NOW() WHERE id = $1`,
+      [userId, profile.provider],
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
-
-  await pool.query(
-    `INSERT INTO oauth_accounts (provider, provider_user_id, user_id)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (provider, provider_user_id) DO UPDATE SET user_id = EXCLUDED.user_id`,
-    [profile.provider, profile.providerId, userId],
-  );
-
-  await pool.query(
-    `UPDATE users SET last_provider = $2, updated_at = NOW() WHERE id = $1`,
-    [userId, profile.provider],
-  );
 }
 
 async function unlinkProvider(userId, provider) {
@@ -568,27 +669,41 @@ async function unlinkProvider(userId, provider) {
 async function linkTelegramToUser(userId, payload) {
   const profile = verifyTelegramPayload(payload || {});
 
-  const conflict = await pool.query(
-    `SELECT user_id FROM oauth_accounts
-     WHERE provider = 'telegram' AND provider_user_id = $1`,
-    [profile.providerId],
-  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (conflict.rows.length > 0 && conflict.rows[0].user_id !== userId) {
-    throw new Error('This Telegram account is already linked to a different user');
+    const existing = await client.query(
+      `SELECT user_id FROM oauth_accounts
+       WHERE provider = 'telegram' AND provider_user_id = $1`,
+      [profile.providerId],
+    );
+
+    const otherUserId = existing.rows[0]?.user_id;
+    if (otherUserId && otherUserId !== userId) {
+      // Telegram account already belongs to a separate user — merge it in.
+      await mergeUsers(client, userId, otherUserId);
+    }
+
+    await client.query(
+      `INSERT INTO oauth_accounts (provider, provider_user_id, user_id)
+       VALUES ('telegram', $1, $2)
+       ON CONFLICT (provider, provider_user_id) DO UPDATE SET user_id = EXCLUDED.user_id`,
+      [profile.providerId, userId],
+    );
+
+    await client.query(
+      `UPDATE users SET updated_at = NOW() WHERE id = $1`,
+      [userId],
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
-
-  await pool.query(
-    `INSERT INTO oauth_accounts (provider, provider_user_id, user_id)
-     VALUES ('telegram', $1, $2)
-     ON CONFLICT (provider, provider_user_id) DO UPDATE SET user_id = EXCLUDED.user_id`,
-    [profile.providerId, userId],
-  );
-
-  await pool.query(
-    `UPDATE users SET updated_at = NOW() WHERE id = $1`,
-    [userId],
-  );
 
   await linkTelegramChatToUser(userId, profile.providerId);
 }
