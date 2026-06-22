@@ -1459,12 +1459,11 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <h3>Топ избранных игр</h3>
               <div className="admin-table-wrap">
                 <table className="admin-table">
-                  <thead><tr><th>Игра</th><th>ID</th><th>Добавлений</th></tr></thead>
+                  <thead><tr><th>Игра</th><th>Добавлений</th></tr></thead>
                   <tbody>
                     {stats.topFavorited.map((f) => (
                       <tr key={f.product_id}>
                         <td>{f.title || '—'}</td>
-                        <td className="admin-mono">{f.product_id}</td>
                         <td>{f.count}</td>
                       </tr>
                     ))}

@@ -178,9 +178,10 @@ export async function fetchFavorites() {
   return data.items || [];
 }
 
-export async function addFavorite(productId, releaseStatus) {
+export async function addFavorite(productId, releaseStatus, title) {
   const body = { productId };
   if (releaseStatus) body.releaseStatus = releaseStatus;
+  if (title) body.title = title;
   const { data } = await api.post('/favorites', body);
   return data.item;
 }

@@ -61,20 +61,25 @@ router.get('/stats', requireAdmin, async (_req, res, next) => {
       ORDER BY count DESC
     `);
 
+    // sale_products содержит актуальные тайтлы большинства Xbox-продуктов,
+    // которых нет ни в product_overrides, ни в collection_product_snapshots —
+    // без этого JOIN большинство игр показывали ID вместо названия
     const topFavorited = await pool.query(`
       SELECT
         f.product_id,
         COALESCE(
-          po.title,
-          cps.data->>'title',
-          (SELECT product_title FROM purchases p WHERE p.product_id = f.product_id LIMIT 1),
-          f.product_id
+          po.title,              -- ручной override
+          cps.data->>'title',    -- снэпшот из коллекции
+          sp.title,              -- таблица распродаж (основной источник для Xbox-продуктов)
+          (SELECT fs.snapshot->>'title' FROM favorites fs WHERE fs.product_id = f.product_id AND fs.snapshot->>'title' IS NOT NULL LIMIT 1),
+          (SELECT product_title FROM purchases p WHERE p.product_id = f.product_id LIMIT 1)
         ) AS title,
         COUNT(*)::int AS count
       FROM favorites f
       LEFT JOIN product_overrides po ON po.product_id = f.product_id
       LEFT JOIN collection_product_snapshots cps ON cps.product_id = f.product_id
-      GROUP BY f.product_id, po.title, cps.data
+      LEFT JOIN sale_products sp ON sp.product_id = f.product_id
+      GROUP BY f.product_id, po.title, cps.data, sp.title
       ORDER BY count DESC
       LIMIT 10
     `);

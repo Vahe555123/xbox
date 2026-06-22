@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const config = require('./config');
 const routes = require('./routes');
 const requestLogger = require('./middleware/requestLogger');
+const ogMiddleware = require('./middleware/ogMiddleware');
 const { notFoundHandler, globalErrorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -15,6 +16,10 @@ app.use(helmet());
 app.use(cors({ origin: config.clientOrigin, credentials: true }));
 app.use(express.json());
 app.use(requestLogger);
+
+// Перехватываем запросы от Telegram/VK/Max-ботов — отдаём HTML с OG-тегами.
+// nginx проксирует сюда только запросы с User-Agent социальных ботов.
+app.use(ogMiddleware);
 
 app.use(
   '/api',

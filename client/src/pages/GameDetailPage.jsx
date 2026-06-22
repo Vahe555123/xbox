@@ -621,7 +621,7 @@ export default function GameDetailPage() {
       const settingsMissing = !hasPurchaseDelivery || !settings.xboxAccountEmail || !settings.hasXboxAccountPassword;
       setPurchaseForm((current) => ({
         ...current,
-        paymentMode: settings.paymentMode || 'key_activation',
+        paymentMode: 'key_activation',
         saveToProfile: settingsMissing,
       }));
     } catch {

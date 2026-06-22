@@ -24,9 +24,10 @@ async function addFavorite(req, res, next) {
     }
 
     const releaseStatus = req.body?.releaseStatus;
-    const snapshot = releaseStatus && (releaseStatus === 'unreleased' || releaseStatus === 'comingSoon')
-      ? { releaseStatus }
-      : {};
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : null;
+    const snapshot = {};
+    if (releaseStatus === 'unreleased' || releaseStatus === 'comingSoon') snapshot.releaseStatus = releaseStatus;
+    if (title) snapshot.title = title;
 
     const item = await upsertFavorite(req.user.id, product, snapshot);
     res.status(201).json({ success: true, item });

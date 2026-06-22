@@ -165,6 +165,19 @@ async function listProductOverrides({ search = '', page = 1, limit = 50 } = {}) 
   };
 }
 
+function normalizeSpecialOfferId(value) {
+  const s = String(value || '').trim();
+  if (!s) return null;
+  if (s.startsWith('http')) {
+    try {
+      return new URL(s).searchParams.get('id_d') || null;
+    } catch {
+      return null;
+    }
+  }
+  return /^\d+$/.test(s) ? s : null;
+}
+
 async function upsertProductOverride(productId, payload = {}) {
   const id = normalizeProductId(productId);
   if (!id) throw new Error('Product ID is required');
@@ -172,7 +185,7 @@ async function upsertProductOverride(productId, payload = {}) {
   const mode = normalizeLanguageMode(payload.russianLanguageMode);
   const title = String(payload.title || '').trim() || null;
   const languageNote = String(payload.languageNote || '').trim() || null;
-  const specialOfferUrl = String(payload.specialOfferUrl || '').trim() || null;
+  const specialOfferUrl = normalizeSpecialOfferId(payload.specialOfferUrl);
   const payloadData = payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
     ? payload.data
     : {};
