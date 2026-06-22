@@ -5,6 +5,7 @@ const SOCIAL_BOT_RE = /TelegramBot|vkShare|Facebot|facebookexternalhit|Twitterbo
 
 const DEFAULT_TITLE = 'XboxTracker - поможем купить игры для Xbox Series Ключи в России и на аккаунт Xbox One, Xbox Series X, Xbox Series S.';
 const DEFAULT_DESCRIPTION = 'Удобный способ купить игры для Xbox Series Ключи в России, а также на аккаунт Xbox One, Xbox Series X, Xbox Series S. Отслеживай скидки на игры для Xbox Series и Xbox One. Покупай игры Xbox в России дешево.';
+const DEFAULT_IMAGE = 'https://xboxtracker.ru/og-image.png';
 
 function esc(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -59,7 +60,7 @@ module.exports = async function ogMiddleware(req, res, next) {
         return res.type('html').send(buildOgHtml({
           title: `${t} купить Xbox Ключ в России и на аккаунт Xbox Series X, Xbox Series S, Xbox One.`,
           description: `Легко и быстро купить ${t} Xbox Ключ в России и на аккаунт Xbox Series X, Xbox Series S, Xbox One. Отслеживай скидки на ${t} для Xbox Series и Xbox One. Покупай игры Xbox в России дешево.`,
-          image: meta.image || null,
+          image: meta.image || DEFAULT_IMAGE,
           url,
         }));
       }
@@ -70,6 +71,7 @@ module.exports = async function ogMiddleware(req, res, next) {
   return res.type('html').send(buildOgHtml({
     title: DEFAULT_TITLE,
     description: DEFAULT_DESCRIPTION,
+    image: DEFAULT_IMAGE,
     url,
   }));
 };
