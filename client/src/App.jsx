@@ -228,6 +228,7 @@ export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(readStoredUser);
   const [authNotice, setAuthNotice] = useState('');
+  const [authModalNotice, setAuthModalNotice] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [headerQuery, setHeaderQuery] = useState('');
@@ -464,6 +465,15 @@ export default function App() {
       document.body.classList.remove('mobile-menu-open');
     };
   }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      setAuthModalNotice(e.detail?.notice || '');
+      setAuthModalOpen(true);
+    };
+    window.addEventListener('need-auth', handler);
+    return () => window.removeEventListener('need-auth', handler);
+  }, []);
 
   useEffect(() => {
     if (!mobileMenuOpen) return undefined;
@@ -735,9 +745,10 @@ export default function App() {
 
       <AuthModal
         open={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
+        onClose={() => { setAuthModalOpen(false); setAuthModalNotice(''); }}
         onAuth={handleAuth}
         externalError={authNotice}
+        externalNotice={authModalNotice}
       />
       <SupportWidget />
     </div>

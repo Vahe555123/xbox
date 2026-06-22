@@ -8,9 +8,9 @@ import {
 } from '../utils/paymentPrices';
 
 const PAYMENT_MODES = [
-  { id: 'oplata', title: 'ПОКУПКА НА АККАУНТ', description: 'Оплата на ваш Xbox-аккаунт' },
-  { id: 'key_activation', title: 'КЛЮЧ НА ИГРУ', description: 'Получить ключ и активировать' },
   { id: 'topup_cards', title: 'КОДОМ ПОПОЛНЕНИЯ БАЛАНСА', description: 'Пополнить Xbox-баланс комбинацией карт' },
+  { id: 'key_activation', title: 'КЛЮЧ НА ИГРУ', description: 'Получить ключ и активировать' },
+  { id: 'oplata', title: 'ПОКУПКА НА АККАУНТ', description: 'Оплата на ваш Xbox-аккаунт' },
 ];
 
 const SPECIAL_OFFER_MODE = { id: 'special_offer', title: 'СПЕЦПРЕДЛОЖЕНИЕ', description: 'Спецпредложение для каждого товара' };
@@ -436,6 +436,15 @@ export default function CartPage({ currentUser, onLoginClick }) {
                       })}
                     </div>
                   </section>
+                )}
+
+                {!purchaseResult && (form.paymentMode === 'oplata' || form.paymentMode === 'key_activation') && (() => {
+                  const totalUsd = items.reduce((sum, item) => sum + (Number(item.price?.value) || 0), 0);
+                  return totalUsd > 0 && totalUsd < 10;
+                })() && (
+                  <div className="purchase-min-order-notice">
+                    ⚠ Цена игры меньше $10. Минимальная сумма заказа — $10, поэтому к оплате добавится небольшая доплата. Чтобы избежать этого, добавьте ещё товары в корзину и купите сразу несколько игр.
+                  </div>
                 )}
 
                 {!purchaseResult && (

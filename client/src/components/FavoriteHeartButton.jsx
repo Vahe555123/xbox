@@ -1,6 +1,14 @@
 import React from 'react';
 import { useFavorites } from '../context/FavoritesContext';
 
+function isLoggedIn() {
+  try {
+    return Boolean(JSON.parse(localStorage.getItem('auth:user')));
+  } catch {
+    return false;
+  }
+}
+
 export default function FavoriteHeartButton({ product, className = '' }) {
   const { isFavorite, toggle } = useFavorites();
   if (!product?.id) return null;
@@ -13,6 +21,12 @@ export default function FavoriteHeartButton({ product, className = '' }) {
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!isLoggedIn()) {
+          window.dispatchEvent(new CustomEvent('need-auth', {
+            detail: { notice: 'Войдите в свой аккаунт или зарегистрируйтесь, чтобы добавить игру в Избранное' },
+          }));
+          return;
+        }
         toggle(product);
       }}
       aria-label={active ? 'Remove from favorites' : 'Add to favorites'}

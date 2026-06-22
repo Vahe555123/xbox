@@ -46,7 +46,7 @@ function TelegramPaperBadge() {
   );
 }
 
-export default function AuthModal({ open, onClose, onAuth, externalError }) {
+export default function AuthModal({ open, onClose, onAuth, externalError, externalNotice }) {
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -73,6 +73,12 @@ export default function AuthModal({ open, onClose, onAuth, externalError }) {
       setError(externalError);
     }
   }, [externalError, open]);
+
+  useEffect(() => {
+    if (open && externalNotice) {
+      setNotice(externalNotice);
+    }
+  }, [externalNotice, open]);
 
   useEffect(() => {
     if (!open || !providers.telegram?.ready || !providers.telegram.botUsername || !telegramRef.current) {
