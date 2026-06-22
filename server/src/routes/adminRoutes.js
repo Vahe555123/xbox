@@ -299,7 +299,6 @@ router.get('/products/search', requireAdmin, async (req, res, next) => {
     const productsById = new Map();
     let encodedCT = '';
     let attempts = 0;
-    const maxPages = languageMode ? 6 : 1;
 
     do {
       const result = await search({
@@ -320,9 +319,10 @@ router.get('/products/search', requireAdmin, async (req, res, next) => {
 
       encodedCT = result.encodedCT || '';
       attempts += 1;
-    } while (languageMode && productsById.size < 25 && encodedCT && attempts < maxPages);
+    } while (encodedCT && attempts < 5);
 
-    res.json({ products: [...productsById.values()] });
+    const allProducts = [...productsById.values()];
+    res.json({ products: allProducts, total: allProducts.length });
   } catch (err) {
     next(err);
   }

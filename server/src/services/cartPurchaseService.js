@@ -477,9 +477,7 @@ async function buildCartPayment({
       {
         purchaseEmail: cleanEmail,
         buyerIp,
-        failPageUrl: config.clientOrigin
-          ? `${config.clientOrigin.replace(/\/$/, '')}/cart`
-          : '',
+        failPageUrl: 'https://xboxtracker.ru/',
       },
     );
 

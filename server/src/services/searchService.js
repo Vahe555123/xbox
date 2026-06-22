@@ -80,6 +80,7 @@ async function search({
   const specialOffersOnly = isSpecialOfferFilterActive(filters);
   const freeOnly = isFreeFilterActive(filters);
   const saleEndBefore = getSaleEndBefore(filters);
+  const onSaleOnly = isOnSaleFilterActive(filters);
 
   if (isRankedSearchToken(encodedCT)) {
     const buffered = await readRankedSearchBuffer(encodedCT);
@@ -176,14 +177,23 @@ async function search({
   let raw;
   try {
     if (!countOnly && shouldUseSearchRerank({ query, sort: effectiveSort, encodedCT })) {
+      // When onSaleOnly, strip Price:OnSale from API filters and apply it locally
+      // so that Game Pass savings games (not returned by Xbox for Price:OnSale) are included.
+      const searchFilters = onSaleOnly
+        ? buildEncodedFilters(
+            { ...filters, Price: (filters?.Price || []).filter((v) => v !== 'OnSale') },
+            effectiveSort,
+          )
+        : encodedFilters;
       return await searchWithRelevanceRerank({
         query,
-        encodedFilters,
+        encodedFilters: searchFilters,
         languageMode,
         channelId,
         specialOffersOnly,
         freeOnly,
         saleEndBefore,
+        onSaleOnly,
       });
     }
 
@@ -281,6 +291,7 @@ async function searchWithRelevanceRerank({
   specialOffersOnly,
   freeOnly,
   saleEndBefore = null,
+  onSaleOnly = false,
 }) {
   const collectedRawProducts = [];
   const queryVariants = getSearchQueryVariants(query);
@@ -317,12 +328,14 @@ async function searchWithRelevanceRerank({
     specialOffersOnly,
     freeOnly,
     saleEndBefore,
+    onSaleOnly,
   });
   const extraKeywordProducts = await loadOverrideKeywordProducts(query, enrichedProducts, {
     languageMode,
     specialOffersOnly,
     freeOnly,
     saleEndBefore,
+    onSaleOnly,
   });
   const rankedProducts = rankProductsBySearchRelevance(
     mergeProductsById(enrichedProducts, extraKeywordProducts),
@@ -515,7 +528,7 @@ function bestRawSearchMatchTier(rawProducts, query) {
   ), SEARCH_MATCH_TIERS.NONE);
 }
 
-async function loadOverrideKeywordProducts(query, existingProducts, { languageMode, specialOffersOnly, freeOnly, saleEndBefore = null }) {
+async function loadOverrideKeywordProducts(query, existingProducts, { languageMode, specialOffersOnly, freeOnly, saleEndBefore = null, onSaleOnly = false }) {
   const overrides = await listSearchableProductOverrides();
   if (!overrides.length) return [];
 
@@ -558,7 +571,7 @@ async function loadOverrideKeywordProducts(query, existingProducts, { languageMo
   const mappedProducts = mapRelatedProducts(rawProducts, {});
   const enrichedProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(mappedProducts)),
-    { languageMode, specialOffersOnly, freeOnly, saleEndBefore },
+    { languageMode, specialOffersOnly, freeOnly, saleEndBefore, onSaleOnly },
   );
   const productsById = new Map(
     enrichedProducts.map((product) => [String(product?.id || '').toUpperCase(), product]),
@@ -1066,7 +1079,7 @@ async function serveCuratedIdsPage({
   };
 }
 
-function applyPostFilters(products, { languageMode, specialOffersOnly, freeOnly = false, saleEndBefore = null }) {
+function applyPostFilters(products, { languageMode, specialOffersOnly, freeOnly = false, saleEndBefore = null, onSaleOnly = false }) {
   const languageModes = parseLanguageModes(languageMode);
   const saleEndMs = saleEndBefore ? Date.parse(`${saleEndBefore}T23:59:59Z`) : null;
   return products.filter((product) => {
@@ -1077,6 +1090,8 @@ function applyPostFilters(products, { languageMode, specialOffersOnly, freeOnly 
     if (languageModes.size && !matchesLanguageModes(product, languageModes)) return false;
     // "Спецпредложения": only games that actually have a configured special offer.
     if (specialOffersOnly && !product.specialOfferUrl) return false;
+    // "Скидки" (search mode only): keep games with regular discount OR Game Pass savings.
+    if (onSaleOnly && !product.price?.discountPercent && !product.gamePassSavingsPercent) return false;
     // Sale end date: keep only games whose discount ends on or before the chosen date.
     if (saleEndMs !== null) {
       const end = product.price?.dealEndDate ? Date.parse(product.price.dealEndDate) : null;
@@ -1163,6 +1178,10 @@ function isSpecialOfferFilterActive(filters) {
 
 function isFreeFilterActive(filters) {
   return Boolean(filters?.Price?.includes('Free'));
+}
+
+function isOnSaleFilterActive(filters) {
+  return Boolean(filters?.Price?.includes('OnSale'));
 }
 
 function getSaleEndBefore(filters) {

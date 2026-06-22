@@ -400,6 +400,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [productLanguageFilter, setProductLanguageFilter] = useState('all');
   const [productSearchLoading, setProductSearchLoading] = useState(false);
   const [productSearchResults, setProductSearchResults] = useState([]);
+  const [productSearchPage, setProductSearchPage] = useState(1);
+  const PRODUCTS_PAGE_SIZE = 25;
   const [productOverrides, setProductOverrides] = useState([]);
   const [productOverridesTotal, setProductOverridesTotal] = useState(0);
   const [selectedProductOverride, setSelectedProductOverride] = useState(null);
@@ -587,6 +589,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
   const loadAdminProducts = useCallback(async ({ q = '', languageMode = 'all' } = {}) => {
     setProductSearchLoading(true);
+    setProductSearchPage(1);
     setOverrideMessage('');
     try {
       const products = await searchAdminProducts({ q: q.trim(), languageMode });
@@ -2043,24 +2046,51 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 </button>
               </form>
 
+              {productSearchResults.length > 0 && (
+                <div className="admin-pagination">
+                  <button
+                    className="admin-btn admin-btn-sm"
+                    type="button"
+                    disabled={productSearchPage <= 1}
+                    onClick={() => setProductSearchPage((p) => Math.max(1, p - 1))}
+                  >
+                    ← Назад
+                  </button>
+                  <span className="admin-pagination-info">
+                    {productSearchPage} / {Math.ceil(productSearchResults.length / PRODUCTS_PAGE_SIZE)}
+                    {' '}({productSearchResults.length} игр)
+                  </span>
+                  <button
+                    className="admin-btn admin-btn-sm"
+                    type="button"
+                    disabled={productSearchPage >= Math.ceil(productSearchResults.length / PRODUCTS_PAGE_SIZE)}
+                    onClick={() => setProductSearchPage((p) => p + 1)}
+                  >
+                    Вперёд →
+                  </button>
+                </div>
+              )}
+
               <div className="admin-table-wrap">
                 <table className="admin-table admin-table-compact">
                   <thead>
                     <tr><th>Игра</th><th>ID</th><th>Язык сейчас</th><th></th></tr>
                   </thead>
                   <tbody>
-                    {productSearchResults.map((product) => (
-                      <tr key={product.id}>
-                        <td>{product.title}</td>
-                        <td className="admin-mono">{product.id}</td>
-                        <td><ProductLanguageTag mode={product.russianLanguageMode} /></td>
-                        <td>
-                          <button className="admin-btn admin-btn-sm" type="button" onClick={() => selectProductForOverride(product)}>
-                            Редактировать
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {productSearchResults
+                      .slice((productSearchPage - 1) * PRODUCTS_PAGE_SIZE, productSearchPage * PRODUCTS_PAGE_SIZE)
+                      .map((product) => (
+                        <tr key={product.id}>
+                          <td>{product.title}</td>
+                          <td className="admin-mono">{product.id}</td>
+                          <td><ProductLanguageTag mode={product.russianLanguageMode} /></td>
+                          <td>
+                            <button className="admin-btn admin-btn-sm" type="button" onClick={() => selectProductForOverride(product)}>
+                              Редактировать
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
                     {productSearchResults.length === 0 && (
                       <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Игры не найдены</td></tr>
                     )}

@@ -91,7 +91,6 @@ function getRequestIp(req) {
 
 async function assignTopupCombo(product) {
   if (!product) return product;
-  if (isGameCurrencyProduct(product)) return product;
   if (!isPaidReleasedProduct(product)) return product;
   const usd = getProductUsdPrice(product);
   if (!usd) return product;
@@ -520,9 +519,6 @@ async function createProductPurchase(req, res, next) {
         purchaseEmail: buyerEmailForPayment,
       });
     } else if (finalPaymentMode === 'topup_cards') {
-      if (isGameCurrencyProduct(product)) {
-        throw new AppError('Карты пополнения недоступны для игровой валюты', 400);
-      }
       if (!isPaidReleasedProduct(product)) {
         throw new AppError('Карты пополнения недоступны для этого товара', 400);
       }
@@ -531,9 +527,7 @@ async function createProductPurchase(req, res, next) {
       const combo = await topupCardService.buildComboPurchase(usd, {
         purchaseEmail: buyerEmailForPayment,
         buyerIp: getRequestIp(req),
-        failPageUrl: config.clientOrigin
-          ? `${config.clientOrigin.replace(/\/$/, '')}/game/${encodeURIComponent(product.id)}`
-          : '',
+        failPageUrl: 'https://xboxtracker.ru/',
       });
       if (!combo?.available) {
         throw new AppError('Комбинация карт недоступна: нет в наличии нужных номиналов', 502);

@@ -6891,6 +6891,12 @@ code {
   color: var(--text-muted);
 }
 
+.admin-pagination-info {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* Scheduler controls */
 .admin-scheduler-controls {
   margin-bottom: 1rem;
