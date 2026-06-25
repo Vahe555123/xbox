@@ -118,6 +118,9 @@ export default function HelpPage() {
               {content?.supportButtonLabel || 'Открыть поддержку'}
             </a>
           )}
+          <a className="help-inline-link" href="https://oplata.info" target="_blank" rel="noreferrer">
+            Мои покупки
+          </a>
         </article>
 
         <article className="help-card">

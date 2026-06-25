@@ -284,17 +284,21 @@ async function buildItemsForOplata(products, { gameNames, accountEmail, accountP
 
     const gameName = normalizeText(gameNames?.[index] || product.title || product.name || product.id);
 
-    const rubQuote = await fetchRubPrice(digisellerId, usd, {
+    // Digiseller price API rejects amounts < $10; probe with at least $10 and scale back
+    const usdForRate = Math.max(usd, 10);
+    const rubQuote = await fetchRubPrice(digisellerId, usdForRate, {
       cacheResult: true,
     });
 
-    const amountRub = Math.round(
+    const rubForRate = Math.round(
       Number(rubQuote?.amount || rubQuote?.value || product.priceRub?.amount || product.priceRub?.value || 0)
     );
 
-    if (!amountRub || !Number.isFinite(amountRub)) {
+    if (!rubForRate || !Number.isFinite(rubForRate)) {
       throw createCartError(`Не удалось получить цену в рублях для "${gameName}"`, 502);
     }
+
+    const amountRub = usd < 10 ? Math.round(rubForRate * usd / usdForRate) : rubForRate;
 
     totalUsd += usd;
     totalRub += amountRub;
@@ -303,6 +307,14 @@ async function buildItemsForOplata(products, { gameNames, accountEmail, accountP
   }
 
   totalUsd = Math.round(totalUsd * 100) / 100;
+
+  // Enforce Digiseller $10 minimum: if total < $10, order at $10 and re-fetch RUB price
+  if (totalUsd < 10) {
+    const minRubQuote = await fetchRubPrice(digisellerId, 10, { cacheResult: true });
+    const minRub = Math.round(Number(minRubQuote?.amount || minRubQuote?.value || 0));
+    if (minRub > 0) totalRub = minRub;
+    totalUsd = 10;
+  }
 
   const combinedGameName = [
     `Корзина Xbox игр`,
@@ -371,16 +383,20 @@ async function buildItemsForKeyActivation(products, { gameNames, purchaseEmail }
 
     const gameName = normalizeText(gameNames?.[index] || product.title || product.name || product.id);
 
-    const rubQuote = await fetchRubPrice(digisellerId, usd, {
+    // Digiseller price API rejects amounts < $10; probe with at least $10 and scale back
+    const usdForRate = Math.max(usd, 10);
+    const rubQuote = await fetchRubPrice(digisellerId, usdForRate, {
       cacheResult: true,
       optionXml,
     });
 
-    const amountRub = Math.round(Number(rubQuote?.amount || rubQuote?.value || 0));
+    const rubForRate = Math.round(Number(rubQuote?.amount || rubQuote?.value || 0));
 
-    if (!amountRub || !Number.isFinite(amountRub)) {
+    if (!rubForRate || !Number.isFinite(rubForRate)) {
       throw createCartError(`Не удалось получить цену в рублях для "${gameName}"`, 502);
     }
+
+    const amountRub = usd < 10 ? Math.round(rubForRate * usd / usdForRate) : rubForRate;
 
     totalUsd += usd;
     totalRub += amountRub;
@@ -389,6 +405,14 @@ async function buildItemsForKeyActivation(products, { gameNames, purchaseEmail }
   }
 
   totalUsd = Math.round(totalUsd * 100) / 100;
+
+  // Enforce Digiseller $10 minimum: if total < $10, order at $10 and re-fetch RUB price
+  if (totalUsd < 10) {
+    const minRubQuote = await fetchRubPrice(digisellerId, 10, { cacheResult: true, optionXml });
+    const minRub = Math.round(Number(minRubQuote?.amount || minRubQuote?.value || 0));
+    if (minRub > 0) totalRub = minRub;
+    totalUsd = 10;
+  }
 
   const combinedGameName = [
     `Корзина ключей активации Xbox USA`,

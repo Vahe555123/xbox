@@ -1270,6 +1270,10 @@ img {
   flex-wrap: wrap;
 }
 
+@media (max-width: 767px) {
+  .results-count { display: none; }
+}
+
 .results-deals-badge {
   display: inline-flex;
   align-items: center;
@@ -8370,6 +8374,14 @@ body.mobile-menu-open {
 .cart-summary-alert p {
   margin: 0;
   color: #ffd7d7;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.cart-summary-alert--warning {
+  background: linear-gradient(180deg, rgba(255, 180, 50, 0.18), rgba(255, 180, 50, 0.08));
+  border-color: rgba(255, 190, 80, 0.4);
+  color: #ffe4a0;
   font-size: 0.82rem;
   line-height: 1.45;
 }

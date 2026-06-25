@@ -163,8 +163,12 @@ async function assignPaymentPrices(product) {
       })
     : Promise.resolve(null);
 
+  const specialOfferFailPage = config.clientOrigin && product.id
+    ? `${config.clientOrigin.replace(/\/$/, '')}/game/${encodeURIComponent(product.id)}`
+    : (config.clientOrigin || '');
+
   const specialOfferPromise = product.specialOfferUrl
-    ? getSpecialOfferInfo(product.specialOfferUrl).catch((e) => {
+    ? getSpecialOfferInfo(product.specialOfferUrl, { failPageUrl: specialOfferFailPage }).catch((e) => {
         logger.warn('Special offer info fetch failed', {
           productId: product.id,
           message: e.message,

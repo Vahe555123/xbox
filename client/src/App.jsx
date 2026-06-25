@@ -595,18 +595,6 @@ export default function App() {
             aria-label="Основная навигация"
             onClickCapture={handleMobileNavClickCapture}
           >
-            <div className="top-nav-mobile-header">
-              <div className="top-nav-mobile-title">Menu</div>
-              <button
-                type="button"
-                className="top-nav-mobile-close"
-                aria-label="Close menu"
-                onClick={closeMobileMenu}
-              >
-                x
-              </button>
-            </div>
-
             <button
               type="button"
               className={`top-nav-button auth-button ${currentUser ? 'profile-button' : ''}`}

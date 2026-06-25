@@ -27,7 +27,7 @@ const SPECIAL_OFFERS_FILTER_VALUE = 'Available';
 const RUSSIAN_INDEX_TOKEN_PREFIX = 'rulang:';
 const SPECIAL_OFFERS_TOKEN_PREFIX = 'specialoffers:';
 const COLLECTION_TOKEN_PREFIX = 'collection:';
-const VALID_LANGUAGE_MODES = new Set(['full_ru', 'ru_subtitles']);
+const VALID_LANGUAGE_MODES = new Set(['full_ru', 'ru_subtitles', 'no_ru', 'unknown']);
 const KEYWORD_MATCH_TIER_OFFSET = 3;
 const SEARCH_MATCH_TIERS = {
   EXACT: 0,
@@ -155,7 +155,9 @@ async function search({
     });
   }
 
+  const wantsRussian = languageModes.has('full_ru') || languageModes.has('ru_subtitles');
   const canUseRussianIndex = languageFilterActive
+    && wantsRussian
     && !query
     && !hasApiSideFilters(filters)
     && russianIndex.isReady();
@@ -845,6 +847,8 @@ function matchesLanguageModes(product, modes) {
   const mode = resolveProductRussianMode(product);
   if (modes.has('ru_subtitles') && (mode === 'ru_subtitles' || mode === 'full_ru')) return true;
   if (modes.has('full_ru') && mode === 'full_ru') return true;
+  if (modes.has('no_ru') && mode === 'no_ru') return true;
+  if (modes.has('unknown') && mode === 'unknown') return true;
   return false;
 }
 

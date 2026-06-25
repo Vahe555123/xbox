@@ -125,6 +125,12 @@ export default function CartPage({ currentUser, onLoginClick }) {
     [separatePurchaseModes],
   );
 
+  const totalUsd = useMemo(
+    () => items.reduce((sum, item) => sum + (Number(item.price?.value) || 0), 0),
+    [items],
+  );
+  const showMinOrderWarning = totalUsd > 0 && totalUsd < 10;
+
   const purchaseSettings = profile?.purchaseSettings || {};
   const profileUser = profile?.user || null;
   const registrationEmail = profileUser?.email || '';
@@ -301,6 +307,11 @@ export default function CartPage({ currentUser, onLoginClick }) {
             <div className="cart-summary-alert" role="note">
               <strong>Внимание</strong>
               <p>{separatePurchaseAlert}</p>
+            </div>
+          )}
+          {showMinOrderWarning && (
+            <div className="cart-summary-alert cart-summary-alert--warning" role="note">
+              ⚠️ Цена игры меньше $10. Минимальная сумма заказа — $10, поэтому к оплате добавится небольшая доплата. Чтобы избежать этого, добавьте ещё товары в корзину и купите сразу несколько игр.
             </div>
           )}
           <ul className="cart-summary-list">

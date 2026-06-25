@@ -73,7 +73,7 @@ function getProductKey(product) {
   return product?.id || product?.productId || product?.product_id || null;
 }
 
-function buildPayUrl(digisellerId, { unitCount, buyerEmail } = {}) {
+function buildPayUrl(digisellerId, { unitCount, buyerEmail, failPageUrl } = {}) {
   const sellerId = config.digiseller.sellerId;
   if (!digisellerId) return null;
   const url = new URL(config.digiseller.payBaseUrl);
@@ -86,6 +86,10 @@ function buildPayUrl(digisellerId, { unitCount, buyerEmail } = {}) {
     url.searchParams.set('product_cnt', String(count));
   }
   if (buyerEmail) url.searchParams.set('email', buyerEmail);
+  if (failPageUrl) {
+    url.searchParams.set('FailPage', failPageUrl);
+    url.searchParams.set('failpage', failPageUrl);
+  }
   return url.toString();
 }
 
@@ -158,7 +162,9 @@ async function createKeyActivationPayment(product, { purchaseEmail, gameName } =
     throw createPaymentError('Для этого товара нельзя создать ссылку оплаты', 400);
   }
 
-  const rubQuote = await fetchRubPrice(digisellerId, unitCount, {
+  // Digiseller minimum order is $10; use effective amount so price API doesn't reject the request
+  const effectiveUnitCount = Math.max(unitCount, 10);
+  const rubQuote = await fetchRubPrice(digisellerId, effectiveUnitCount, {
     cacheResult: true,
     optionXml: rateMode.optionXml,
   });
@@ -184,9 +190,9 @@ async function createKeyActivationPayment(product, { purchaseEmail, gameName } =
     _subcurr: '',
     _ow: '0',
     firstrun: '0',
-    unit_cnt: String(unitCount),
+    unit_cnt: String(effectiveUnitCount),
     unit_amount: String(amountRub),
-    product_cnt: String(unitCount),
+    product_cnt: String(effectiveUnitCount),
     Email: cleanEmail,
     [`Option_radio_${rateMode.optionCategoryId}`]: String(rateMode.optionValueId),
     [`Option_text_${rateMode.gameNameOptionId}`]: cleanGameName,
@@ -221,7 +227,7 @@ async function createKeyActivationPayment(product, { purchaseEmail, gameName } =
       paymentMode: RATE_MODE_KEY_ACTIVATION,
       paymentType: 'activation_key',
       digisellerId,
-      unitCount,
+      unitCount: effectiveUnitCount,
       amountRub,
       amountRubFormatted: formatRub(amountRub),
       currency: 'RUB',
@@ -568,7 +574,9 @@ async function createPurchasePaymentUrl(product, {
     throw createPaymentError('Для этого товара нельзя создать ссылку оплаты');
   }
 
-  const rubQuote = await fetchRubPrice(digisellerId, unitCount, { cacheResult: true });
+  // Digiseller minimum order is $10; use effective amount so price API doesn't reject the request
+  const effectiveUnitCount = Math.max(unitCount, 10);
+  const rubQuote = await fetchRubPrice(digisellerId, effectiveUnitCount, { cacheResult: true });
   const amountRub = Math.round(Number(rubQuote?.amount || rubQuote?.value || product.priceRub?.amount || product.priceRub?.value || 0));
   if (!amountRub || !Number.isFinite(amountRub)) {
     throw createPaymentError('Не удалось получить цену в рублях для оплаты', 502);
@@ -591,9 +599,9 @@ async function createPurchasePaymentUrl(product, {
     _subcurr: '',
     _ow: '0',
     firstrun: '0',
-    unit_cnt: String(unitCount),
+    unit_cnt: String(effectiveUnitCount),
     unit_amount: String(amountRub),
-    product_cnt: String(unitCount),
+    product_cnt: String(effectiveUnitCount),
     Email: cleanPurchaseEmail,
     [`Option_text_${XBOX_GAME_NAME_OPTION}`]: cleanGameName,
     [`Option_text_${XBOX_ACCOUNT_EMAIL_OPTION}`]: cleanAccountEmail,
@@ -923,7 +931,7 @@ function resolveSpecialOfferId(idOrUrl) {
   return /^\d+$/.test(s) ? s : null;
 }
 
-async function getSpecialOfferInfo(productIdOrUrl) {
+async function getSpecialOfferInfo(productIdOrUrl, { failPageUrl } = {}) {
   if (!productIdOrUrl) return null;
   const productId = resolveSpecialOfferId(productIdOrUrl);
   if (!productId) return null;
@@ -935,7 +943,7 @@ async function getSpecialOfferInfo(productIdOrUrl) {
     available: true,
     value: price.value,
     formatted: price.formatted,
-    url: buildPayUrl(productId),
+    url: buildPayUrl(productId, { failPageUrl }),
   };
 }
 
