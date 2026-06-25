@@ -24,7 +24,7 @@ const { getStorePageProductData, getCachedLanguageInfo } = require('./xboxStoreP
  * Persisted in `site_content` under `russian-language-index`:
  *   {
  *     builtAt, durationMs, trigger, complete,
- *     modes: { productId: 'full_ru' | 'ru_subtitles' | 'no_ru' },  // all classified games
+ *     modes: { productId: 'full_ru' | 'ru_subtitles' | 'no_ru' | 'unknown' },  // all classified games
  *     russian: [productId...],   // games with Russian, catalog order (serving)
  *     fullRu:  [productId...],    // subset with Russian audio, catalog order (serving)
  *     counts: { scanned, russian, fullRu, subtitles, storeFetches, pending }
@@ -102,8 +102,8 @@ function normalizeId(id) {
 }
 
 function normalizeMode(mode) {
-  if (mode === 'full_ru' || mode === 'ru_subtitles' || mode === 'no_ru') return mode;
-  return 'no_ru'; // 'unknown'/missing -> treat as not Russian for the index
+  if (mode === 'full_ru' || mode === 'ru_subtitles' || mode === 'no_ru' || mode === 'unknown') return mode;
+  return 'unknown'; // no language block at all
 }
 
 async function loadIndex() {
