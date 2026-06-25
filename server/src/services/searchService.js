@@ -155,12 +155,10 @@ async function search({
     });
   }
 
-  const wantsRussian = languageModes.has('full_ru') || languageModes.has('ru_subtitles');
   const canUseRussianIndex = languageFilterActive
-    && wantsRussian
     && !query
     && !hasApiSideFilters(filters)
-    && russianIndex.isReady();
+    && [...languageModes].every((mode) => russianIndex.isReadyForMode(mode));
 
   if (canUseRussianIndex) {
     const ids = russianIndex.getServingIds(languageModes);

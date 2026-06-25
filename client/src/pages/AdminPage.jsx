@@ -1629,6 +1629,14 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 <div className="admin-stat-label">Только субтитры</div>
               </div>
               <div className="admin-stat-card">
+                <div className="admin-stat-value">{russianIndexState?.counts?.noRu ?? '—'}</div>
+                <div className="admin-stat-label">Без русского</div>
+              </div>
+              <div className="admin-stat-card">
+                <div className="admin-stat-value">{russianIndexState?.counts?.unknown ?? '—'}</div>
+                <div className="admin-stat-label">Язык не указан</div>
+              </div>
+              <div className="admin-stat-card">
                 <div className="admin-stat-value">{russianIndexState?.counts?.scanned ?? 0}</div>
                 <div className="admin-stat-label">Просканировано</div>
               </div>

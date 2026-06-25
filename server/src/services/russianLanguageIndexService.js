@@ -40,6 +40,8 @@ const state = {
   index: null,
   russianSet: new Set(),
   fullSet: new Set(),
+  noRuSet: new Set(),
+  unknownSet: new Set(),
   loaded: false,
   building: false,
   lastRunAt: null,
@@ -78,6 +80,8 @@ function setIndex(index) {
   state.index = index;
   state.russianSet = new Set(index.russian);
   state.fullSet = new Set(index.fullRu);
+  state.noRuSet = new Set(index.noRu || []);
+  state.unknownSet = new Set(index.unknown || []);
   state.loaded = true;
 }
 
@@ -90,7 +94,9 @@ function emptyIndex() {
     modes: {},
     russian: [],
     fullRu: [],
-    counts: { scanned: 0, russian: 0, fullRu: 0, subtitles: 0, storeFetches: 0, pending: 0 },
+    noRu: [],
+    unknown: [],
+    counts: { scanned: 0, russian: 0, fullRu: 0, subtitles: 0, noRu: 0, unknown: 0, storeFetches: 0, pending: 0 },
     // walked cache: saved so re-runs can skip re-walking if recent
     walkedAt: null,
     walkedList: null,
@@ -119,6 +125,8 @@ async function loadIndex() {
         modes: data.modes && typeof data.modes === 'object' ? data.modes : {},
         russian: data.russian.map(normalizeId).filter(Boolean),
         fullRu: (data.fullRu || []).map(normalizeId).filter(Boolean),
+        noRu: (data.noRu || []).map(normalizeId).filter(Boolean),
+        unknown: (data.unknown || []).map(normalizeId).filter(Boolean),
         walkedAt: data.walkedAt || null,
         walkedList: Array.isArray(data.walkedList) ? data.walkedList : null,
       });
@@ -175,24 +183,37 @@ function isComplete() {
 
 /**
  * Ordered list of product IDs matching the requested language modes.
- * - 'full_ru'      -> games with Russian audio
+ * - 'full_ru'      -> games with Russian audio only
  * - 'ru_subtitles' -> games with any Russian (subtitles or audio)
+ * - 'no_ru'        -> games confirmed to have no Russian
+ * - 'unknown'      -> games where language block is absent
  */
 function getServingIds(modes) {
   const index = state.index;
-  if (!index || !index.russian.length) return [];
+  if (!index) return [];
 
   const set = modes instanceof Set ? modes : new Set(modes || []);
-  const wantsAnyRussian = set.has('ru_subtitles');
-  const wantsFull = set.has('full_ru');
 
-  if (wantsAnyRussian) {
-    return index.russian;
-  }
-  if (wantsFull) {
-    return index.russian.filter((id) => state.fullSet.has(id));
-  }
+  if (set.has('ru_subtitles')) return index.russian || [];
+  if (set.has('full_ru')) return (index.russian || []).filter((id) => state.fullSet.has(id));
+  if (set.has('no_ru')) return index.noRu || [];
+  if (set.has('unknown')) return index.unknown || [];
   return [];
+}
+
+/**
+ * Returns true if the index has enough data to serve the given language mode
+ * directly (without falling back to the slow Xbox API search path).
+ */
+function isReadyForMode(mode) {
+  if (!state.index) return false;
+  if (mode === 'ru_subtitles') return state.russianSet.size > 0;
+  if (mode === 'full_ru') return state.fullSet.size > 0;
+  // For no_ru / unknown: the array must exist (even if empty — that means
+  // "index was built with this new code and found zero such games").
+  if (mode === 'no_ru') return Array.isArray(state.index.noRu);
+  if (mode === 'unknown') return Array.isArray(state.index.unknown);
+  return false;
 }
 
 /**
@@ -327,6 +348,8 @@ async function runWithConcurrency(items, limit, worker) {
 function buildIndexObject({ modes, walked, trigger, durationMs, complete, storeFetches, pending }) {
   const russian = [];
   const fullRu = [];
+  const noRu = [];
+  const unknown = [];
   for (const product of walked) {
     const mode = modes[product.id];
     if (mode === 'full_ru') {
@@ -334,6 +357,10 @@ function buildIndexObject({ modes, walked, trigger, durationMs, complete, storeF
       fullRu.push(product.id);
     } else if (mode === 'ru_subtitles') {
       russian.push(product.id);
+    } else if (mode === 'no_ru') {
+      noRu.push(product.id);
+    } else if (mode === 'unknown') {
+      unknown.push(product.id);
     }
   }
   return {
@@ -344,11 +371,15 @@ function buildIndexObject({ modes, walked, trigger, durationMs, complete, storeF
     modes,
     russian,
     fullRu,
+    noRu,
+    unknown,
     counts: {
       scanned: walked.length,
       russian: russian.length,
       fullRu: fullRu.length,
       subtitles: russian.length - fullRu.length,
+      noRu: noRu.length,
+      unknown: unknown.length,
       storeFetches: storeFetches || 0,
       pending: pending || 0,
     },
@@ -540,6 +571,7 @@ module.exports = {
   getState,
   isReady,
   isComplete,
+  isReadyForMode,
   getServingIds,
   getModeForProduct,
 };
