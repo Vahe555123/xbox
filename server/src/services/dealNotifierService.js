@@ -75,7 +75,7 @@ function normalizeProductId(productId) {
 }
 
 function favoritesUrl() {
-  return `${String(config.clientOrigin || '').replace(/\/$/, '')}/favorites`;
+  return `${config.siteOrigin}/favorites`;
 }
 
 function formatRubCompact(value) {
@@ -229,7 +229,7 @@ function extractDealInfo(raw, product) {
     discountPercent,
     endDate,
     storeUrl: storeUrl(raw.ProductId, lp.ProductTitle),
-    siteUrl: `${config.clientOrigin}/game/${raw.ProductId}`,
+    siteUrl: `${config.siteOrigin}/game/${raw.ProductId}`,
     paymentPrices: product?.notificationPaymentPrices || null,
   };
 }
@@ -454,7 +454,7 @@ function buildEmailHtml(userName, deals) {
 
         <!-- Footer -->
         <tr><td style="padding:20px 24px;background:#111114;border-radius:0 0 16px 16px;border:1px solid #1e1e1e;border-top:none;text-align:center;">
-          <a href="${config.clientOrigin}/?deals=true"
+          <a href="${config.siteOrigin}/?deals=true"
              style="display:inline-block;padding:12px 28px;background:#107c10;color:#fff;font-weight:700;border-radius:8px;text-decoration:none;font-size:14px;">
             Смотреть все скидки
           </a>
@@ -507,7 +507,7 @@ function buildTelegramMessage(userName, deals) {
     );
   }
 
-  lines.push(`\n[Все скидки](${config.clientOrigin}/?deals=true)`);
+  lines.push(`\n[Все скидки](${config.siteOrigin}/?deals=true)`);
   return lines.join('\n');
 }
 
@@ -1150,7 +1150,7 @@ async function runReleaseAndSpecialOfferNotifications(allUsers, productsById) {
           productId: p.id,
           title: p.title,
           image: p.image || null,
-          siteUrl: `${config.clientOrigin}/game/${p.id}`,
+          siteUrl: `${config.siteOrigin}/game/${p.id}`,
           paymentPrices: p.notificationPaymentPrices || null,
         }));
 
@@ -1200,7 +1200,7 @@ async function runReleaseAndSpecialOfferNotifications(allUsers, productsById) {
         productId: p.id,
         title: p.title,
         image: p.image || null,
-        siteUrl: `${config.clientOrigin}/game/${p.id}`,
+        siteUrl: `${config.siteOrigin}/game/${p.id}`,
         paymentPrices: p.notificationPaymentPrices || null,
       }));
 
@@ -1488,7 +1488,7 @@ async function runSaleEndingBroadcast(endDay) {
           productId: pid,
           title: product?.title || stored?.title || pid,
           image: product?.image || stored?.image || null,
-          siteUrl: `${config.clientOrigin}/game/${pid}`,
+          siteUrl: `${config.siteOrigin}/game/${pid}`,
           paymentPrices: product?.notificationPaymentPrices || null,
           discountPercent: stored?.discount_percent ?? null,
         };
@@ -1594,7 +1594,7 @@ async function runManualSpecialOfferNotification(productId) {
     productId: normalizedId,
     title: product?.title || lp.ProductTitle || normalizedId,
     image: product?.image || null,
-    siteUrl: `${config.clientOrigin}/game/${normalizedId}`,
+    siteUrl: `${config.siteOrigin}/game/${normalizedId}`,
     paymentPrices: product?.notificationPaymentPrices || null,
   };
 

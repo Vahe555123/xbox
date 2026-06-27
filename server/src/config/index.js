@@ -52,6 +52,10 @@ const config = {
   },
 
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  // Primary single origin for building internal URLs (payment return links, notifications, etc.)
+  // Always the first value in CLIENT_ORIGIN, even if multiple are set for CORS.
+  siteOrigin: (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+    .split(',')[0].trim().replace(/\/$/, ''),
   apiPublicOrigin: process.env.API_PUBLIC_ORIGIN || `http://localhost:${parseInt(process.env.PORT, 10) || 4000}`,
   databaseUrl: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/xbox_store',
 

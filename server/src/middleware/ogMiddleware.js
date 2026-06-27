@@ -47,7 +47,7 @@ module.exports = async function ogMiddleware(req, res, next) {
   if (!SOCIAL_BOT_RE.test(ua)) return next();
 
   const config = require('../config');
-  const origin = config.clientOrigin.replace(/\/$/, '').toLowerCase();
+  const origin = config.siteOrigin.toLowerCase();
   // originalUrl (не path) — чтобы query-параметры попадали в og:url.
   // Без этого Telegram канонизирует любой URL обратно к "/" и переиспользует
   // старый закэшированный результат, игнорируя обновления.

@@ -258,10 +258,10 @@ function buildFullPaymentUrl(redirectUrl) {
 function getFailPageUrl(product) {
   if (config.digiseller.failPageUrl) return config.digiseller.failPageUrl;
   const productId = getProductKey(product);
-  if (productId && config.clientOrigin) {
-    return `${config.clientOrigin.replace(/\/$/, '')}/game/${encodeURIComponent(productId)}`;
+  if (productId && config.siteOrigin) {
+    return `${config.siteOrigin}/game/${encodeURIComponent(productId)}`;
   }
-  return config.clientOrigin || '';
+  return config.siteOrigin;
 }
 
 function normalizePaymentText(value) {

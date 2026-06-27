@@ -13,7 +13,8 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(helmet());
-app.use(cors({ origin: config.clientOrigin, credentials: true }));
+const corsOrigins = config.clientOrigin.split(',').map((o) => o.trim()).filter(Boolean);
+app.use(cors({ origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins, credentials: true }));
 app.use(express.json());
 app.use(requestLogger);
 

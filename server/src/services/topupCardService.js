@@ -683,10 +683,10 @@ function absoluteOplataUrl(location) {
 function getFailPageForTopup() {
   const productId = config.digiseller.topupCardProductId;
   if (config.digiseller.failPageUrl) return config.digiseller.failPageUrl;
-  if (productId && config.clientOrigin) {
-    return `${config.clientOrigin.replace(/\/$/, '')}/game/${encodeURIComponent(productId)}`;
+  if (productId && config.siteOrigin) {
+    return `${config.siteOrigin}/game/${encodeURIComponent(productId)}`;
   }
-  return config.clientOrigin || '';
+  return config.siteOrigin;
 }
 
 // Submit the chosen option to pay.asp and capture the final pay_api.asp redirect.

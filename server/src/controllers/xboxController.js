@@ -164,9 +164,9 @@ async function assignPaymentPrices(product) {
       })
     : Promise.resolve(null);
 
-  const specialOfferFailPage = config.clientOrigin && product.id
-    ? `${config.clientOrigin.replace(/\/$/, '')}/game/${encodeURIComponent(product.id)}`
-    : (config.clientOrigin || '');
+  const specialOfferFailPage = config.siteOrigin && product.id
+    ? `${config.siteOrigin}/game/${encodeURIComponent(product.id)}`
+    : config.siteOrigin;
 
   const specialOfferPromise = product.specialOfferUrl
     ? getSpecialOfferInfo(product.specialOfferUrl, { failPageUrl: specialOfferFailPage }).catch((e) => {
@@ -562,8 +562,8 @@ async function createProductPurchase(req, res, next) {
       if (!product.specialOfferUrl) {
         throw new AppError('Спецпредложение недоступно для этого товара', 400);
       }
-      const spFailPage = config.clientOrigin
-        ? `${config.clientOrigin.replace(/\/$/, '')}/game/${encodeURIComponent(product.id)}`
+      const spFailPage = config.siteOrigin
+        ? `${config.siteOrigin}/game/${encodeURIComponent(product.id)}`
         : null;
       payment = await createSpecialOfferPayment(product.specialOfferUrl, { failPageUrl: spFailPage });
     } else {

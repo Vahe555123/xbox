@@ -88,7 +88,7 @@ function extractIdPoFromLocation(location) {
 async function createIdPoForItem(item) {
   const digiuid = randomUUID().toUpperCase();
   const failPage = config.digiseller.failPageUrl
-    || (config.clientOrigin ? `${config.clientOrigin.replace(/\/$/, '')}/cart` : '');
+    || (config.siteOrigin ? `${config.siteOrigin}/cart` : '');
   const body = new URLSearchParams({
     Lang: 'ru-RU',
     ID_D: String(item.digisellerId),
