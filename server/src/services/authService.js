@@ -63,6 +63,8 @@ function toPurchaseSettings(user) {
     xboxAccountEmail: user.xbox_account_email || '',
     hasXboxAccountPassword: Boolean(user.xbox_account_password_encrypted),
     paymentMode: normalizePurchasePaymentMode(user.purchase_payment_mode),
+    notifyDeals: user.notify_deals !== false,
+    notifySpecialOffers: user.notify_special_offers !== false,
   };
 }
 
@@ -148,12 +150,17 @@ async function updatePurchaseSettings(userId, settings = {}) {
     encryptedPassword = encryptProfileSecret(settings.xboxAccountPassword);
   }
 
+  const notifyDeals = settings.notifyDeals !== undefined ? Boolean(settings.notifyDeals) : undefined;
+  const notifySpecialOffers = settings.notifySpecialOffers !== undefined ? Boolean(settings.notifySpecialOffers) : undefined;
+
   const { rows } = await pool.query(
     `UPDATE users
      SET purchase_email = $2,
          xbox_account_email = $3,
          xbox_account_password_encrypted = $4,
          purchase_payment_mode = $5,
+         notify_deals = COALESCE($6, notify_deals),
+         notify_special_offers = COALESCE($7, notify_special_offers),
          updated_at = NOW()
      WHERE id = $1
      RETURNING *`,
@@ -163,6 +170,8 @@ async function updatePurchaseSettings(userId, settings = {}) {
       xboxAccountEmail || null,
       encryptedPassword,
       paymentMode,
+      notifyDeals !== undefined ? notifyDeals : null,
+      notifySpecialOffers !== undefined ? notifySpecialOffers : null,
     ],
   );
 

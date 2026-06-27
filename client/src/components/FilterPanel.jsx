@@ -328,16 +328,7 @@ export default function FilterPanel({
           next[key] = filtered;
         }
       } else {
-        // When adding a price-range bucket from the dropdown while OnSale/Free chip is
-        // active, the API treats both values as OR — giving wrong results. Clear any
-        // chip values from Price so the price-range filter works correctly.
-        if (key === 'Price' && !HIDDEN_PRICE_CHOICES.has(valueId)) {
-          const withoutChips = current.filter((v) => !HIDDEN_PRICE_CHOICES.has(v));
-          next[key] = [...withoutChips, valueId];
-          delete next.SaleEndBefore;
-        } else {
-          next[key] = [...current, valueId];
-        }
+        next[key] = [...current, valueId];
       }
 
       return next;
@@ -384,13 +375,7 @@ export default function FilterPanel({
       // Clear sale end-date when deactivating or switching away from Скидки
       delete next.SaleEndBefore;
       if (!wasActive) {
-        // When activating a Price chip (OnSale/Free), remove any price-range bucket
-        // values that were selected in the dropdown — they conflict with the chip.
-        if (chip.filterKey === 'Price') {
-          next[chip.filterKey] = [chip.value];
-        } else {
-          next[chip.filterKey] = [...(next[chip.filterKey] || []), chip.value];
-        }
+        next[chip.filterKey] = [...(next[chip.filterKey] || []), chip.value];
       }
       return next;
     });

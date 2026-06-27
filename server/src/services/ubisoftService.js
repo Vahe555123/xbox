@@ -173,6 +173,7 @@ async function createUbisoftOrder(selections = {}, productId) {
   payUrl.searchParams.set('digiuid', digiuid);
   payUrl.searchParams.set('_ow', '0');
   payUrl.searchParams.set('failpage', failPage);
+  payUrl.searchParams.set('curr', 'API_5020_RUB');
 
   logger.info('[Ubisoft+] Order created', { productId, idPo, totalPrice });
 

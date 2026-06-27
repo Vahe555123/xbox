@@ -16,6 +16,7 @@ import {
 
 const STORAGE_KEY = 'xbox-favorite-ids-v1';
 const LEGACY_STORAGE_KEY = 'xbox-favorites-v1';
+const SESSION_USER_KEY = 'xbox-favorites-session-user';
 
 function normalizeFavoriteId(item) {
   const id = typeof item === 'string'
@@ -90,9 +91,40 @@ export function FavoritesProvider({ children }) {
   }, []);
 
   const loadServerFavorites = useCallback(async () => {
+    let authUser = null;
+    try { authUser = JSON.parse(localStorage.getItem('auth:user') || 'null'); } catch {}
+    const currentUserId = authUser?.id || null;
+    const prevUserId = localStorage.getItem(SESSION_USER_KEY) || null;
+
+    // User changed (logout or account switch) — clear stale local favorites
+    // so they don't get synced to the next account.
+    if (prevUserId !== null && prevUserId !== currentUserId) {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    }
+
+    if (currentUserId) {
+      localStorage.setItem(SESSION_USER_KEY, currentUserId);
+    } else {
+      localStorage.removeItem(SESSION_USER_KEY);
+    }
+
+    if (!currentUserId) {
+      // Guest mode: use local storage, no server sync.
+      const localIds = readStoredIds();
+      setFavoriteIds(localIds);
+      hydrateFavoriteItems(localIds);
+      setServerReady(false);
+      return;
+    }
+
     const localIds = readStoredIds();
     try {
-      const remoteItems = await syncFavorites(localIds);
+      // If there are local favorites (from guest browsing before login), merge them
+      // into the server. Otherwise just fetch the server list.
+      const remoteItems = localIds.length > 0
+        ? await syncFavorites(localIds)
+        : await fetchFavorites();
       const remoteIds = uniqueIds(remoteItems);
       setFavoriteIds(remoteIds);
       await hydrateFavoriteItems(remoteIds);

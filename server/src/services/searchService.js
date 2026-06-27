@@ -1123,7 +1123,11 @@ function applyPostFilters(products, { languageMode, specialOffersOnly, freeOnly 
     // Free games are hidden from the catalog by default, but shown when the
     // "Бесплатно" filter is active.
     if (product.price?.value === 0 && !freeOnly) return false;
-    if (languageModes.size && !matchesLanguageModes(product, languageModes)) return false;
+    if (languageModes.size) {
+      if (!matchesLanguageModes(product, languageModes)) return false;
+      const pv = product.price?.value;
+      if (pv == null || !Number.isFinite(pv)) return false;
+    }
     // "Спецпредложения": only games that actually have a configured special offer.
     if (specialOffersOnly && !product.specialOfferUrl) return false;
     // "Скидки" (search mode only): keep games with regular discount OR Game Pass savings.
@@ -1162,6 +1166,10 @@ function applyIndexLanguageMode(product) {
     return { ...product, russianLanguageMode: mode, hasRussianLanguage: true };
   }
   if (mode === 'no_ru') {
+    if (product.russianLanguageMode === 'unknown') {
+      // Catalog has no language data — keep 'unknown' so catalog and detail page match.
+      return { ...product, hasRussianLanguage: false };
+    }
     return { ...product, russianLanguageMode: 'no_ru', hasRussianLanguage: false };
   }
   // Not classified by the index yet — the display-catalog language list is

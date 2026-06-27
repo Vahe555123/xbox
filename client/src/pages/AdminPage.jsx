@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   checkAdmin,
   fetchAdminStats,
+  fetchAdminTopFavorites,
   fetchAdminUsers,
   fetchAdminUserDetail,
   updateAdminUserAccess,
@@ -356,6 +357,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
   // Dashboard
   const [stats, setStats] = useState(null);
+  const [topFav, setTopFav] = useState({ items: [], total: 0, page: 1, limit: 20, loading: false });
   const [supportLinksForm, setSupportLinksForm] = useState({
     vkUrl: '',
     telegramUrl: '',
@@ -515,6 +517,16 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const loadTopFav = useCallback(async (page = 1) => {
+    setTopFav((prev) => ({ ...prev, loading: true }));
+    try {
+      const data = await fetchAdminTopFavorites({ page, limit: 20 });
+      setTopFav({ items: data.items, total: data.total, page: data.page, limit: data.limit, loading: false });
+    } catch {
+      setTopFav((prev) => ({ ...prev, loading: false }));
+    }
+  }, []);
+
   // Load data when tab changes
   const loadDashboard = useCallback(async () => {
     try {
@@ -523,7 +535,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setScheduler(data.scheduler);
       setIntervalInput(String(data.scheduler?.intervalHours || 24));
     } catch { /* ignore */ }
-  }, []);
+    loadTopFav(1);
+  }, [loadTopFav]);
 
   const loadSupportLinks = useCallback(async () => {
     try {
@@ -1462,17 +1475,44 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <h3>Топ избранных игр</h3>
               <div className="admin-table-wrap">
                 <table className="admin-table">
-                  <thead><tr><th>Игра</th><th>Добавлений</th></tr></thead>
+                  <thead><tr><th>#</th><th>Игра</th><th>Добавлений</th></tr></thead>
                   <tbody>
-                    {stats.topFavorited.map((f) => (
+                    {topFav.loading ? (
+                      <tr><td colSpan={3} style={{ textAlign: 'center', padding: '16px', color: '#888' }}>Загрузка...</td></tr>
+                    ) : topFav.items.length === 0 ? (
+                      <tr><td colSpan={3} style={{ textAlign: 'center', padding: '16px', color: '#888' }}>Нет данных</td></tr>
+                    ) : topFav.items.map((f, idx) => (
                       <tr key={f.product_id}>
-                        <td>{f.title || '—'}</td>
+                        <td style={{ color: '#888', width: '40px' }}>{(topFav.page - 1) * topFav.limit + idx + 1}</td>
+                        <td>
+                          {f.title
+                            ? <a href={`/game/${f.product_id}`} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{f.title}</a>
+                            : <span style={{ color: '#888' }}>{f.product_id}</span>
+                          }
+                        </td>
                         <td>{f.count}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {topFav.total > topFav.limit && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+                  <button
+                    className="admin-btn"
+                    disabled={topFav.page <= 1 || topFav.loading}
+                    onClick={() => loadTopFav(topFav.page - 1)}
+                  >← Назад</button>
+                  <span style={{ fontSize: '13px', color: '#888' }}>
+                    Стр. {topFav.page} / {Math.ceil(topFav.total / topFav.limit)} &nbsp;({topFav.total} игр)
+                  </span>
+                  <button
+                    className="admin-btn"
+                    disabled={topFav.page >= Math.ceil(topFav.total / topFav.limit) || topFav.loading}
+                    onClick={() => loadTopFav(topFav.page + 1)}
+                  >Вперёд →</button>
+                </div>
+              )}
             </div>
           </div>
 

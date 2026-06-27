@@ -217,6 +217,11 @@ export async function fetchAdminStats() {
   return data;
 }
 
+export async function fetchAdminTopFavorites({ page = 1, limit = 20 } = {}) {
+  const { data } = await api.get('/admin/top-favorites', { params: { page, limit } });
+  return data;
+}
+
 export async function fetchAdminUsers({ page = 1, limit = 20, search = '' } = {}) {
   const params = { page, limit };
   if (search) params.search = search;

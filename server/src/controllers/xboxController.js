@@ -10,6 +10,7 @@ const {
   enrichProductsWithRub,
   createPurchasePaymentUrl,
   createKeyActivationPayment,
+  createSpecialOfferPayment,
   buildKeyActivationPayUrl,
   getKeyActivationRubPriceForProduct,
   getSpecialOfferInfo,
@@ -484,6 +485,8 @@ async function createProductPurchase(req, res, next) {
     const product = mapProductDetail(raw);
     await enrichProductWithRub(product).catch((e) =>
       logger.warn('RUB detail enrichment failed before purchase', { productId: product.id, message: e.message }));
+    await applyProductOverrides(product).catch((e) =>
+      logger.warn('Override enrichment failed before purchase', { productId: product.id, message: e.message }));
 
     const savedSettings = req.user ? await getPurchaseSettingsForCheckout(req.user.id) : null;
     const finalAccountEmail = String(accountEmail || savedSettings?.xboxAccountEmail || '').trim();
@@ -502,7 +505,7 @@ async function createProductPurchase(req, res, next) {
         purchaseEmail: finalPurchaseEmail,
         paymentMode: finalPaymentMode,
       };
-      if (finalPaymentMode !== 'key_activation' && finalPaymentMode !== 'topup_cards') {
+      if (finalPaymentMode !== 'key_activation' && finalPaymentMode !== 'topup_cards' && finalPaymentMode !== 'special_offer') {
         saveFields.xboxAccountEmail = finalAccountEmail;
         saveFields.xboxAccountPassword = accountPassword || undefined;
       }
@@ -555,6 +558,14 @@ async function createProductPurchase(req, res, next) {
         links: combo.links,
         purchaseEmail: finalPurchaseEmail || null,
       };
+    } else if (finalPaymentMode === 'special_offer') {
+      if (!product.specialOfferUrl) {
+        throw new AppError('Спецпредложение недоступно для этого товара', 400);
+      }
+      const spFailPage = config.clientOrigin
+        ? `${config.clientOrigin.replace(/\/$/, '')}/game/${encodeURIComponent(product.id)}`
+        : null;
+      payment = await createSpecialOfferPayment(product.specialOfferUrl, { failPageUrl: spFailPage });
     } else {
       payment = await createPurchasePaymentUrl(product, {
         gameName,

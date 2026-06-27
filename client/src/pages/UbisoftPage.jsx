@@ -117,6 +117,9 @@ export default function UbisoftPage() {
           <p className="gp-page-subtitle">
             Подписка на библиотеку игр Ubisoft · Новые игры в день релиза · Скидки для подписчиков
           </p>
+          <p className="gp-page-description">
+            Ubisoft+ — подписка с доступом к полной библиотеке игр Ubisoft: Assassin&apos;s Creed, Far Cry, Rainbow Six Siege, The Crew и сотни других. Новые игры доступны с первого дня релиза без доплаты. Мы активируем подписку на вашем аккаунте Xbox. Оплата через безопасный сервис Digiseller — поддерживается СБП и банковская карта.
+          </p>
           <div className="gp-page-delivery-row">
             <span className="gp-page-delivery-badge">⚡ Быстрая активация</span>
             <span className="gp-page-delivery-note">10 мин — 3 часа · продавец активирует на вашем аккаунте</span>

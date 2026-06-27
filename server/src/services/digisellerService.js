@@ -947,6 +947,66 @@ async function getSpecialOfferInfo(productIdOrUrl, { failPageUrl } = {}) {
   };
 }
 
+async function createSpecialOfferPayment(productIdOrUrl, { failPageUrl } = {}) {
+  const productId = resolveSpecialOfferId(productIdOrUrl);
+  if (!productId) throw createPaymentError('Некорректный ID спецпредложения');
+
+  const price = await fetchRubPrice(productId, 1);
+  if (!price?.value) throw createPaymentError('Не удалось получить цену для спецпредложения', 502);
+
+  const digiuid = randomUUID().toUpperCase();
+  const failPage = failPageUrl || config.digiseller.failPageUrl || 'https://xboxtracker.ru/';
+
+  const body = new URLSearchParams({
+    Lang: 'ru-RU',
+    ID_D: String(productId),
+    product_id: String(productId),
+    Agent: config.digiseller.sellerId || '',
+    AgentN: '',
+    FailPage: failPage,
+    failpage: failPage,
+    NoClearBuyerQueryString: 'NoClear',
+    digiuid,
+    Curr_add: '',
+    TypeCurr: 'API_17432_RUB',
+    _subcurr: '',
+    _ow: '0',
+    firstrun: '0',
+    unit_cnt: '1',
+    unit_amount: String(price.value),
+    product_cnt: '1',
+    Email: '',
+  });
+
+  const response = await axios.post(config.digiseller.payPostUrl, body.toString(), {
+    headers: BROWSER_PAYMENT_HEADERS,
+    timeout: 12_000,
+    maxRedirects: 0,
+    validateStatus: (s) => s >= 200 && s < 400,
+  });
+
+  const rawUrl = buildFullPaymentUrl(response.headers?.location);
+  if (!rawUrl || !/pay_api\.asp/i.test(rawUrl)) {
+    logger.warn('[SpecialOffer] Unexpected redirect from Digiseller', {
+      productId,
+      location: response.headers?.location,
+    });
+    throw createPaymentError('Не удалось создать заказ спецпредложения', 502);
+  }
+
+  const payUrl = new URL(rawUrl);
+  payUrl.searchParams.set('curr', 'API_5020_RUB');
+
+  return {
+    paymentUrl: payUrl.toString(),
+    provider: 'oplata',
+    paymentMode: 'special_offer',
+    paymentType: 'special_offer',
+    currency: 'RUB',
+    priceRub: price.value,
+  };
+}
+
 module.exports = {
   buildPayUrl,
   buildKeyActivationPayUrl,
@@ -960,6 +1020,7 @@ module.exports = {
   getUsdToRubEstimate,
   getKeyActivationRubPriceForProduct,
   createPurchasePaymentUrl,
+  createSpecialOfferPayment,
   enrichProductWithRub,
   enrichProductsWithRub,
   buildPriceTargets,

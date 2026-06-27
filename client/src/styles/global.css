@@ -8941,6 +8941,13 @@ body.mobile-menu-open {
   line-height: 1.5;
 }
 
+.gp-page-description {
+  color: rgba(255,255,255,0.6);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  margin: 0 0 1rem;
+}
+
 .gp-page-delivery-row {
   display: flex;
   align-items: center;

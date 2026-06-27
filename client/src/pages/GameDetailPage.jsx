@@ -527,7 +527,8 @@ export default function GameDetailPage() {
 
   const cardImage = getCardImage(data.images);
   const heroImage = getHeroImage(data.images);
-  const price = data.releaseInfo?.status === 'unreleased' ? null : data.price;
+  const isUnreleased = data.releaseInfo?.status === 'unreleased';
+  const price = data.price;
   const hasRubPrice = Boolean(data.priceRub?.formatted);
   const isUnavailablePrice = price?.status === 'unavailable' || price?.formatted === 'Price not available';
   const storePriceLabel = getStorePriceLabel(price, data.releaseInfo, isUnavailablePrice);
@@ -600,7 +601,7 @@ export default function GameDetailPage() {
     data.digisellerId || data.keyActivationPayUrl || data.specialOfferUrl || data.topupCombo?.available,
   );
   const hasKnownPrice = price != null && price.value != null;
-  const canOpenPurchase = hasKnownPrice && (hasManagedPurchaseMode || Boolean(data.officialStoreUrl));
+  const canOpenPurchase = hasKnownPrice && !isUnreleased && (hasManagedPurchaseMode || Boolean(data.officialStoreUrl));
   const showSpecialOfferCartNote = Boolean(data.specialOfferUrl);
 
   const handleBuyClick = async () => {
@@ -663,7 +664,20 @@ export default function GameDetailPage() {
         setPurchaseError('Ссылка спецпредложения недоступна.');
         return;
       }
-      setPurchaseResult({ paymentUrl: data.specialOfferUrl });
+      setPurchaseLoading(true);
+      setPurchaseError(null);
+      setPurchaseResult(null);
+      setCopyMessage('');
+      try {
+        const result = await createProductPurchase(data.id, { paymentMode: 'special_offer', gameName: data.title });
+        const paymentUrl = result.paymentUrl || result.payment?.paymentUrl;
+        if (!paymentUrl) throw new Error('Ссылка оплаты не получена');
+        setPurchaseResult({ ...result.payment, paymentUrl });
+      } catch (err) {
+        setPurchaseError(err.response?.data?.error?.message || err.message || 'Не удалось подготовить оплату.');
+      } finally {
+        setPurchaseLoading(false);
+      }
       return;
     }
 
@@ -716,7 +730,7 @@ export default function GameDetailPage() {
   };
 
   const isInCart = inCart(data.id);
-  const canAddToCart = hasKnownPrice && Boolean(data.digisellerId || data.keyActivationPayUrl || data.topupCombo?.available);
+  const canAddToCart = hasKnownPrice && !isUnreleased && Boolean(data.digisellerId || data.keyActivationPayUrl || data.topupCombo?.available);
   const handleToggleCart = () => {
     toggleCart(favoriteProduct);
     setCartToast(isInCart ? 'Игра удалена из корзины' : 'Игра добавлена в корзину');

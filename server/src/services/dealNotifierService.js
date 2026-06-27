@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 const pool = require('../db/pool');
 const config = require('../config');
 const { getProductsByIds } = require('./displayCatalogService');
@@ -177,6 +178,8 @@ async function getUsersWithFavorites() {
       u.email,
       u.name,
       u.last_provider,
+      u.notify_deals,
+      u.notify_special_offers,
       array_agg(f.product_id ORDER BY f.updated_at DESC) AS product_ids
     FROM users u
     JOIN favorites f ON f.user_id = u.id
@@ -799,13 +802,14 @@ async function runDealNotifications() {
   const report = createRunReport();
   logger.info('[DealNotifier] Starting deal check...');
 
-  // 1. Get all users with favorites
-  const users = await getUsersWithFavorites();
+  // 1. Get all users with favorites, filter out those who opted out of deal notifications
+  const allUsersWithFavorites = await getUsersWithFavorites();
+  const users = allUsersWithFavorites.filter((u) => u.notify_deals !== false);
   report.totals.clients = users.length;
   report.totals.favorites = users.reduce((sum, user) => sum + (user.product_ids?.length || 0), 0);
 
   if (users.length === 0) {
-    logger.info('[DealNotifier] No users with favorites, done.');
+    logger.info('[DealNotifier] No users with favorites (or all opted out), done.');
     return finishRunReport(report);
   }
 
@@ -1421,7 +1425,8 @@ async function runSaleEndingBroadcast(endDay) {
     return report;
   }
 
-  const users = await getUsersWithFavorites();
+  const allUsers = await getUsersWithFavorites();
+  const users = allUsers.filter((u) => u.notify_deals !== false);
   report.totals.clients = users.length;
 
   // Which ending products are actually in someone's favorites?
@@ -1542,6 +1547,38 @@ async function runSaleEndingBroadcast(endDay) {
 // won't get the same game twice in one day.
 // ---------------------------------------------------------------------------
 
+async function getVkUserId(userId) {
+  const { rows } = await pool.query(
+    `SELECT provider_user_id FROM oauth_accounts WHERE user_id = $1 AND provider = 'vk' LIMIT 1`,
+    [userId],
+  );
+  return rows[0]?.provider_user_id || null;
+}
+
+async function sendVkMessage(vkUserId, text) {
+  const communityToken = config.auth.vk.communityToken;
+  if (!communityToken || !vkUserId) return false;
+  const params = new URLSearchParams({
+    user_id: String(vkUserId),
+    message: text,
+    random_id: String(Date.now() + Math.floor(Math.random() * 1e6)),
+    access_token: communityToken,
+    v: config.auth.vk.apiVersion || '5.199',
+  });
+  try {
+    const resp = await axios.post(
+      'https://api.vk.com/method/messages.send',
+      params.toString(),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 8000 },
+    );
+    if (resp.data?.error) throw new Error(resp.data.error.error_msg || 'VK API error');
+    return true;
+  } catch (err) {
+    logger.warn('[SpecialOfferNotify] VK send failed', { vkUserId, message: err.message });
+    return false;
+  }
+}
+
 async function runManualSpecialOfferNotification(productId) {
   const normalizedId = normalizeProductId(productId);
   if (!normalizedId) throw new Error('Некорректный productId');
@@ -1561,12 +1598,13 @@ async function runManualSpecialOfferNotification(productId) {
     paymentPrices: product?.notificationPaymentPrices || null,
   };
 
-  // Find users who have this game in favorites
+  // Find users who have this game in favorites and haven't opted out of special offer notifications
   const { rows: users } = await pool.query(`
     SELECT u.id AS user_id, u.email, u.name, u.last_provider
     FROM users u
     JOIN favorites f ON f.user_id = u.id
     WHERE f.product_id = $1
+      AND u.notify_special_offers IS NOT FALSE
   `, [normalizedId]);
 
   const todayKey = `special_offer_manual:${new Date().toISOString().slice(0, 10)}`;
@@ -1582,6 +1620,7 @@ async function runManualSpecialOfferNotification(productId) {
       sent: 0,
       telegram: 0,
       email: 0,
+      vk: 0,
       skippedAlreadyNotified: 0,
       skippedNoContact: 0,
       failed: 0,
@@ -1598,7 +1637,7 @@ async function runManualSpecialOfferNotification(productId) {
         continue;
       }
 
-      // Send to ALL available channels for this user (Telegram AND Email, not exclusive)
+      // Send to ALL available channels for this user (Telegram, Email, VK)
       const channels = [];
       const text = buildEventTelegramMessage(user.name, [item], 'special_offer');
 
@@ -1626,6 +1665,17 @@ async function runManualSpecialOfferNotification(productId) {
           report.totals.email += 1;
         } catch (err) {
           logger.warn('[SpecialOfferNotify] Email failed', { userId: user.user_id, message: err.message });
+        }
+      }
+
+      const vkUserId = await getVkUserId(user.user_id);
+      if (vkUserId) {
+        // Plain-text version for VK (no HTML, URL appended for auto-linking)
+        const vkText = `Спецпредложение: ${item.title}\n${item.siteUrl}`;
+        const vkOk = await sendVkMessage(vkUserId, vkText);
+        if (vkOk) {
+          channels.push('vk');
+          report.totals.vk += 1;
         }
       }
 

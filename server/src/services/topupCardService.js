@@ -36,10 +36,10 @@ const PRICE_BRACKETS = [
   { max: 15, cards: [5, 10] },
   { max: 20, cards: [10, 10] },
   { max: 25, cards: [25] },
-  { max: 30, cards: [10, 10, 10] },
+  { max: 30, cards: [25, 5] },
   { max: 35, cards: [25, 10] },
   { max: 40, cards: [25, 10, 5] },
-  { max: 45, cards: [25, 10, 10, 5] },
+  { max: 45, cards: [25, 10, 10] },
   { max: 50, cards: [50] },
 ];
 

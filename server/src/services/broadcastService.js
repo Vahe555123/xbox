@@ -109,10 +109,17 @@ async function broadcastVk(text, photoUrl, buttons) {
   );
 
   const plainText = htmlToPlainText(text);
-  // Append button links as plain text for VK (no inline keyboard in direct messages).
-  const vkText = buttons && buttons.length > 0
-    ? `${plainText}\n\n${buttons.map((b) => `${b.text}: ${b.url}`).join('\n')}`
-    : plainText;
+
+  // Build VK message: buttons as "text: url" lines, photo as plain URL at the end
+  // (VK auto-detects URLs and makes them clickable; raw URLs are not valid attachments).
+  const parts = [plainText];
+  if (buttons && buttons.length > 0) {
+    parts.push(buttons.map((b) => `${b.text}: ${b.url}`).join('\n'));
+  }
+  if (photoUrl) {
+    parts.push(photoUrl);
+  }
+  const vkText = parts.filter(Boolean).join('\n\n');
 
   let sent = 0;
   let failed = 0;
@@ -127,7 +134,6 @@ async function broadcastVk(text, photoUrl, buttons) {
         access_token: communityToken,
         v: apiVersion,
       });
-      if (photoUrl) params.append('attachment', photoUrl);
 
       const resp = await axios.post(
         `https://api.vk.com/method/messages.send`,

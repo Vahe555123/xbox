@@ -57,6 +57,12 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
   const [purchaseFeedbackBlock, setPurchaseFeedbackBlock] = useState('');
   const [purchaseLoading, setPurchaseLoading] = useState(false);
 
+  const [notifyDeals, setNotifyDeals] = useState(true);
+  const [notifySpecialOffers, setNotifySpecialOffers] = useState(true);
+  const [notifyMessage, setNotifyMessage] = useState('');
+  const [notifyError, setNotifyError] = useState('');
+  const [notifyLoading, setNotifyLoading] = useState(false);
+
   const [providerConfig, setProviderConfig] = useState(null);
   const [providerMsg, setProviderMsg] = useState('');
   const [providerErr, setProviderErr] = useState('');
@@ -82,6 +88,8 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
           paymentMode: settings.paymentMode || 'oplata',
         });
         setPurchaseSavedPassword(Boolean(settings.hasXboxAccountPassword));
+        setNotifyDeals(settings.notifyDeals !== false);
+        setNotifySpecialOffers(settings.notifySpecialOffers !== false);
       })
       .catch((err) => {
         setError(err.response?.data?.error?.message || err.message || 'Не удалось загрузить профиль');
@@ -233,6 +241,21 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
       setPurchaseError(err.response?.data?.error?.message || err.message || 'Не удалось сохранить настройки покупки');
     } finally {
       setPurchaseLoading(false);
+    }
+  };
+
+  const submitNotifySettings = async (event) => {
+    event.preventDefault();
+    setNotifyMessage('');
+    setNotifyError('');
+    setNotifyLoading(true);
+    try {
+      await updatePurchaseSettings({ notifyDeals, notifySpecialOffers });
+      setNotifyMessage('Настройки уведомлений сохранены');
+    } catch (err) {
+      setNotifyError(err.response?.data?.error?.message || err.message || 'Не удалось сохранить');
+    } finally {
+      setNotifyLoading(false);
     }
   };
 
@@ -432,6 +455,34 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
             {purchaseFeedbackBlock === 'account' && purchaseError && <p className="profile-error">{purchaseError}</p>}
             <button type="submit" disabled={purchaseLoading}>
               {purchaseLoading ? 'Сохраняем...' : 'Сохранить аккаунт Xbox'}
+            </button>
+          </form>
+        </section>
+
+        <section className="profile-page-card">
+          <h2>Уведомления</h2>
+          <p>Мы уведомляем вас об изменениях цен и спецпредложениях на игры из вашего списка желаемого.</p>
+          <form className="profile-password-form" onSubmit={submitNotifySettings}>
+            <label className="profile-checkbox-row">
+              <input
+                type="checkbox"
+                checked={notifyDeals}
+                onChange={(e) => { setNotifyDeals(e.target.checked); setNotifyMessage(''); setNotifyError(''); }}
+              />
+              Уведомлять о скидках
+            </label>
+            <label className="profile-checkbox-row">
+              <input
+                type="checkbox"
+                checked={notifySpecialOffers}
+                onChange={(e) => { setNotifySpecialOffers(e.target.checked); setNotifyMessage(''); setNotifyError(''); }}
+              />
+              Уведомлять о спецпредложениях
+            </label>
+            {notifyMessage && <p className="profile-success">{notifyMessage}</p>}
+            {notifyError && <p className="profile-error">{notifyError}</p>}
+            <button type="submit" disabled={notifyLoading}>
+              {notifyLoading ? 'Сохраняем...' : 'Сохранить'}
             </button>
           </form>
         </section>

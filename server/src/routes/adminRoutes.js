@@ -61,27 +61,21 @@ router.get('/stats', requireAdmin, async (_req, res, next) => {
       ORDER BY count DESC
     `);
 
-    // sale_products содержит актуальные тайтлы большинства Xbox-продуктов,
-    // которых нет ни в product_overrides, ни в collection_product_snapshots —
-    // без этого JOIN большинство игр показывали ID вместо названия
     const topFavorited = await pool.query(`
       SELECT
         f.product_id,
         COALESCE(
-          po.title,              -- ручной override
-          cps.data->>'title',    -- снэпшот из коллекции
-          sp.title,              -- таблица распродаж (основной источник для Xbox-продуктов)
+          (SELECT po.title FROM product_overrides po WHERE po.product_id = f.product_id AND po.title IS NOT NULL LIMIT 1),
+          (SELECT cps.data->>'title' FROM collection_product_snapshots cps WHERE cps.product_id = f.product_id AND cps.data->>'title' IS NOT NULL LIMIT 1),
+          (SELECT sp.title FROM sale_products sp WHERE sp.product_id = f.product_id AND sp.title IS NOT NULL LIMIT 1),
           (SELECT fs.snapshot->>'title' FROM favorites fs WHERE fs.product_id = f.product_id AND fs.snapshot->>'title' IS NOT NULL LIMIT 1),
-          (SELECT product_title FROM purchases p WHERE p.product_id = f.product_id LIMIT 1)
+          (SELECT p.product_title FROM purchases p WHERE p.product_id = f.product_id AND p.product_title IS NOT NULL LIMIT 1)
         ) AS title,
         COUNT(*)::int AS count
       FROM favorites f
-      LEFT JOIN product_overrides po ON po.product_id = f.product_id
-      LEFT JOIN collection_product_snapshots cps ON cps.product_id = f.product_id
-      LEFT JOIN sale_products sp ON sp.product_id = f.product_id
-      GROUP BY f.product_id, po.title, cps.data, sp.title
+      GROUP BY f.product_id
       ORDER BY count DESC
-      LIMIT 10
+      LIMIT 20
     `);
 
     const scheduler = dealScheduler.getState();
@@ -97,6 +91,39 @@ router.get('/stats', requireAdmin, async (_req, res, next) => {
       topFavorited: topFavorited.rows,
       scheduler,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Top favorited games with pagination
+router.get('/top-favorites', requireAdmin, async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const offset = (page - 1) * limit;
+
+    const [{ rows }, { rows: [{ total }] }] = await Promise.all([
+      pool.query(`
+        SELECT
+          f.product_id,
+          COALESCE(
+            (SELECT po.title FROM product_overrides po WHERE po.product_id = f.product_id AND po.title IS NOT NULL LIMIT 1),
+            (SELECT cps.data->>'title' FROM collection_product_snapshots cps WHERE cps.product_id = f.product_id AND cps.data->>'title' IS NOT NULL LIMIT 1),
+            (SELECT sp.title FROM sale_products sp WHERE sp.product_id = f.product_id AND sp.title IS NOT NULL LIMIT 1),
+            (SELECT fs.snapshot->>'title' FROM favorites fs WHERE fs.product_id = f.product_id AND fs.snapshot->>'title' IS NOT NULL LIMIT 1),
+            (SELECT p.product_title FROM purchases p WHERE p.product_id = f.product_id AND p.product_title IS NOT NULL LIMIT 1)
+          ) AS title,
+          COUNT(*)::int AS count
+        FROM favorites f
+        GROUP BY f.product_id
+        ORDER BY count DESC
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]),
+      pool.query(`SELECT COUNT(DISTINCT product_id)::int AS total FROM favorites`),
+    ]);
+
+    res.json({ items: rows, total, page, limit });
   } catch (err) {
     next(err);
   }
@@ -352,8 +379,28 @@ router.get('/product-overrides/:productId', requireAdmin, async (req, res, next)
 
 router.put('/product-overrides/:productId', requireAdmin, async (req, res, next) => {
   try {
+    // Snapshot old special_offer_url before saving so we can detect a newly-set offer.
+    const existing = await getProductOverride(req.params.productId).catch(() => null);
+    const oldSpecialOfferUrl = existing?.specialOfferUrl || null;
+
     const override = await upsertProductOverride(req.params.productId, req.body || {});
     res.json({ success: true, override });
+
+    // If a new special offer URL was set (or changed), automatically notify users
+    // who have this game in their favorites — runs in background after response is sent.
+    const newSpecialOfferUrl = override?.specialOfferUrl || null;
+    if (newSpecialOfferUrl && newSpecialOfferUrl !== oldSpecialOfferUrl) {
+      logger.info('[Admin] New special offer detected, triggering auto-notification', {
+        productId: override.productId,
+        url: newSpecialOfferUrl,
+      });
+      runManualSpecialOfferNotification(override.productId).catch((err) => {
+        logger.error('[Admin] Auto special-offer notification failed', {
+          productId: override.productId,
+          message: err.message,
+        });
+      });
+    }
   } catch (err) {
     if (err.message === 'Invalid russianLanguageMode' || err.message === 'Product ID is required') {
       return res.status(400).json({ success: false, error: err.message });

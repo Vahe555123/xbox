@@ -29,7 +29,8 @@ initDb()
       logger.info(`Server running on http://localhost:${config.port} [${config.nodeEnv}]`);
     });
 
-    dealScheduler.start();
+    // Deal (discount) notifications are manual-only — triggered via admin UI button.
+    // dealScheduler.start();
     russianLanguageIndexScheduler.start();
     collectionsScheduler.start();
     priceRateScheduler.start();

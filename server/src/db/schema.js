@@ -21,7 +21,9 @@ async function initDb() {
       ADD COLUMN IF NOT EXISTS xbox_account_email TEXT,
       ADD COLUMN IF NOT EXISTS xbox_account_password_encrypted TEXT,
       ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS purchase_payment_mode TEXT NOT NULL DEFAULT 'oplata';
+      ADD COLUMN IF NOT EXISTS purchase_payment_mode TEXT NOT NULL DEFAULT 'oplata',
+      ADD COLUMN IF NOT EXISTS notify_deals BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS notify_special_offers BOOLEAN NOT NULL DEFAULT TRUE;
 
     CREATE TABLE IF NOT EXISTS oauth_accounts (
       provider TEXT NOT NULL,
