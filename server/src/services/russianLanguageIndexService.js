@@ -560,10 +560,15 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
     state.progress.phase = 'done';
     state.progress.updatedAt = Date.now();
     state.lastDurationMs = durationMs;
+    const tail = complete
+      ? ''
+      : (storeFetches === 0 && fetchTargets.length > 0
+        ? ` · осталось ${pending} · загрузки не прошли (возможно, лимит Xbox) — повтор позже`
+        : ` · осталось ${pending}, продолжу`);
     log(
       `Готово за ${Math.round(durationMs / 1000)}с · русских ${index.counts.russian} `
       + `(полностью ${index.counts.fullRu}, субтитры ${index.counts.subtitles}), загрузок ${storeFetches}`
-      + `${complete ? '' : ` · осталось ${pending}, продолжу`}`,
+      + tail,
     );
     return { success: true, complete, newlyResolved, pending, ...getState() };
   } catch (err) {
