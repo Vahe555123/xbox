@@ -1757,7 +1757,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 {russianIndexState?.isBuilding ? 'Собирается...' : (russianIndexRefreshing ? 'Запуск...' : 'Обновить сейчас')}
               </button>
               <button
-                className="admin-btn"
+                className="admin-btn admin-btn-secondary"
                 type="button"
                 onClick={() => handleRussianIndexRefresh(true)}
                 disabled={russianIndexRefreshing || russianIndexState?.isBuilding}
