@@ -1,4 +1,7 @@
 const pool = require('../db/pool');
+const logger = require('../utils/logger');
+const { getProductById } = require('./displayCatalogService');
+const { mapProductDetail } = require('../mappers/productDetailMapper');
 
 function normalizeProductId(input) {
   const id = typeof input === 'string'
@@ -27,6 +30,25 @@ async function listFavorites(userId) {
   return rows.map((row) => favoriteItem(row.product_id));
 }
 
+async function enrichFavoriteReleaseStatus(userId, productId) {
+  try {
+    const raw = await getProductById(productId);
+    const product = mapProductDetail(raw);
+    const status = product?.releaseInfo?.status;
+    if (status !== 'unreleased' && status !== 'comingSoon') return;
+    await pool.query(
+      `UPDATE favorites
+       SET snapshot = jsonb_set(snapshot, '{releaseStatus}', $3::jsonb),
+           updated_at = NOW()
+       WHERE user_id = $1 AND product_id = $2
+         AND snapshot->>'releaseStatus' IS NULL`,
+      [userId, productId, JSON.stringify(status)],
+    );
+  } catch (err) {
+    logger.debug('[Favorites] enrichReleaseStatus failed', { userId, productId, message: err.message });
+  }
+}
+
 async function upsertFavorite(userId, input, snapshot = {}) {
   const productId = normalizeProductId(input);
   if (!productId) {
@@ -40,6 +62,12 @@ async function upsertFavorite(userId, input, snapshot = {}) {
      DO UPDATE SET updated_at = NOW()`,
     [userId, productId, JSON.stringify(snapshot)],
   );
+
+  // If the client didn't send releaseStatus, auto-detect it in the background
+  // so the release notification system can track this product.
+  if (!snapshot.releaseStatus) {
+    enrichFavoriteReleaseStatus(userId, productId).catch(() => {});
+  }
 
   return favoriteItem(productId);
 }
@@ -65,7 +93,7 @@ async function replaceFavorites(userId, items) {
         `INSERT INTO favorites (user_id, product_id, snapshot)
          VALUES ($1, $2, '{}'::jsonb)
          ON CONFLICT (user_id, product_id)
-         DO UPDATE SET snapshot = '{}'::jsonb, updated_at = NOW()`,
+         DO UPDATE SET updated_at = NOW()`,
         [userId, productId],
       );
     }
@@ -84,4 +112,5 @@ module.exports = {
   upsertFavorite,
   removeFavorite,
   replaceFavorites,
+  enrichFavoriteReleaseStatus,
 };

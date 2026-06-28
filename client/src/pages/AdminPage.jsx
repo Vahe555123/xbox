@@ -50,6 +50,8 @@ import {
   fetchSpecialOfferGames,
   fetchSpecialOfferFavoritesCount,
   sendAdminSpecialOfferNotify,
+  fetchReleaseBackfillState,
+  triggerReleaseBackfill,
 } from '../services/api';
 
 function formatDate(d) {
@@ -465,6 +467,11 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [expandedRunId, setExpandedRunId] = useState(null);
   const saleWasRunningRef = useRef(false);
 
+  // Release backfill
+  const [releaseBackfill, setReleaseBackfill] = useState(null);
+  const [releaseBackfillLoading, setReleaseBackfillLoading] = useState(false);
+  const [releaseBackfillMessage, setReleaseBackfillMessage] = useState('');
+
   // Sale-ending broadcast (manual reminders to users with these games in favorites)
   const [saleEndDates, setSaleEndDates] = useState([]);
   const [reminderDate, setReminderDate] = useState('');
@@ -683,6 +690,13 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadReleaseBackfill = useCallback(async () => {
+    try {
+      const st = await fetchReleaseBackfillState();
+      setReleaseBackfill(st);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     if (!authorized) return;
     if (tab === 'dashboard') {
@@ -702,8 +716,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     else if (tab === 'topup') loadTopupCards();
     else if (tab === 'purchases') loadPurchases(purchasesSort);
     else if (tab === 'collections') { loadCollections(); loadCollectionsRefresh(); }
-    else if (tab === 'scheduler') { loadSaleIndex(); loadSaleIndexRuns(); loadSaleEndDates(); }
-  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadRussianIndex, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort, loadCollections, loadCollectionsRefresh, loadSaleIndex, loadSaleIndexRuns, loadSaleEndDates]);
+    else if (tab === 'scheduler') { loadSaleIndex(); loadSaleIndexRuns(); loadSaleEndDates(); loadReleaseBackfill(); }
+  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadRussianIndex, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort, loadCollections, loadCollectionsRefresh, loadSaleIndex, loadSaleIndexRuns, loadSaleEndDates, loadReleaseBackfill]);
 
   // Poll snapshot-refresh status while a refresh is running.
   useEffect(() => {
@@ -737,6 +751,14 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     }
     saleWasRunningRef.current = running;
   }, [saleIndex?.scheduler?.isRunning, loadSaleIndexRuns]);
+
+  // Poll release backfill while it's running.
+  useEffect(() => {
+    if (!authorized || tab !== 'scheduler') return undefined;
+    if (!releaseBackfill?.isRunning) return undefined;
+    const timer = setInterval(loadReleaseBackfill, 2000);
+    return () => clearInterval(timer);
+  }, [authorized, tab, releaseBackfill?.isRunning, loadReleaseBackfill]);
 
   const handleUserSearch = (e) => {
     e.preventDefault();
@@ -1187,6 +1209,24 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       await loadSaleIndex();
     } catch (err) {
       setSaleIndexMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleReleaseBackfill = async () => {
+    setReleaseBackfillLoading(true);
+    setReleaseBackfillMessage('');
+    try {
+      const result = await triggerReleaseBackfill();
+      if (result.alreadyRunning) {
+        setReleaseBackfillMessage('Бэкфилл уже выполняется');
+      } else {
+        setReleaseBackfillMessage('Бэкфилл запущен...');
+        await loadReleaseBackfill();
+      }
+    } catch (err) {
+      setReleaseBackfillMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setReleaseBackfillLoading(false);
     }
   };
 
@@ -2764,6 +2804,44 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 Обновить статус
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'scheduler' && (
+        <div className="admin-panel">
+          <div className="admin-card">
+            <h3>Отслеживание выхода игр</h3>
+            <p className="admin-card-desc">
+              Когда игра из избранного пользователя переходит в статус «вышла», он автоматически
+              получает уведомление. Для этого статус игры должен быть сохранён в избранном —
+              бэкфилл заполняет существующие записи без статуса.
+            </p>
+
+            <dl className="admin-dl">
+              <dt>Игр под наблюдением</dt>
+              <dd>{releaseBackfill?.unreleasedTracked ?? '—'}</dd>
+              <dt>Последний бэкфилл</dt>
+              <dd>{formatDate(releaseBackfill?.lastRunAt)}</dd>
+              <dt>Результат</dt>
+              <dd>
+                {releaseBackfill?.lastResult
+                  ? `${releaseBackfill.lastResult.updated} обновлено / ${releaseBackfill.lastResult.processed} проверено`
+                  : '—'}
+              </dd>
+            </dl>
+
+            <div className="admin-override-actions">
+              <button
+                className="admin-btn admin-btn-primary"
+                type="button"
+                onClick={handleReleaseBackfill}
+                disabled={releaseBackfillLoading || releaseBackfill?.isRunning}
+              >
+                {releaseBackfill?.isRunning ? 'Выполняется...' : 'Заполнить snapshot у существующих'}
+              </button>
+            </div>
+            {releaseBackfillMessage && <p className="admin-scheduler-result">{releaseBackfillMessage}</p>}
           </div>
         </div>
       )}

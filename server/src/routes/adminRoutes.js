@@ -34,6 +34,7 @@ const collectionsScheduler = require('../services/collectionsScheduler');
 const saleIndexService = require('../services/saleIndexService');
 const saleIndexScheduler = require('../services/saleIndexScheduler');
 const { runSaleEndingBroadcast, runManualSpecialOfferNotification, getFavoritesCountForProduct } = require('../services/dealNotifierService');
+const releaseBackfillService = require('../services/releaseBackfillService');
 const logger = require('../utils/logger');
 
 const router = Router();
@@ -47,11 +48,12 @@ router.get('/check', requireAuth, async (req, res) => {
 // Dashboard stats
 router.get('/stats', requireAdmin, async (_req, res, next) => {
   try {
-    const [users, favorites, notifications, recentUsers] = await Promise.all([
+    const [users, favorites, notifications, recentUsers, unreleasedTracked] = await Promise.all([
       pool.query('SELECT COUNT(*)::int AS count FROM users'),
       pool.query('SELECT COUNT(*)::int AS count FROM favorites'),
       pool.query('SELECT COUNT(*)::int AS count FROM deal_notifications'),
       pool.query(`SELECT COUNT(*)::int AS count FROM users WHERE created_at > NOW() - INTERVAL '7 days'`),
+      pool.query(`SELECT COUNT(DISTINCT product_id)::int AS count FROM favorites WHERE snapshot->>'releaseStatus' IN ('unreleased','comingSoon')`),
     ]);
 
     const providerStats = await pool.query(`
@@ -86,6 +88,7 @@ router.get('/stats', requireAdmin, async (_req, res, next) => {
         totalFavorites: favorites.rows[0].count,
         totalNotifications: notifications.rows[0].count,
         newUsersLast7Days: recentUsers.rows[0].count,
+        unreleasedTracked: unreleasedTracked.rows[0].count,
       },
       providerStats: providerStats.rows,
       topFavorited: topFavorited.rows,
@@ -932,6 +935,29 @@ router.post('/special-offer-notify', requireAdmin, async (req, res, next) => {
   } finally {
     specialOfferNotifyRunning = false;
   }
+});
+
+// ==================== Release backfill ====================
+
+router.get('/release-backfill', requireAdmin, async (_req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(DISTINCT product_id)::int AS count FROM favorites WHERE snapshot->>'releaseStatus' IN ('unreleased','comingSoon')`,
+    );
+    res.json({ ...releaseBackfillService.getState(), unreleasedTracked: rows[0].count });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/release-backfill', requireAdmin, (_req, res) => {
+  if (releaseBackfillService.getState().isRunning) {
+    return res.json({ started: false, alreadyRunning: true });
+  }
+  releaseBackfillService.runBackfill().catch((err) => {
+    logger.error('[Admin] Release backfill failed', { message: err.message });
+  });
+  res.json({ started: true });
 });
 
 // ----- Broadcast -----

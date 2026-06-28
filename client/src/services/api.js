@@ -484,3 +484,13 @@ export async function sendAdminSpecialOfferNotify(productId) {
   const { data } = await api.post('/admin/special-offer-notify', { productId }, { timeout: 300000 });
   return data;
 }
+
+export async function fetchReleaseBackfillState() {
+  const { data } = await api.get('/admin/release-backfill');
+  return data;
+}
+
+export async function triggerReleaseBackfill() {
+  const { data } = await api.post('/admin/release-backfill');
+  return data;
+}

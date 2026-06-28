@@ -1105,6 +1105,7 @@ async function getUnreleasedFavoritesUsers() {
     FROM users u
     JOIN favorites f ON f.user_id = u.id
     WHERE f.snapshot->>'releaseStatus' IN ('unreleased', 'comingSoon')
+      AND u.notify_deals IS NOT FALSE
     GROUP BY u.id
   `);
   return rows;
