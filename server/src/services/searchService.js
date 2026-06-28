@@ -877,7 +877,7 @@ function matchesLanguageModes(product, modes) {
   const mode = resolveProductRussianMode(product);
   if (modes.has('ru_subtitles') && (mode === 'ru_subtitles' || mode === 'full_ru')) return true;
   if (modes.has('full_ru') && mode === 'full_ru') return true;
-  if (modes.has('no_ru') && mode === 'no_ru') return true;
+  if (modes.has('no_ru') && (mode === 'no_ru' || mode === 'unknown')) return true;
   if (modes.has('unknown') && mode === 'unknown') return true;
   return false;
 }

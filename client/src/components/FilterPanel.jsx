@@ -126,7 +126,7 @@ const CUSTOM_FILTERS = {
     choices: [
       { id: 'full_ru', title: 'Полностью на русском', isLabelOnly: false },
       { id: 'ru_subtitles', title: 'Русские субтитры', isLabelOnly: false },
-      { id: 'unknown', title: 'Язык не указан', isLabelOnly: false },
+      { id: 'no_ru', title: 'Без русского', isLabelOnly: false },
     ],
   },
 };

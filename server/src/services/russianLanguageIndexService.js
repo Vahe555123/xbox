@@ -196,7 +196,7 @@ function getServingIds(modes) {
 
   if (set.has('ru_subtitles')) return index.russian || [];
   if (set.has('full_ru')) return (index.russian || []).filter((id) => state.fullSet.has(id));
-  if (set.has('no_ru')) return index.noRu || [];
+  if (set.has('no_ru')) return [...(index.noRu || []), ...(index.unknown || [])];
   if (set.has('unknown')) return index.unknown || [];
   return [];
 }
