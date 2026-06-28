@@ -231,11 +231,11 @@ async function listSaleEndDates() {
   }));
 }
 
-async function getProductIdsByEndBefore(date) {
+async function getProductIdsByEndDay(date) {
   const { rows } = await pool.query(
     `SELECT product_id FROM sale_products
-     WHERE deal_end_day IS NOT NULL AND deal_end_day <= $1
-     ORDER BY deal_end_day ASC, discount_percent DESC NULLS LAST`,
+     WHERE deal_end_day = $1
+     ORDER BY discount_percent DESC NULLS LAST`,
     [date],
   );
   return rows.map((r) => r.product_id);
@@ -307,7 +307,7 @@ async function markReminderSent(ids) {
 module.exports = {
   refreshSaleProducts,
   listSaleEndDates,
-  getProductIdsByEndBefore,
+  getProductIdsByEndDay,
   getProductsByEndDay,
   getLastRun,
   getState,

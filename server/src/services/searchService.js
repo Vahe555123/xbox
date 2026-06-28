@@ -105,7 +105,7 @@ async function search({
   // Fast path: sale-end-date filter pagination — served from sale_products DB table.
   if (isSaleEndToken(encodedCT)) {
     const { date, offset } = parseSaleEndToken(encodedCT);
-    const ids = await saleIndexService.getProductIdsByEndBefore(date);
+    const ids = await saleIndexService.getProductIdsByEndDay(date);
     return serveCuratedIdsPage({
       ids,
       offset,
@@ -194,7 +194,7 @@ async function search({
   // Fast path: "Скидки до <date>" — served directly from sale_products DB table.
   // Allowed alongside Price:OnSale (all index entries are on sale).
   if (canUseSaleEndIndex(saleEndBefore, filters, query, languageFilterActive)) {
-    const ids = await saleIndexService.getProductIdsByEndBefore(saleEndBefore);
+    const ids = await saleIndexService.getProductIdsByEndDay(saleEndBefore);
     if (countOnly) return countCuratedResults(ids);
     return serveCuratedIdsPage({
       ids,
@@ -1202,7 +1202,6 @@ async function serveCuratedIdsPage({
 
 function applyPostFilters(products, { languageMode, specialOffersOnly, freeOnly = false, saleEndBefore = null, onSaleOnly = false }) {
   const languageModes = parseLanguageModes(languageMode);
-  const saleEndMs = saleEndBefore ? Date.parse(`${saleEndBefore}T23:59:59Z`) : null;
   return products.filter((product) => {
     if (product.notAvailableSeparately) return false;
     // Free games are hidden from the catalog by default, but shown when the
@@ -1217,10 +1216,11 @@ function applyPostFilters(products, { languageMode, specialOffersOnly, freeOnly 
     if (specialOffersOnly && !product.specialOfferUrl) return false;
     // "Скидки" (search mode only): keep games with regular discount OR Game Pass savings.
     if (onSaleOnly && !product.price?.discountPercent && !product.gamePassSavingsPercent) return false;
-    // Sale end date: keep only games whose discount ends on or before the chosen date.
-    if (saleEndMs !== null) {
-      const end = product.price?.dealEndDate ? Date.parse(product.price.dealEndDate) : null;
-      if (!end || end > saleEndMs) return false;
+    // Sale end date: keep only games whose discount ends exactly on the chosen date.
+    if (saleEndBefore !== null) {
+      const endDate = product.price?.dealEndDate;
+      const endDay = endDate ? new Date(endDate).toISOString().slice(0, 10) : null;
+      if (endDay !== saleEndBefore) return false;
     }
     return true;
   });
