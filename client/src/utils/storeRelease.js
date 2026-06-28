@@ -26,7 +26,7 @@ export function getStorePriceLabel(price, releaseInfo, isUnavailablePrice) {
     const hasKnownReleaseDate = hasValidReleaseDate(releaseInfo?.releaseDate);
 
     if (!hasKnownPrice && !hasKnownReleaseDate) return null;
-    return 'Еще не вышла';
+    return price?.formatted ? `${price.formatted} · Еще не вышла` : 'Еще не вышла';
   }
 
   return price?.formatted || releaseInfo?.label || null;

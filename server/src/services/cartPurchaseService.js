@@ -241,7 +241,7 @@ function buildCartPayUrl(cartUid, { purchaseEmail } = {}) {
   url.searchParams.set('cart_uid', cartUid);
   url.searchParams.set('ai', String(sellerId));
   url.searchParams.set('ain', '');
-  url.searchParams.set('curr', config.digiseller.cartPaymentCurrency || 'API_5020_RUB');
+  url.searchParams.set('curr', config.digiseller.cartCurrency || 'API_17432_RUB');
   url.searchParams.set('lang', 'ru-RU');
   url.searchParams.set('digiuid', randomUUID().toUpperCase());
   url.searchParams.set('_ow', '0');

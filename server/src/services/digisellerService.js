@@ -207,6 +207,7 @@ async function createKeyActivationPayment(product, { purchaseEmail, gameName } =
     });
     const paymentUrl = appendPaymentQuery(buildFullPaymentUrl(response.headers.location), {
       email: cleanEmail,
+      curr: rateMode.typeCurrency || config.digiseller.typeCurrency || 'API_17432_RUB',
     });
     if (!paymentUrl || !/pay_api\.asp/i.test(paymentUrl)) {
       logger.warn('Digiseller key activation returned non-final redirect', {
@@ -283,6 +284,7 @@ function appendPaymentQuery(url, values = {}) {
   if (!url) return url;
   const target = new URL(url);
   if (values.email) target.searchParams.set('email', values.email);
+  if (values.curr) target.searchParams.set('curr', values.curr);
   return target.toString();
 }
 
@@ -617,6 +619,7 @@ async function createPurchasePaymentUrl(product, {
     });
     const paymentUrl = appendPaymentQuery(buildFullPaymentUrl(response.headers.location), {
       email: cleanPurchaseEmail,
+      curr: config.digiseller.typeCurrency || 'API_17432_RUB',
     });
     if (!paymentUrl || !/pay_api\.asp/i.test(paymentUrl)) {
       logger.warn('Digiseller payment returned non-final redirect', {
@@ -995,7 +998,7 @@ async function createSpecialOfferPayment(productIdOrUrl, { failPageUrl } = {}) {
   }
 
   const payUrl = new URL(rawUrl);
-  payUrl.searchParams.set('curr', 'API_5020_RUB');
+  payUrl.searchParams.set('curr', config.digiseller.typeCurrency || 'API_17432_RUB');
 
   return {
     paymentUrl: payUrl.toString(),

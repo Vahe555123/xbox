@@ -125,7 +125,7 @@ const config = {
 
   digiseller: {
     sellerId: process.env.DIGISELLER_SELLER_ID || '1279033',
-    payBaseUrl: process.env.DIGISELLER_PAY_BASE_URL || 'https://www.oplata.info/asp2/pay_wm.asp',
+    payBaseUrl: process.env.DIGISELLER_PAY_BASE_URL || 'https://www.oplata.info/asp2/pay_api.asp',
     payPostUrl: process.env.DIGISELLER_PAY_POST_URL || 'https://www.oplata.info/asp2/pay.asp',
     failPageUrl: (process.env.DIGISELLER_FAIL_PAGE_URL || 'https://xboxtracker.ru/').split(',')[0].trim(),
     typeCurrency: process.env.DIGISELLER_TYPE_CURRENCY || 'API_17432_RUB',

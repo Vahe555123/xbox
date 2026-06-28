@@ -157,6 +157,7 @@ async function search({
 
   const canUseRussianIndex = languageFilterActive
     && !query
+    && effectiveSort === DEFAULT_BROWSE_SORT
     && !hasApiSideFilters(filters)
     && [...languageModes].every((mode) => russianIndex.isReadyForMode(mode));
 

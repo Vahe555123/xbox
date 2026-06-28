@@ -261,7 +261,7 @@ function getStorePriceLabel(price, releaseInfo, isUnavailablePrice) {
     const hasKnownPrice = price?.value != null && Number.isFinite(Number(price.value));
     const hasKnownReleaseDate = hasValidReleaseDate(releaseInfo?.releaseDate);
     if (!hasKnownPrice && !hasKnownReleaseDate) return null;
-    return 'Еще не вышла';
+    return price?.formatted ? `${price.formatted} · Еще не вышла` : 'Еще не вышла';
   }
   return price?.formatted || releaseInfo?.label || null;
 }
