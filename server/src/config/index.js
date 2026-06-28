@@ -29,6 +29,11 @@ const config = {
     refreshIntervalHours: parseFloat(process.env.RUSSIAN_INDEX_REFRESH_HOURS) || 12,
     storeFetchConcurrency: parseInt(process.env.RUSSIAN_INDEX_STORE_CONCURRENCY, 10) || 10,
     maxStoreFetches: parseInt(process.env.RUSSIAN_INDEX_MAX_STORE_FETCHES, 10) || 20000,
+    // Cap store fetches per build pass so a deep/first build spreads its work
+    // across several continuation passes instead of bursting thousands of
+    // requests at once (which Xbox throttles). The scheduler chains passes
+    // until everything is resolved.
+    storeFetchesPerPass: parseInt(process.env.RUSSIAN_INDEX_STORE_FETCHES_PER_PASS, 10) || 2000,
     maxBrowsePages: parseInt(process.env.RUSSIAN_INDEX_MAX_BROWSE_PAGES, 10) || 1200,
   },
 

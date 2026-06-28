@@ -501,7 +501,15 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
     recomputeProgressCounts(modes, walked);
     log(`Переиспользовано: ${reused}, к загрузке: ${needFetch.length}`);
 
-    const fetchTargets = needFetch.slice(0, config.russianIndex.maxStoreFetches);
+    // Fetch in capped chunks per pass so a deep/first build spreads its load
+    // across continuation passes instead of bursting thousands of requests at
+    // once (which Xbox throttles). Whatever's left becomes `pending` and the
+    // scheduler chains another pass.
+    const perPassCap = Math.min(
+      config.russianIndex.maxStoreFetches,
+      config.russianIndex.storeFetchesPerPass,
+    );
+    const fetchTargets = needFetch.slice(0, perPassCap);
     const cappedOut = needFetch.length - fetchTargets.length;
     let storeFetches = 0;
     let newlyResolved = 0;
