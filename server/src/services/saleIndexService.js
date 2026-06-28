@@ -1,5 +1,13 @@
 const pool = require('../db/pool');
 const config = require('../config');
+
+// Moscow is permanently UTC+3 (no DST since 2014).
+// Deal end dates from Xbox are UTC instants; users see them in Moscow time,
+// so we group by the Moscow calendar day to match what the product card shows.
+const MOSCOW_OFFSET_MS = 3 * 60 * 60 * 1000;
+function toMoscowDay(date) {
+  return new Date(date.getTime() + MOSCOW_OFFSET_MS).toISOString().slice(0, 10);
+}
 const logger = require('../utils/logger');
 const catalogService = require('./xboxCatalogService');
 const { mapProducts } = require('../mappers/productMapper');
@@ -31,7 +39,7 @@ async function upsertSaleProducts(products) {
 
   for (const p of products) {
     const endDate = p.price?.dealEndDate ? new Date(p.price.dealEndDate) : null;
-    const endDay = endDate && !Number.isNaN(endDate.getTime()) ? endDate.toISOString().slice(0, 10) : null;
+    const endDay = endDate && !Number.isNaN(endDate.getTime()) ? toMoscowDay(endDate) : null;
     const res = await pool.query(
       `INSERT INTO sale_products
          (product_id, title, image, price_usd, original_price_usd, discount_percent,

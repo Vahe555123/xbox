@@ -1216,10 +1216,14 @@ function applyPostFilters(products, { languageMode, specialOffersOnly, freeOnly 
     if (specialOffersOnly && !product.specialOfferUrl) return false;
     // "Скидки" (search mode only): keep games with regular discount OR Game Pass savings.
     if (onSaleOnly && !product.price?.discountPercent && !product.gamePassSavingsPercent) return false;
-    // Sale end date: keep only games whose discount ends exactly on the chosen date.
+    // Sale end date: keep only games whose discount ends exactly on the chosen
+    // date (Moscow time, UTC+3 — matches what the product card displays).
     if (saleEndBefore !== null) {
       const endDate = product.price?.dealEndDate;
-      const endDay = endDate ? new Date(endDate).toISOString().slice(0, 10) : null;
+      const endMs = endDate ? Date.parse(endDate) : NaN;
+      const endDay = Number.isFinite(endMs)
+        ? new Date(endMs + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        : null;
       if (endDay !== saleEndBefore) return false;
     }
     return true;
