@@ -22,7 +22,7 @@ async function getStorePageRelatedProducts({ productId, storeUrl }) {
   return data.relatedProducts;
 }
 
-async function getStorePageProductData({ productId, storeUrl, languageOnly = false }) {
+async function getStorePageProductData({ productId, storeUrl, languageOnly = false, agent = null }) {
   if (!productId || !storeUrl) return { relatedProducts: [], languageInfo: null };
   const normalizedProductId = String(productId).toUpperCase();
   const fullCacheKey = `xbox-store-page-product:v2:${normalizedProductId}`;
@@ -40,7 +40,7 @@ async function getStorePageProductData({ productId, storeUrl, languageOnly = fal
   if (inflight.has(inflightKey)) return inflight.get(inflightKey);
 
   const promise = (async () => {
-    const state = await fetchStoreStateForLocale(storeUrl, config.xbox.language || 'en-US');
+    const state = await fetchStoreStateForLocale(storeUrl, config.xbox.language || 'en-US', agent);
     const channelData = state?.core2?.channels?.channelData || {};
     const productSummaries = state?.core2?.products?.productSummaries || {};
     const productSummary = getCaseInsensitiveValue(productSummaries, normalizedProductId);
@@ -166,13 +166,17 @@ function toXboxRequestPath(storeUrl) {
   return storeUrl;
 }
 
-async function fetchStoreStateForLocale(storeUrl, locale = 'en-US') {
+async function fetchStoreStateForLocale(storeUrl, locale = 'en-US', agent = null) {
   const response = await withRetry(() =>
     client.get(toXboxRequestPathForLocale(storeUrl, locale), {
       headers: {
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': locale,
       },
+      // When the language-index parser supplies a proxy agent, route this
+      // request through it (proxy:false disables axios' env-var proxy handling
+      // so the agent is the single source of truth).
+      ...(agent ? { httpsAgent: agent, proxy: false } : {}),
     }),
   XBOX_RETRY_OPTIONS);
   return extractPreloadedState(String(response.data || ''));

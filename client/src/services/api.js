@@ -368,6 +368,56 @@ export async function refreshRussianIndex({ deep = false } = {}) {
   return data;
 }
 
+export async function stopRussianIndex() {
+  const { data } = await api.post('/admin/russian-index/stop');
+  return data;
+}
+
+export async function resumeRussianIndex() {
+  const { data } = await api.post('/admin/russian-index/resume');
+  return data;
+}
+
+export async function fetchLanguageSettings() {
+  const { data } = await api.get('/admin/language-settings');
+  return data;
+}
+
+export async function updateLanguageSettings(payload) {
+  const { data } = await api.put('/admin/language-settings', payload);
+  return data;
+}
+
+export async function fetchProxies() {
+  const { data } = await api.get('/admin/proxies');
+  return data;
+}
+
+export async function createProxy(payload) {
+  const { data } = await api.post('/admin/proxies', payload);
+  return data.proxy;
+}
+
+export async function updateProxy(id, payload) {
+  const { data } = await api.put(`/admin/proxies/${encodeURIComponent(id)}`, payload);
+  return data.proxy;
+}
+
+export async function deleteProxy(id) {
+  const { data } = await api.delete(`/admin/proxies/${encodeURIComponent(id)}`);
+  return data;
+}
+
+export async function checkProxy(id) {
+  const { data } = await api.post(`/admin/proxies/${encodeURIComponent(id)}/check`);
+  return data.proxy;
+}
+
+export async function checkAllProxies() {
+  const { data } = await api.post('/admin/proxies/check-all');
+  return data.proxies;
+}
+
 export async function updateProductOverride(productId, payload) {
   const { data } = await api.put(`/admin/product-overrides/${encodeURIComponent(productId)}`, payload);
   return data.override;

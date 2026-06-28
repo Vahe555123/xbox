@@ -6923,6 +6923,20 @@ code {
   color: var(--text);
 }
 
+.admin-table td .admin-btn-sm + .admin-btn-sm {
+  margin-left: 0.4rem;
+}
+
+.admin-proxy-status {
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.admin-proxy-status-alive { color: #1dba50; }
+.admin-proxy-status-dead { color: #e5484d; }
+.admin-proxy-status-unknown { color: var(--text-muted); }
+
 /* Search bar */
 .admin-search-bar {
   display: flex;

@@ -4,6 +4,8 @@ const logger = require('../utils/logger');
 const catalogService = require('./xboxCatalogService');
 const { mapProducts } = require('../mappers/productMapper');
 const { getStorePageProductData, getCachedLanguageInfo } = require('./xboxStorePageService');
+const proxyService = require('./proxyService');
+const languageIndexSettings = require('./languageIndexSettingsService');
 
 /**
  * Precomputed index of games that support the Russian language.
@@ -44,6 +46,7 @@ const state = {
   unknownSet: new Set(),
   loaded: false,
   building: false,
+  stopRequested: false,
   lastRunAt: null,
   lastDurationMs: null,
   lastTrigger: null,
@@ -54,13 +57,15 @@ const state = {
 
 function emptyProgress() {
   return {
-    phase: 'idle', // idle | walking | classifying | done | error
+    phase: 'idle', // idle | walking | classifying | paused | waiting_for_proxy | done | error
     scanned: 0,
     total: 0,
     processed: 0,
     fetched: 0,
     russian: 0,
     fullRu: 0,
+    batchPausing: false,
+    proxyAlive: null,
     startedAt: null,
     updatedAt: null,
   };
@@ -158,6 +163,8 @@ function getState() {
   const index = state.index || emptyIndex();
   return {
     isBuilding: state.building,
+    stopRequested: state.stopRequested,
+    isPaused: state.progress.phase === 'paused' || state.progress.phase === 'waiting_for_proxy',
     builtAt: index.builtAt,
     durationMs: index.durationMs,
     complete: index.complete ?? false,
@@ -170,7 +177,18 @@ function getState() {
     logs: state.logs.slice(-30),
     walkedAt: index.walkedAt || null,
     walkedCount: Array.isArray(index.walkedList) ? index.walkedList.length : 0,
+    // pending = games walked but not yet classified (no mode entry).
+    pending: Array.isArray(index.walkedList)
+      ? index.walkedList.filter((p) => !(p.id in (index.modes || {}))).length
+      : 0,
   };
+}
+
+function requestStop() {
+  if (!state.building) return false;
+  state.stopRequested = true;
+  log('Получен запрос на остановку — завершаю после текущего батча');
+  return true;
 }
 
 function isReady() {
@@ -347,6 +365,22 @@ async function runWithConcurrency(items, limit, worker) {
   await Promise.all(Array.from({ length: Math.min(size, items.length) }, runner));
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// A response/connection failure that means the current proxy IP is banned or
+// the proxy itself is unreachable — so it should be dropped from the rotation.
+function isBanLikeError(err) {
+  const status = err?.response?.status;
+  if (status === 429 || status === 403) return true;
+  const code = err?.code || '';
+  return [
+    'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH',
+    'EPROTO', 'EPIPE', 'ERR_BAD_RESPONSE', 'ECONNABORTED',
+  ].includes(code);
+}
+
 function buildIndexObject({ modes, walked, trigger, durationMs, complete, storeFetches, pending }) {
   const russian = [];
   const fullRu = [];
@@ -409,6 +443,7 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
   }
 
   state.building = true;
+  state.stopRequested = false;
   state.lastRunAt = new Date().toISOString();
   state.lastTrigger = trigger;
   state.lastError = null;
@@ -510,15 +545,23 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
       config.russianIndex.storeFetchesPerPass,
     );
     const fetchTargets = needFetch.slice(0, perPassCap);
-    const cappedOut = needFetch.length - fetchTargets.length;
     let storeFetches = 0;
     let newlyResolved = 0;
+
+    // Admin-tunable throttle: fetch `batchSize` pages, then pause `pauseMs` to
+    // avoid an Xbox ban. When proxyEnabled, route every fetch through the proxy
+    // pool (round-robin) and stop if there's no live proxy.
+    const settings = await languageIndexSettings.getSettings();
+    const batchSize = Math.max(1, settings.batchSize);
+    const pauseMs = Math.max(0, settings.pauseMs);
+    const proxyEnabled = Boolean(settings.proxyEnabled);
+    if (proxyEnabled) await proxyService.refreshRotation();
 
     // Persist checkpoints so progress survives a restart and the index is usable
     // while still building.
     checkpointTimer = setInterval(() => {
       const snapshot = buildIndexObject({
-        modes, walked, trigger, durationMs: Date.now() - startedAt, complete: false, storeFetches, pending: cappedOut,
+        modes, walked, trigger, durationMs: Date.now() - startedAt, complete: false, storeFetches, pending: needFetch.length - newlyResolved,
       });
       snapshot.walkedAt = state.index?.walkedAt || new Date().toISOString();
       snapshot.walkedList = walked;
@@ -526,59 +569,102 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
       log(`Чекпоинт: ${state.progress.processed}/${walked.length} обработано · русских ${state.progress.russian}`);
     }, CHECKPOINT_MS);
 
-    await runWithConcurrency(fetchTargets, config.russianIndex.storeFetchConcurrency, async (product) => {
-      if (product.storeUrl) {
-        try {
-          const data = await getStorePageProductData({
-            productId: product.id,
-            storeUrl: product.storeUrl,
-            languageOnly: true,
-          });
-          storeFetches += 1;
-          // languageInfo is null when the page couldn't be parsed or the product wasn't
-          // found in it — treat as unresolved so the next build retries it, rather than
-          // incorrectly classifying it as 'unknown' (Languages section absent).
-          if (data?.languageInfo != null) {
-            const mode = normalizeMode(data.languageInfo.russianLanguageMode);
-            modes[product.id] = mode;
-            newlyResolved += 1;
-            if (mode === 'full_ru') { state.progress.russian += 1; state.progress.fullRu += 1; } else if (mode === 'ru_subtitles') { state.progress.russian += 1; }
-          }
-        } catch (err) {
-          // Leave unresolved -> retried on a later build.
-          logger.debug('[RussianIndex] Store fetch failed', { productId: product.id, message: err.message });
+    const classifyOne = async (product) => {
+      if (!product.storeUrl) { state.progress.processed += 1; return; }
+      let picked = null;
+      if (proxyEnabled) {
+        picked = proxyService.nextAgent();
+        if (!picked) { state.progress.processed += 1; return; }
+      }
+      try {
+        const data = await getStorePageProductData({
+          productId: product.id,
+          storeUrl: product.storeUrl,
+          languageOnly: true,
+          agent: picked?.agent || null,
+        });
+        storeFetches += 1;
+        // languageInfo is null when the page couldn't be parsed or the product wasn't
+        // found in it — treat as unresolved so the next build retries it, rather than
+        // incorrectly classifying it as 'unknown' (Languages section absent).
+        if (data?.languageInfo != null) {
+          const mode = normalizeMode(data.languageInfo.russianLanguageMode);
+          modes[product.id] = mode;
+          newlyResolved += 1;
+          if (mode === 'full_ru') { state.progress.russian += 1; state.progress.fullRu += 1; } else if (mode === 'ru_subtitles') { state.progress.russian += 1; }
         }
+      } catch (err) {
+        // A ban-like response or a proxy connection failure kills that proxy so
+        // the rotation skips it from now on.
+        if (picked && isBanLikeError(err)) {
+          await proxyService.markDeadByUrl(picked.url, err.message);
+          log(`Прокси помечен мёртвым: ${proxyService.maskProxyUrl(picked.url)} (${err.message})`);
+        }
+        logger.debug('[RussianIndex] Store fetch failed', { productId: product.id, message: err.message });
       }
       state.progress.processed += 1;
       state.progress.fetched = storeFetches;
       state.progress.updatedAt = Date.now();
-    });
+    };
+
+    let stoppedReason = null; // 'user' | 'no_proxy'
+    for (let i = 0; i < fetchTargets.length; i += batchSize) {
+      if (state.stopRequested) { stoppedReason = 'user'; break; }
+      if (proxyEnabled) {
+        const alive = await proxyService.countAlive();
+        state.progress.proxyAlive = alive;
+        if (alive === 0) { stoppedReason = 'no_proxy'; break; }
+      }
+
+      const batch = fetchTargets.slice(i, i + batchSize);
+      await runWithConcurrency(batch, config.russianIndex.storeFetchConcurrency, classifyOne);
+
+      // Pause between batches (but not after the final one).
+      const hasMore = i + batchSize < fetchTargets.length;
+      if (hasMore && pauseMs > 0 && !state.stopRequested) {
+        state.progress.batchPausing = true;
+        state.progress.updatedAt = Date.now();
+        await sleep(pauseMs);
+        state.progress.batchPausing = false;
+      }
+    }
 
     clearInterval(checkpointTimer);
     checkpointTimer = null;
 
-    const pending = cappedOut + (fetchTargets.length - newlyResolved);
-    const complete = walkComplete && pending === 0;
+    const pending = needFetch.length - newlyResolved;
+    const stopped = Boolean(stoppedReason);
+    const complete = walkComplete && pending === 0 && !stopped;
     const durationMs = Date.now() - startedAt;
     const index = buildIndexObject({ modes, walked, trigger, durationMs, complete, storeFetches, pending });
     index.walkedAt = state.index?.walkedAt || new Date().toISOString();
     index.walkedList = walked;
     await persistIndex(index);
 
-    state.progress.phase = 'done';
+    state.progress.phase = stoppedReason === 'user'
+      ? 'paused'
+      : (stoppedReason === 'no_proxy' ? 'waiting_for_proxy' : 'done');
     state.progress.updatedAt = Date.now();
     state.lastDurationMs = durationMs;
-    const tail = complete
-      ? ''
-      : (storeFetches === 0 && fetchTargets.length > 0
-        ? ` · осталось ${pending} · загрузки не прошли (возможно, лимит Xbox) — повтор позже`
-        : ` · осталось ${pending}, продолжу`);
+
+    let tail;
+    if (stoppedReason === 'user') {
+      tail = ` · остановлено вручную · осталось ${pending} (нажми «Продолжить»)`;
+    } else if (stoppedReason === 'no_proxy') {
+      tail = ` · нет живых прокси · осталось ${pending} (добавь рабочий прокси и нажми «Продолжить»)`;
+    } else if (complete) {
+      tail = '';
+    } else if (storeFetches === 0 && fetchTargets.length > 0) {
+      tail = ` · осталось ${pending} · загрузки не прошли (возможно, лимит Xbox) — повтор позже`;
+    } else {
+      tail = ` · осталось ${pending}, продолжу`;
+    }
     log(
       `Готово за ${Math.round(durationMs / 1000)}с · русских ${index.counts.russian} `
       + `(полностью ${index.counts.fullRu}, субтитры ${index.counts.subtitles}), загрузок ${storeFetches}`
       + tail,
     );
-    return { success: true, complete, newlyResolved, pending, ...getState() };
+    return { success: true, complete, stopped, newlyResolved, pending, ...getState() };
   } catch (err) {
     state.lastError = err.message;
     state.progress.phase = 'error';
@@ -599,6 +685,7 @@ module.exports = {
   loadIndex,
   buildIndex,
   getState,
+  requestStop,
   isReady,
   isComplete,
   isReadyForMode,

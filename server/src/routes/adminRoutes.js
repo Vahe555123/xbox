@@ -5,6 +5,8 @@ const { runBroadcast } = require('../services/broadcastService');
 const dealScheduler = require('../services/dealScheduler');
 const russianLanguageIndexScheduler = require('../services/russianLanguageIndexScheduler');
 const russianLanguageIndexService = require('../services/russianLanguageIndexService');
+const proxyService = require('../services/proxyService');
+const languageIndexSettings = require('../services/languageIndexSettingsService');
 const digisellerService = require('../services/digisellerService');
 const topupCardService = require('../services/topupCardService');
 const { search } = require('../services/searchService');
@@ -521,6 +523,101 @@ router.post('/russian-index/refresh', requireAdmin, (req, res) => {
   });
 
   res.json({ started: true, state: russianLanguageIndexScheduler.getState() });
+});
+
+// Stop the in-flight index build after the current batch (session is preserved).
+router.post('/russian-index/stop', requireAdmin, (_req, res) => {
+  const stopped = russianLanguageIndexScheduler.requestStop();
+  res.json({ stopped, state: russianLanguageIndexScheduler.getState() });
+});
+
+// Resume a paused/stopped build — fetches only what's still pending.
+router.post('/russian-index/resume', requireAdmin, (_req, res) => {
+  const state = russianLanguageIndexScheduler.getState();
+  if (state.isBuilding) {
+    return res.json({ started: false, alreadyRunning: true, state });
+  }
+  russianLanguageIndexScheduler.resume().catch((err) => {
+    logger.error('Russian index resume failed', { message: err.message });
+  });
+  res.json({ started: true, state: russianLanguageIndexScheduler.getState() });
+});
+
+// Language-index build settings (batch size, pause, proxy on/off)
+router.get('/language-settings', requireAdmin, async (_req, res, next) => {
+  try {
+    res.json(await languageIndexSettings.getSettings());
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/language-settings', requireAdmin, async (req, res, next) => {
+  try {
+    const updated = await languageIndexSettings.updateSettings({
+      batchSize: req.body?.batchSize,
+      pauseMs: req.body?.pauseMs,
+      proxyEnabled: req.body?.proxyEnabled,
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Proxy pool (used only by the language-index parser) ──
+router.get('/proxies', requireAdmin, async (_req, res, next) => {
+  try {
+    res.json({ proxies: await proxyService.listProxies() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/proxies', requireAdmin, async (req, res, next) => {
+  try {
+    const proxy = await proxyService.createProxy({ url: req.body?.url, label: req.body?.label });
+    res.json({ proxy });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/proxies/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const proxy = await proxyService.updateProxy(req.params.id, {
+      url: req.body?.url,
+      label: req.body?.label,
+      enabled: req.body?.enabled,
+    });
+    res.json({ proxy });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/proxies/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await proxyService.deleteProxy(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/proxies/:id/check', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ proxy: await proxyService.checkProxy(req.params.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/proxies/check-all', requireAdmin, async (_req, res, next) => {
+  try {
+    res.json({ proxies: await proxyService.checkAllProxies() });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // All games from the Russian-language index (server-side paginated)

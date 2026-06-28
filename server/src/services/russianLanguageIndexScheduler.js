@@ -39,6 +39,13 @@ async function runBuild({ trigger = 'scheduled', deep = false } = {}) {
     return null;
   });
 
+  // A manually stopped run (paused) or one halted for lack of a live proxy must
+  // NOT auto-continue — the admin resumes it explicitly with "Продолжить".
+  if (result?.stopped) {
+    stalledPasses = 0;
+    return result;
+  }
+
   if (result?.success && !result.complete && result.pending > 0) {
     if (result.newlyResolved > 0) {
       // Made progress — reset the stall counter and continue promptly.
@@ -63,6 +70,20 @@ async function runNow({ deep = false } = {}) {
   return runBuild({ trigger: 'manual', deep });
 }
 
+// Ask the in-flight build to stop after the current batch.
+function requestStop() {
+  if (continuationTimer) { clearTimeout(continuationTimer); continuationTimer = null; }
+  stalledPasses = 0;
+  return russianLanguageIndexService.requestStop();
+}
+
+// Resume a paused/stopped build: a normal pass reuses the walk cache and already
+// classified modes and only fetches what's still pending — no session is lost.
+async function resume() {
+  stalledPasses = 0;
+  return runBuild({ trigger: 'resume', deep: false });
+}
+
 function start() {
   // Build shortly after boot if the index is empty or was left unfinished, then
   // refresh on the configured interval.
@@ -81,4 +102,4 @@ function stop() {
   if (continuationTimer) { clearTimeout(continuationTimer); continuationTimer = null; }
 }
 
-module.exports = { getState, runNow, start, stop };
+module.exports = { getState, runNow, requestStop, resume, start, stop };

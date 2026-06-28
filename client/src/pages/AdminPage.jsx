@@ -53,6 +53,16 @@ import {
   fetchReleaseBackfillState,
   triggerReleaseBackfill,
   fetchLanguageIndexGames,
+  stopRussianIndex,
+  resumeRussianIndex,
+  fetchLanguageSettings,
+  updateLanguageSettings,
+  fetchProxies,
+  createProxy,
+  updateProxy,
+  deleteProxy,
+  checkProxy,
+  checkAllProxies,
 } from '../services/api';
 
 function formatDate(d) {
@@ -89,6 +99,8 @@ const RUSSIAN_INDEX_PHASES = {
   starting: 'Запуск...',
   walking: 'Обход каталога',
   classifying: 'Определение языка',
+  paused: 'На паузе',
+  waiting_for_proxy: 'Ждёт прокси',
   done: 'Готово',
   error: 'Ошибка',
   idle: 'Ожидание',
@@ -111,6 +123,8 @@ function renderRussianIndexProgress(progress) {
             ? `${done.toLocaleString('ru-RU')} / ${total.toLocaleString('ru-RU')}${percent !== null ? ` (${percent}%)` : ''}`
             : `${done.toLocaleString('ru-RU')} игр`}
           {progress.fetched > 0 && ` • загружено ${Number(progress.fetched).toLocaleString('ru-RU')}`}
+          {progress.batchPausing && ' • пауза между батчами...'}
+          {progress.proxyAlive != null && ` • живых прокси: ${progress.proxyAlive}`}
         </span>
       </div>
       <div className="admin-index-progress-bar">
@@ -212,6 +226,10 @@ function ProductLanguageTag({ mode }) {
 
 function productLanguageLabel(mode) {
   return PRODUCT_LANGUAGE_MODES.find((item) => item.value === (mode || 'auto'))?.label || mode || 'Авто';
+}
+
+function maskProxyUrl(url) {
+  return String(url || '').replace(/\/\/[^@/]*@/, '//***@');
 }
 
 function serializeDelimitedPairs(items, leftKey, rightKey) {
@@ -383,6 +401,15 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [russianIndexState, setRussianIndexState] = useState(null);
   const [russianIndexMessage, setRussianIndexMessage] = useState('');
   const [russianIndexRefreshing, setRussianIndexRefreshing] = useState(false);
+
+  // Language parser settings + proxy pool
+  const [languageSettings, setLanguageSettings] = useState({ batchSize: 50, pauseMs: 10000, proxyEnabled: false });
+  const [languageSettingsSaving, setLanguageSettingsSaving] = useState(false);
+  const [languageSettingsMessage, setLanguageSettingsMessage] = useState('');
+  const [proxies, setProxies] = useState([]);
+  const [proxyForm, setProxyForm] = useState({ url: '', label: '' });
+  const [proxyMessage, setProxyMessage] = useState('');
+  const [proxyChecking, setProxyChecking] = useState(false);
 
   // Users
   const [users, setUsers] = useState([]);
@@ -706,7 +733,11 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       loadDashboard();
       loadSupportLinks();
       loadCacheSettings();
+    }
+    else if (tab === 'language') {
       loadRussianIndex();
+      loadLanguageSettings();
+      loadProxies();
     }
     else if (tab === 'users') loadUsers(1, usersSearch);
     else if (tab === 'notifications') loadNotifications(1);
@@ -720,7 +751,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     else if (tab === 'purchases') loadPurchases(purchasesSort);
     else if (tab === 'collections') { loadCollections(); loadCollectionsRefresh(); }
     else if (tab === 'scheduler') { loadSaleIndex(); loadSaleIndexRuns(); loadSaleEndDates(); loadReleaseBackfill(); }
-  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadRussianIndex, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort, loadCollections, loadCollectionsRefresh, loadSaleIndex, loadSaleIndexRuns, loadSaleEndDates, loadReleaseBackfill]);
+  }, [tab, authorized, loadDashboard, loadSupportLinks, loadCacheSettings, loadRussianIndex, loadLanguageSettings, loadProxies, loadUsers, loadNotifications, loadProductOverrides, loadAdminProducts, loadHelpContent, loadDigiseller, loadTopupCards, loadPurchases, purchasesSort, loadCollections, loadCollectionsRefresh, loadSaleIndex, loadSaleIndexRuns, loadSaleEndDates, loadReleaseBackfill]);
 
   // Poll snapshot-refresh status while a refresh is running.
   useEffect(() => {
@@ -732,7 +763,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
   // While a Russian-index build is running, poll its status.
   useEffect(() => {
-    if (!authorized || tab !== 'dashboard') return undefined;
+    if (!authorized || tab !== 'language') return undefined;
     if (!russianIndexState?.isBuilding) return undefined;
     const timer = setInterval(loadRussianIndex, 3000);
     return () => clearInterval(timer);
@@ -971,6 +1002,123 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setRussianIndexMessage('Ошибка: ' + (err.response?.data?.error || err.message));
     } finally {
       setRussianIndexRefreshing(false);
+    }
+  };
+
+  const handleStopIndex = async () => {
+    setRussianIndexMessage('');
+    try {
+      const result = await stopRussianIndex();
+      if (result?.state) setRussianIndexState(result.state);
+      await loadRussianIndex();
+    } catch (err) {
+      setRussianIndexMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleResumeIndex = async () => {
+    setRussianIndexRefreshing(true);
+    setRussianIndexMessage('');
+    try {
+      const result = await resumeRussianIndex();
+      if (result?.alreadyRunning) {
+        setRussianIndexMessage('Сборка уже выполняется');
+      } else {
+        setRussianIndexMessage('Продолжаю сборку с того места, где остановились');
+      }
+      if (result?.state) setRussianIndexState(result.state);
+      await loadRussianIndex();
+    } catch (err) {
+      setRussianIndexMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setRussianIndexRefreshing(false);
+    }
+  };
+
+  const loadLanguageSettings = useCallback(async () => {
+    try {
+      const data = await fetchLanguageSettings();
+      setLanguageSettings(data);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleSaveLanguageSettings = async () => {
+    setLanguageSettingsSaving(true);
+    setLanguageSettingsMessage('');
+    try {
+      const saved = await updateLanguageSettings({
+        batchSize: Number(languageSettings.batchSize) || 50,
+        pauseMs: Number(languageSettings.pauseMs) || 0,
+        proxyEnabled: Boolean(languageSettings.proxyEnabled),
+      });
+      setLanguageSettings(saved);
+      setLanguageSettingsMessage('Сохранено');
+    } catch (err) {
+      setLanguageSettingsMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setLanguageSettingsSaving(false);
+    }
+  };
+
+  const loadProxies = useCallback(async () => {
+    try {
+      const data = await fetchProxies();
+      setProxies(data.proxies || []);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleAddProxy = async (e) => {
+    e.preventDefault();
+    if (!proxyForm.url.trim()) return;
+    setProxyMessage('');
+    try {
+      await createProxy(proxyForm);
+      setProxyForm({ url: '', label: '' });
+      await loadProxies();
+    } catch (err) {
+      setProxyMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleToggleProxy = async (proxy) => {
+    try {
+      await updateProxy(proxy.id, { enabled: !proxy.enabled });
+      await loadProxies();
+    } catch (err) {
+      setProxyMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleDeleteProxy = async (id) => {
+    if (!window.confirm('Удалить прокси?')) return;
+    try {
+      await deleteProxy(id);
+      await loadProxies();
+    } catch (err) {
+      setProxyMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleCheckProxy = async (id) => {
+    setProxyMessage('');
+    try {
+      await checkProxy(id);
+      await loadProxies();
+    } catch (err) {
+      setProxyMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleCheckAllProxies = async () => {
+    setProxyChecking(true);
+    setProxyMessage('');
+    try {
+      await checkAllProxies();
+      await loadProxies();
+    } catch (err) {
+      setProxyMessage('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setProxyChecking(false);
     }
   };
 
@@ -1460,6 +1608,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
           ['users', 'Пользователи'],
           ['notifications', 'Уведомления'],
           ['products', 'Игры'],
+          ['language', 'Язык'],
           ['collections', 'Подборки'],
           ['scheduler', 'Скидки'],
           ['broadcast', 'Рассылка'],
@@ -1688,7 +1837,12 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               {cacheSettingsMessage && <p className="admin-scheduler-result">{cacheSettingsMessage}</p>}
             </form>
           </div>
+        </div>
+      )}
 
+      {/* ==================== Язык (индекс языков + прокси) ==================== */}
+      {tab === 'language' && (
+        <div className="admin-panel">
           <div className="admin-card">
             <div className="admin-card-head">
               <div>
@@ -1765,7 +1919,34 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               >
                 Глубокая пересборка
               </button>
+              {russianIndexState?.isBuilding && (
+                <button
+                  className="admin-btn admin-btn-danger"
+                  type="button"
+                  onClick={handleStopIndex}
+                  disabled={russianIndexState?.stopRequested}
+                >
+                  {russianIndexState?.stopRequested ? 'Останавливается...' : 'Остановить'}
+                </button>
+              )}
+              {!russianIndexState?.isBuilding && russianIndexState?.isPaused && russianIndexState?.pending > 0 && (
+                <button
+                  className="admin-btn admin-btn-accent"
+                  type="button"
+                  onClick={handleResumeIndex}
+                  disabled={russianIndexRefreshing}
+                >
+                  Продолжить ({russianIndexState.pending} осталось)
+                </button>
+              )}
             </div>
+            {russianIndexState?.isPaused && (
+              <p className="admin-scheduler-result" style={{ color: 'var(--warning, #e0a800)' }}>
+                {russianIndexState.progress?.phase === 'waiting_for_proxy'
+                  ? '⏸ Остановлено: нет живых прокси. Добавь рабочий прокси ниже и нажми «Продолжить».'
+                  : '⏸ На паузе. Сессия сохранена — нажми «Продолжить», чтобы дособрать оставшиеся игры.'}
+              </p>
+            )}
             {russianIndexMessage && <p className="admin-scheduler-result">{russianIndexMessage}</p>}
 
             {russianIndexState?.logs?.length > 0 && (
@@ -1778,6 +1959,139 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* ── Parser throttle settings ── */}
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <div>
+                <h3>Настройки парсинга</h3>
+                <p className="admin-card-desc">
+                  Чтобы не получить бан от Xbox: парсер берёт «Размер батча» игр, ждёт «Паузу» и продолжает.
+                </p>
+              </div>
+            </div>
+            <div className="admin-override-form" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <label className="admin-field" style={{ maxWidth: '160px' }}>
+                <span>Размер батча (игр)</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={languageSettings.batchSize}
+                  onChange={(e) => setLanguageSettings((s) => ({ ...s, batchSize: e.target.value }))}
+                />
+              </label>
+              <label className="admin-field" style={{ maxWidth: '180px' }}>
+                <span>Пауза между батчами (сек)</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="600"
+                  value={Math.round((languageSettings.pauseMs ?? 0) / 1000)}
+                  onChange={(e) => setLanguageSettings((s) => ({ ...s, pauseMs: Math.max(0, Number(e.target.value) || 0) * 1000 }))}
+                />
+              </label>
+              <label className="admin-field admin-field-checkbox" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(languageSettings.proxyEnabled)}
+                  onChange={(e) => setLanguageSettings((s) => ({ ...s, proxyEnabled: e.target.checked }))}
+                />
+                <span>Парсить через прокси</span>
+              </label>
+              <button
+                className="admin-btn admin-btn-primary"
+                type="button"
+                onClick={handleSaveLanguageSettings}
+                disabled={languageSettingsSaving}
+              >
+                {languageSettingsSaving ? 'Сохранение...' : 'Сохранить'}
+              </button>
+            </div>
+            {languageSettingsMessage && <p className="admin-scheduler-result">{languageSettingsMessage}</p>}
+          </div>
+
+          {/* ── Proxy pool ── */}
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <div>
+                <h3>Прокси {languageSettings.proxyEnabled ? '(включены)' : '(выключены)'}</h3>
+                <p className="admin-card-desc">
+                  Используются только парсером языков, по кругу. Формат: <code>http://user:pass@host:port</code>.
+                  Живых: {proxies.filter((p) => p.enabled && p.status === 'alive').length} из {proxies.length}.
+                </p>
+              </div>
+              <button
+                className="admin-btn admin-btn-secondary"
+                type="button"
+                onClick={handleCheckAllProxies}
+                disabled={proxyChecking || proxies.length === 0}
+              >
+                {proxyChecking ? 'Проверка...' : 'Проверить все'}
+              </button>
+            </div>
+
+            <form className="admin-search-bar" onSubmit={handleAddProxy}>
+              <input
+                type="text"
+                placeholder="http://user:pass@host:port"
+                value={proxyForm.url}
+                onChange={(e) => setProxyForm((f) => ({ ...f, url: e.target.value }))}
+              />
+              <input
+                type="text"
+                placeholder="Метка (необязательно)"
+                style={{ maxWidth: '180px' }}
+                value={proxyForm.label}
+                onChange={(e) => setProxyForm((f) => ({ ...f, label: e.target.value }))}
+              />
+              <button type="submit" className="admin-btn admin-btn-primary" disabled={!proxyForm.url.trim()}>
+                Добавить
+              </button>
+            </form>
+            {proxyMessage && <p className="admin-scheduler-result">{proxyMessage}</p>}
+
+            <div className="admin-table-wrap">
+              <table className="admin-table admin-table-compact">
+                <thead>
+                  <tr><th>Прокси</th><th>Статус</th><th>Пинг</th><th>Вкл</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {proxies.map((proxy) => (
+                    <tr key={proxy.id}>
+                      <td className="admin-mono" title={proxy.lastError || ''}>
+                        {proxy.label ? `${proxy.label} · ` : ''}{maskProxyUrl(proxy.url)}
+                      </td>
+                      <td>
+                        <span className={`admin-proxy-status admin-proxy-status-${proxy.status}`}>
+                          {proxy.status === 'alive' ? '● живой' : proxy.status === 'dead' ? '● мёртв' : '○ ?'}
+                        </span>
+                      </td>
+                      <td>{proxy.lastLatencyMs != null ? `${proxy.lastLatencyMs} мс` : '—'}</td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={proxy.enabled}
+                          onChange={() => handleToggleProxy(proxy)}
+                        />
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="admin-btn admin-btn-sm" type="button" onClick={() => handleCheckProxy(proxy.id)}>
+                          Проверить
+                        </button>
+                        <button className="admin-btn admin-btn-sm admin-btn-danger" type="button" onClick={() => handleDeleteProxy(proxy.id)}>
+                          Удалить
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {proxies.length === 0 && (
+                    <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Прокси не добавлены</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

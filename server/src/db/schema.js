@@ -327,6 +327,19 @@ async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_sale_end_reminders_pending
       ON sale_end_reminders (deal_end_day)
       WHERE notified = FALSE;
+
+    CREATE TABLE IF NOT EXISTS proxies (
+      id BIGSERIAL PRIMARY KEY,
+      url TEXT NOT NULL,
+      label TEXT,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      status TEXT NOT NULL DEFAULT 'unknown',
+      last_checked_at TIMESTAMPTZ,
+      last_latency_ms INTEGER,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 
   logger.info('PostgreSQL schema ready');
