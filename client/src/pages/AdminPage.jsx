@@ -1545,7 +1545,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               {topFav.total > topFav.limit && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
                   <button
-                    className="admin-btn"
+                    className="admin-btn admin-btn-sm"
                     disabled={topFav.page <= 1 || topFav.loading}
                     onClick={() => loadTopFav(topFav.page - 1)}
                   >← Назад</button>
@@ -1553,7 +1553,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                     Стр. {topFav.page} / {Math.ceil(topFav.total / topFav.limit)} &nbsp;({topFav.total} игр)
                   </span>
                   <button
-                    className="admin-btn"
+                    className="admin-btn admin-btn-sm"
                     disabled={topFav.page >= Math.ceil(topFav.total / topFav.limit) || topFav.loading}
                     onClick={() => loadTopFav(topFav.page + 1)}
                   >Вперёд →</button>
