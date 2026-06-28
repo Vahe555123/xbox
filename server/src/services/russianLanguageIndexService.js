@@ -578,6 +578,10 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
   }
 }
 
+function getIndexData() {
+  return state.index || null;
+}
+
 module.exports = {
   loadIndex,
   buildIndex,
@@ -587,4 +591,5 @@ module.exports = {
   isReadyForMode,
   getServingIds,
   getModeForProduct,
+  getIndexData,
 };

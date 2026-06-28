@@ -4,6 +4,7 @@ const pool = require('../db/pool');
 const { runBroadcast } = require('../services/broadcastService');
 const dealScheduler = require('../services/dealScheduler');
 const russianLanguageIndexScheduler = require('../services/russianLanguageIndexScheduler');
+const russianLanguageIndexService = require('../services/russianLanguageIndexService');
 const digisellerService = require('../services/digisellerService');
 const topupCardService = require('../services/topupCardService');
 const { search } = require('../services/searchService');
@@ -520,6 +521,48 @@ router.post('/russian-index/refresh', requireAdmin, (req, res) => {
   });
 
   res.json({ started: true, state: russianLanguageIndexScheduler.getState() });
+});
+
+// All games from the Russian-language index (server-side paginated)
+router.get('/language-index-games', requireAdmin, async (req, res, next) => {
+  try {
+    const index = russianLanguageIndexService.getIndexData();
+    if (!index || !Array.isArray(index.walkedList)) {
+      return res.json({ games: [], total: 0, page: 1, pageSize: 50 });
+    }
+
+    const { walkedList, modes = {} } = index;
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const languageMode = String(req.query.languageMode || '').trim();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const pageSize = Math.min(200, Math.max(10, parseInt(req.query.pageSize, 10) || 50));
+
+    let filtered = walkedList;
+    if (languageMode && languageMode !== 'all') {
+      filtered = filtered.filter((p) => (modes[p.id] || 'unknown') === languageMode);
+    }
+    if (q) {
+      filtered = filtered.filter((p) =>
+        (p.title || '').toLowerCase().includes(q) || p.id.toLowerCase().includes(q),
+      );
+    }
+
+    const total = filtered.length;
+    const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+    const games = pageItems.map((p) => ({
+      id: p.id,
+      title: p.title,
+      storeUrl: p.storeUrl,
+      russianLanguageMode: modes[p.id] || 'unknown',
+      indexMode: modes[p.id] || 'unknown',
+    }));
+    await applyProductOverrides(games);
+
+    res.json({ games, total, page, pageSize });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Scheduler settings

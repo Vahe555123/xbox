@@ -268,6 +268,14 @@ export async function fetchProductOverrides({ page = 1, limit = 50, search = '' 
   return data;
 }
 
+export async function fetchLanguageIndexGames({ q = '', languageMode = 'all', page = 1, pageSize = 50 } = {}) {
+  const params = { page, pageSize };
+  if (q) params.q = q;
+  if (languageMode && languageMode !== 'all') params.languageMode = languageMode;
+  const { data } = await api.get('/admin/language-index-games', { params });
+  return data;
+}
+
 // ==================== Admin: Collections (Подборки) ====================
 
 export async function fetchAdminCollections() {

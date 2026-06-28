@@ -52,6 +52,7 @@ import {
   sendAdminSpecialOfferNotify,
   fetchReleaseBackfillState,
   triggerReleaseBackfill,
+  fetchLanguageIndexGames,
 } from '../services/api';
 
 function formatDate(d) {
@@ -405,7 +406,8 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   const [productSearchLoading, setProductSearchLoading] = useState(false);
   const [productSearchResults, setProductSearchResults] = useState([]);
   const [productSearchPage, setProductSearchPage] = useState(1);
-  const PRODUCTS_PAGE_SIZE = 25;
+  const [productGamesTotal, setProductGamesTotal] = useState(0);
+  const PRODUCTS_PAGE_SIZE = 50;
   const [productOverrides, setProductOverrides] = useState([]);
   const [productOverridesTotal, setProductOverridesTotal] = useState(0);
   const [selectedProductOverride, setSelectedProductOverride] = useState(null);
@@ -607,13 +609,14 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
-  const loadAdminProducts = useCallback(async ({ q = '', languageMode = 'all' } = {}) => {
+  const loadAdminProducts = useCallback(async ({ q = '', languageMode = 'all', page = 1 } = {}) => {
     setProductSearchLoading(true);
-    setProductSearchPage(1);
+    setProductSearchPage(page);
     setOverrideMessage('');
     try {
-      const products = await searchAdminProducts({ q: q.trim(), languageMode });
-      setProductSearchResults(products);
+      const data = await fetchLanguageIndexGames({ q: q.trim(), languageMode, page, pageSize: PRODUCTS_PAGE_SIZE });
+      setProductSearchResults(data.games || []);
+      setProductGamesTotal(data.total || 0);
     } catch (err) {
       setOverrideMessage('Ошибка поиска: ' + (err.response?.data?.error || err.message));
     } finally {
@@ -767,14 +770,13 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
   const handleProductSearch = async (e) => {
     e.preventDefault();
-    const query = productSearch.trim();
-    await loadAdminProducts({ q: query, languageMode: productLanguageFilter });
+    await loadAdminProducts({ q: productSearch.trim(), languageMode: productLanguageFilter, page: 1 });
   };
 
   const handleProductLanguageFilterChange = async (event) => {
     const languageMode = event.target.value;
     setProductLanguageFilter(languageMode);
-    await loadAdminProducts({ q: productSearch, languageMode });
+    await loadAdminProducts({ q: productSearch, languageMode, page: 1 });
   };
 
   // ---- Collections handlers ----
@@ -1046,7 +1048,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
         customDescription: override.customDescription || '',
       }));
       await loadProductOverrides();
-      await loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter });
+      await loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter, page: productSearchPage });
     } catch (err) {
       setOverrideMessage('Ошибка: ' + (err.response?.data?.error || err.message));
     }
@@ -1067,7 +1069,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
         customDescription: '',
       }));
       await loadProductOverrides();
-      await loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter });
+      await loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter, page: productSearchPage });
     } catch (err) {
       setOverrideMessage('Ошибка: ' + (err.response?.data?.error || err.message));
     }
@@ -2136,25 +2138,25 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                 </button>
               </form>
 
-              {productSearchResults.length > 0 && (
+              {productGamesTotal > 0 && (
                 <div className="admin-pagination">
                   <button
                     className="admin-btn admin-btn-sm"
                     type="button"
-                    disabled={productSearchPage <= 1}
-                    onClick={() => setProductSearchPage((p) => Math.max(1, p - 1))}
+                    disabled={productSearchPage <= 1 || productSearchLoading}
+                    onClick={() => loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter, page: productSearchPage - 1 })}
                   >
                     ← Назад
                   </button>
                   <span className="admin-pagination-info">
-                    {productSearchPage} / {Math.ceil(productSearchResults.length / PRODUCTS_PAGE_SIZE)}
-                    {' '}({productSearchResults.length} игр)
+                    {productSearchPage} / {Math.ceil(productGamesTotal / PRODUCTS_PAGE_SIZE)}
+                    {' '}({productGamesTotal.toLocaleString('ru-RU')} игр)
                   </span>
                   <button
                     className="admin-btn admin-btn-sm"
                     type="button"
-                    disabled={productSearchPage >= Math.ceil(productSearchResults.length / PRODUCTS_PAGE_SIZE)}
-                    onClick={() => setProductSearchPage((p) => p + 1)}
+                    disabled={productSearchPage >= Math.ceil(productGamesTotal / PRODUCTS_PAGE_SIZE) || productSearchLoading}
+                    onClick={() => loadAdminProducts({ q: productSearch, languageMode: productLanguageFilter, page: productSearchPage + 1 })}
                   >
                     Вперёд →
                   </button>
@@ -2167,9 +2169,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                     <tr><th>Игра</th><th>ID</th><th>Язык сейчас</th><th></th></tr>
                   </thead>
                   <tbody>
-                    {productSearchResults
-                      .slice((productSearchPage - 1) * PRODUCTS_PAGE_SIZE, productSearchPage * PRODUCTS_PAGE_SIZE)
-                      .map((product) => (
+                    {productSearchResults.map((product) => (
                         <tr key={product.id}>
                           <td>{product.title}</td>
                           <td className="admin-mono">{product.id}</td>
