@@ -228,6 +228,8 @@ function getModeForProduct(productId) {
   if (modes && modes[id]) return modes[id];
   if (state.fullSet.has(id)) return 'full_ru';
   if (state.russianSet.has(id)) return 'ru_subtitles';
+  // Games in unknownSet but not in modes are walked-but-unresolved — also "язык не указан"
+  if (state.unknownSet.has(id)) return 'unknown';
   return null;
 }
 
@@ -359,10 +361,13 @@ function buildIndexObject({ modes, walked, trigger, durationMs, complete, storeF
       russian.push(product.id);
     } else if (mode === 'no_ru') {
       noRu.push(product.id);
-    } else if (mode === 'unknown') {
+    } else {
+      // mode === 'unknown' (Languages section confirmed absent) OR
+      // mode === undefined (not yet classified) — both mean "язык не указан" to the user
       unknown.push(product.id);
     }
   }
+  const confirmedUnknown = unknown.filter((id) => modes[id] === 'unknown').length;
   return {
     builtAt: new Date().toISOString(),
     durationMs,
@@ -380,6 +385,7 @@ function buildIndexObject({ modes, walked, trigger, durationMs, complete, storeF
       subtitles: russian.length - fullRu.length,
       noRu: noRu.length,
       unknown: unknown.length,
+      confirmedUnknown,
       storeFetches: storeFetches || 0,
       pending: pending || 0,
     },

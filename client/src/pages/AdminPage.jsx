@@ -1714,6 +1714,9 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <div className="admin-stat-card">
                 <div className="admin-stat-value">{russianIndexState?.counts?.unknown ?? '—'}</div>
                 <div className="admin-stat-label">Язык не указан</div>
+                {russianIndexState?.counts?.confirmedUnknown != null && (
+                  <div className="admin-stat-sub">из них подтверждено: {russianIndexState.counts.confirmedUnknown}</div>
+                )}
               </div>
               <div className="admin-stat-card">
                 <div className="admin-stat-value">{russianIndexState?.counts?.scanned ?? 0}</div>
