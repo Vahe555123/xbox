@@ -7,6 +7,7 @@ const { mapFilters, encodeFilters } = require('../mappers/filtersMapper');
 const { applyProductOverrides, listSearchableProductOverrides, listSpecialOfferProductIds } = require('./productOverrideService');
 const collectionsService = require('./collectionsService');
 const russianIndex = require('./russianLanguageIndexService');
+const saleIndexService = require('./saleIndexService');
 const config = require('../config');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
@@ -27,6 +28,7 @@ const SPECIAL_OFFERS_FILTER_VALUE = 'Available';
 const RUSSIAN_INDEX_TOKEN_PREFIX = 'rulang:';
 const SPECIAL_OFFERS_TOKEN_PREFIX = 'specialoffers:';
 const COLLECTION_TOKEN_PREFIX = 'collection:';
+const SALE_END_TOKEN_PREFIX = 'saleend:';
 const VALID_LANGUAGE_MODES = new Set(['full_ru', 'ru_subtitles', 'no_ru', 'unknown']);
 const KEYWORD_MATCH_TIER_OFFSET = 3;
 const SEARCH_MATCH_TIERS = {
@@ -96,6 +98,19 @@ async function search({
       languageModes,
       specialOffersOnly: false,
       applyIndexMode: true,
+      sort: effectiveSort,
+    });
+  }
+
+  // Fast path: sale-end-date filter pagination — served from sale_products DB table.
+  if (isSaleEndToken(encodedCT)) {
+    const { date, offset } = parseSaleEndToken(encodedCT);
+    const ids = await saleIndexService.getProductIdsByEndBefore(date);
+    return serveCuratedIdsPage({
+      ids,
+      offset,
+      tokenPrefix: `${SALE_END_TOKEN_PREFIX}${date}:`,
+      languageModes,
       sort: effectiveSort,
     });
   }
@@ -171,6 +186,21 @@ async function search({
       languageModes,
       specialOffersOnly,
       applyIndexMode: true,
+      includeFilters: true,
+      sort: effectiveSort,
+    });
+  }
+
+  // Fast path: "Скидки до <date>" — served directly from sale_products DB table.
+  // Allowed alongside Price:OnSale (all index entries are on sale).
+  if (canUseSaleEndIndex(saleEndBefore, filters, query, languageFilterActive)) {
+    const ids = await saleIndexService.getProductIdsByEndBefore(saleEndBefore);
+    if (countOnly) return countCuratedResults(ids);
+    return serveCuratedIdsPage({
+      ids,
+      offset: 0,
+      tokenPrefix: `${SALE_END_TOKEN_PREFIX}${saleEndBefore}:`,
+      languageModes,
       includeFilters: true,
       sort: effectiveSort,
     });
@@ -985,6 +1015,31 @@ function isSpecialOffersToken(value) {
 
 function isCollectionToken(value) {
   return typeof value === 'string' && value.startsWith(COLLECTION_TOKEN_PREFIX);
+}
+
+function isSaleEndToken(value) {
+  return typeof value === 'string' && value.startsWith(SALE_END_TOKEN_PREFIX);
+}
+
+// Token format: saleend:<YYYY-MM-DD>:<offset>
+function parseSaleEndToken(token) {
+  const rest = String(token || '').slice(SALE_END_TOKEN_PREFIX.length);
+  const idx = rest.lastIndexOf(':');
+  if (idx < 0) return { date: rest, offset: 0 };
+  const date = rest.slice(0, idx);
+  const offset = parseInt(rest.slice(idx + 1), 10);
+  return { date, offset: Number.isFinite(offset) && offset > 0 ? offset : 0 };
+}
+
+// Use the sale-products DB index when only SaleEndBefore (and optionally Price:OnSale) is active.
+function canUseSaleEndIndex(saleEndBefore, filters, query, languageFilterActive) {
+  if (!saleEndBefore || query || languageFilterActive) return false;
+  for (const [key, values] of Object.entries(filters || {})) {
+    if (key === 'SaleEndBefore' || key === 'LanguageMode') continue;
+    if (key === 'Price' && Array.isArray(values) && values.every((v) => v === 'OnSale')) continue;
+    if (Array.isArray(values) ? values.length > 0 : Boolean(values)) return false;
+  }
+  return true;
 }
 
 // Token format: collection:<slug>:<offset>
