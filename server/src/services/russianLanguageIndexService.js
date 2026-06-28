@@ -519,10 +519,15 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
             languageOnly: true,
           });
           storeFetches += 1;
-          const mode = normalizeMode(data?.languageInfo?.russianLanguageMode);
-          modes[product.id] = mode;
-          newlyResolved += 1;
-          if (mode === 'full_ru') { state.progress.russian += 1; state.progress.fullRu += 1; } else if (mode === 'ru_subtitles') { state.progress.russian += 1; }
+          // languageInfo is null when the page couldn't be parsed or the product wasn't
+          // found in it — treat as unresolved so the next build retries it, rather than
+          // incorrectly classifying it as 'unknown' (Languages section absent).
+          if (data?.languageInfo != null) {
+            const mode = normalizeMode(data.languageInfo.russianLanguageMode);
+            modes[product.id] = mode;
+            newlyResolved += 1;
+            if (mode === 'full_ru') { state.progress.russian += 1; state.progress.fullRu += 1; } else if (mode === 'ru_subtitles') { state.progress.russian += 1; }
+          }
         } catch (err) {
           // Leave unresolved -> retried on a later build.
           logger.debug('[RussianIndex] Store fetch failed', { productId: product.id, message: err.message });

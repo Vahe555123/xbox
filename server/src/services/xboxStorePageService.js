@@ -44,7 +44,13 @@ async function getStorePageProductData({ productId, storeUrl, languageOnly = fal
     const channelData = state?.core2?.channels?.channelData || {};
     const productSummaries = state?.core2?.products?.productSummaries || {};
     const productSummary = getCaseInsensitiveValue(productSummaries, normalizedProductId);
-    const languageInfo = extractStoreLanguageInfo(productSummary);
+
+    // Only classify language if the page was successfully parsed AND the product was
+    // found in it. null here means "indeterminate" (couldn't read the page), which is
+    // different from 'unknown' (Languages Supported section is genuinely absent).
+    const languageInfo = (state != null && productSummary != null)
+      ? extractStoreLanguageInfo(productSummary)
+      : null;
 
     if (languageInfo) {
       cache.set(`xbox-store-language:${normalizedProductId}`, languageInfo, LANGUAGE_CACHE_TTL);
