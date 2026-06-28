@@ -1884,51 +1884,6 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       )}
 
       {/* ==================== Notifications ==================== */}
-      {tab === 'notifications' && (
-        <div className="admin-panel">
-          <p className="admin-total">Всего уведомлений: {notifsTotal}</p>
-          <div className="admin-table-wrap">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Пользователь</th>
-                  <th>Провайдер</th>
-                  <th>Product ID</th>
-                  <th>Скидка</th>
-                  <th>Дата</th>
-                </tr>
-              </thead>
-              <tbody>
-                {notifications.map((n, i) => (
-                  <tr key={i}>
-                    <td>{n.name || n.email || n.user_id.slice(0, 8)}</td>
-                    <td>
-                      <span className={`admin-provider-chip admin-provider-${n.last_provider}`}>
-                        {providerLabel(n.last_provider)}
-                      </span>
-                    </td>
-                    <td className="admin-mono">{n.product_id}</td>
-                    <td className="admin-mono">{n.deal_key}</td>
-                    <td>{formatDate(n.notified_at)}</td>
-                  </tr>
-                ))}
-                {notifications.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Нет уведомлений</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {notifsTotal > 30 && (
-            <div className="admin-pagination">
-              <button className="admin-btn admin-btn-sm" disabled={notifsPage <= 1} onClick={() => loadNotifications(notifsPage - 1)}>Назад</button>
-              <span>Стр. {notifsPage} / {Math.ceil(notifsTotal / 30)}</span>
-              <button className="admin-btn admin-btn-sm" disabled={notifsPage >= Math.ceil(notifsTotal / 30)} onClick={() => loadNotifications(notifsPage + 1)}>Вперёд</button>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ==================== Special-offer notify ==================== */}
       {tab === 'notifications' && (
         <div className="admin-panel" style={{ marginTop: 24 }}>
@@ -2062,6 +2017,51 @@ export default function AdminPage({ currentUser, onLoginClick }) {
           )}
         </div>
       )}
+      {tab === 'notifications' && (
+        <div className="admin-panel">
+          <p className="admin-total">Всего уведомлений: {notifsTotal}</p>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Пользователь</th>
+                  <th>Провайдер</th>
+                  <th>Product ID</th>
+                  <th>Скидка</th>
+                  <th>Дата</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notifications.map((n, i) => (
+                  <tr key={i}>
+                    <td>{n.name || n.email || n.user_id.slice(0, 8)}</td>
+                    <td>
+                      <span className={`admin-provider-chip admin-provider-${n.last_provider}`}>
+                        {providerLabel(n.last_provider)}
+                      </span>
+                    </td>
+                    <td className="admin-mono">{n.product_id}</td>
+                    <td className="admin-mono">{n.deal_key}</td>
+                    <td>{formatDate(n.notified_at)}</td>
+                  </tr>
+                ))}
+                {notifications.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Нет уведомлений</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {notifsTotal > 30 && (
+            <div className="admin-pagination">
+              <button className="admin-btn admin-btn-sm" disabled={notifsPage <= 1} onClick={() => loadNotifications(notifsPage - 1)}>Назад</button>
+              <span>Стр. {notifsPage} / {Math.ceil(notifsTotal / 30)}</span>
+              <button className="admin-btn admin-btn-sm" disabled={notifsPage >= Math.ceil(notifsTotal / 30)} onClick={() => loadNotifications(notifsPage + 1)}>Вперёд</button>
+            </div>
+          )}
+        </div>
+      )}
+
 
       {/* ==================== Products ==================== */}
       {tab === 'products' && (
