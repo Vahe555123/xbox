@@ -949,16 +949,21 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     }
   };
 
-  const handleRussianIndexRefresh = async () => {
+  const handleRussianIndexRefresh = async (deep = false) => {
+    if (deep && !window.confirm('Глубокая пересборка заново загрузит страницы ВСЕХ игр (несколько часов) и перепроверит язык у каждой. Запустить?')) {
+      return;
+    }
     setRussianIndexRefreshing(true);
     setRussianIndexMessage('');
 
     try {
-      const result = await refreshRussianIndex();
+      const result = await refreshRussianIndex({ deep });
       if (result?.alreadyRunning) {
         setRussianIndexMessage('Обновление уже выполняется');
       } else {
-        setRussianIndexMessage('Обновление запущено — индекс собирается в фоне');
+        setRussianIndexMessage(deep
+          ? 'Глубокая пересборка запущена — все игры перепроверяются в фоне'
+          : 'Обновление запущено — индекс собирается в фоне');
       }
       if (result?.state) setRussianIndexState(result.state);
       await loadRussianIndex();
@@ -1746,10 +1751,19 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <button
                 className="admin-btn admin-btn-primary"
                 type="button"
-                onClick={handleRussianIndexRefresh}
+                onClick={() => handleRussianIndexRefresh(false)}
                 disabled={russianIndexRefreshing || russianIndexState?.isBuilding}
               >
                 {russianIndexState?.isBuilding ? 'Собирается...' : (russianIndexRefreshing ? 'Запуск...' : 'Обновить сейчас')}
+              </button>
+              <button
+                className="admin-btn"
+                type="button"
+                onClick={() => handleRussianIndexRefresh(true)}
+                disabled={russianIndexRefreshing || russianIndexState?.isBuilding}
+                title="Заново загружает страницы всех игр и перепроверяет язык у каждой. Исправляет устаревшие классификации."
+              >
+                Глубокая пересборка
               </button>
             </div>
             {russianIndexMessage && <p className="admin-scheduler-result">{russianIndexMessage}</p>}
