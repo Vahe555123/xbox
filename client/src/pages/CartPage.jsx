@@ -144,7 +144,7 @@ export default function CartPage({ currentUser, onLoginClick }) {
   const isTopup = form.paymentMode === 'topup_cards';
   const isSpecial = form.paymentMode === 'special_offer';
   const skipAccountFields = isKey || isTopup || isSpecial;
-  const needsPurchaseEmail = !hasSavedPurchaseEmail && !registrationEmail && !canUseTelegramDelivery;
+  const needsPurchaseEmail = !hasSavedPurchaseEmail && !registrationEmail && !canUseTelegramDelivery && !isTopup;
   const needsAccountEmail = !skipAccountFields && !hasSavedAccountEmail;
   const needsAccountPassword = !skipAccountFields && !hasSavedAccountPassword;
   const hasMissingPurchaseFields = needsPurchaseEmail || needsAccountEmail || needsAccountPassword;
@@ -490,7 +490,7 @@ export default function CartPage({ currentUser, onLoginClick }) {
                             <strong>{registrationEmail}</strong>
                           </div>
                         )}
-                        {!hasSavedPurchaseEmail && !registrationEmail && canUseTelegramDelivery && (
+                        {!hasSavedPurchaseEmail && !registrationEmail && canUseTelegramDelivery && !isTopup && (
                           <div className="purchase-data-row">
                             <span>Доставка ссылки</span>
                             <strong>Telegram</strong>

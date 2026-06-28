@@ -585,7 +585,7 @@ export default function GameDetailPage() {
   const isTopupMode = purchaseForm.paymentMode === 'topup_cards';
   const isSpecialOfferMode = purchaseForm.paymentMode === 'special_offer';
   const skipAccountFields = isKeyActivationMode || isTopupMode || isSpecialOfferMode;
-  const needsPurchaseEmail = !hasSavedPurchaseEmail && !registrationEmail && !canUseTelegramDelivery;
+  const needsPurchaseEmail = !hasSavedPurchaseEmail && !registrationEmail && !canUseTelegramDelivery && !isTopupMode;
   const needsAccountEmail = !skipAccountFields;
   const needsAccountPassword = !skipAccountFields;
   const hasMissingPurchaseFields = needsPurchaseEmail || needsAccountEmail || needsAccountPassword;
@@ -1006,7 +1006,7 @@ export default function GameDetailPage() {
                           <strong>{registrationEmail}</strong>
                         </div>
                       )}
-                      {!hasSavedPurchaseEmail && !registrationEmail && canUseTelegramDelivery && (
+                      {!hasSavedPurchaseEmail && !registrationEmail && canUseTelegramDelivery && !isTopupMode && (
                         <div className="purchase-data-row">
                           <span>Доставка ссылки</span>
                           <strong>Telegram</strong>

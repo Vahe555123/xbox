@@ -41,6 +41,9 @@ async function notifyPurchaseCreated({ target, product, payment }) {
   }
 
   if (target.type === 'telegram') {
+    if (payment?.paymentType === 'topup_cards') {
+      return { sent: false, channel: 'telegram', reason: 'topup_skip' };
+    }
     await sendPurchaseTelegram(target.chatId, product, payment);
     return { sent: true, channel: 'telegram', to: target.chatId };
   }
