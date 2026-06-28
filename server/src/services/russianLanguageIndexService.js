@@ -491,7 +491,9 @@ async function buildIndex({ trigger = 'manual', deep = false } = {}) {
       if (overrideModes.has(product.id)) { reused += 1; continue; }
       const cached = getCachedLanguageInfo(product.id);
       if (cached) { modes[product.id] = normalizeMode(cached.russianLanguageMode); reused += 1; continue; }
-      if (!deep && prevModes[product.id]) { reused += 1; continue; }
+      // Always re-fetch 'unknown' games — they had no language data when last checked
+      // but may have been updated since (e.g. a pre-release game that just launched).
+      if (!deep && prevModes[product.id] && prevModes[product.id] !== 'unknown') { reused += 1; continue; }
       needFetch.push(product);
     }
 
