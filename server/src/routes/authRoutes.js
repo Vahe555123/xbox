@@ -14,6 +14,8 @@ const {
   me,
   updatePassword,
   savePurchaseSettings,
+  requestEmailLink,
+  confirmEmailLink,
 } = require('../controllers/authController');
 const { requireAuth } = require('../middleware/auth');
 
@@ -33,5 +35,7 @@ router.get('/oauth/:provider/callback', oauthCallback);
 router.post('/telegram', telegram);
 router.post('/telegram/link', requireAuth, telegramLink);
 router.delete('/providers/:provider', requireAuth, unlinkProviderHandler);
+router.post('/email/link/request', requireAuth, requestEmailLink);
+router.post('/email/link/confirm', requireAuth, confirmEmailLink);
 
 module.exports = router;

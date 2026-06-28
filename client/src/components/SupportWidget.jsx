@@ -155,9 +155,19 @@ export default function SupportWidget() {
               ))}
             </div>
 
-            <Link className="support-modal-help-link" to="/help" onClick={() => setOpen(false)}>
-              Открыть раздел помощи
-            </Link>
+            <div className="support-modal-footer">
+              <Link className="support-modal-help-link" to="/help" onClick={() => setOpen(false)}>
+                Открыть раздел помощи
+              </Link>
+              <a
+                className="support-modal-help-link"
+                href="https://oplata.info"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Мои покупки
+              </a>
+            </div>
           </div>
         </div>
       )}

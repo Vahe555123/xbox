@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { changePassword, fetchAuthProviders, fetchProfile, getOAuthLinkUrl, linkTelegramAccount, unlinkProvider, updatePurchaseSettings } from '../services/api';
+import { changePassword, confirmEmailLink, fetchAuthProviders, fetchProfile, getOAuthLinkUrl, linkTelegramAccount, requestEmailLink, unlinkProvider, updatePurchaseSettings } from '../services/api';
 
 const PROVIDER_LABELS = {
   email: 'Email / Пароль',
@@ -68,6 +67,15 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
   const [providerErr, setProviderErr] = useState('');
   const [providerLoading, setProviderLoading] = useState('');
   const telegramLinkRef = useRef(null);
+
+  const [emailLinkModal, setEmailLinkModal] = useState(false);
+  const [emailLinkStep, setEmailLinkStep] = useState(1);
+  const [emailLinkEmail, setEmailLinkEmail] = useState('');
+  const [emailLinkCode, setEmailLinkCode] = useState('');
+  const [emailLinkPassword, setEmailLinkPassword] = useState('');
+  const [emailLinkLoading, setEmailLinkLoading] = useState(false);
+  const [emailLinkMsg, setEmailLinkMsg] = useState('');
+  const [emailLinkErr, setEmailLinkErr] = useState('');
 
   useEffect(() => {
     if (!storedUser) return;
@@ -259,6 +267,55 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
     }
   };
 
+  const openEmailLinkModal = () => {
+    setEmailLinkStep(1);
+    setEmailLinkEmail('');
+    setEmailLinkCode('');
+    setEmailLinkPassword('');
+    setEmailLinkMsg('');
+    setEmailLinkErr('');
+    setEmailLinkModal(true);
+  };
+
+  const closeEmailLinkModal = () => setEmailLinkModal(false);
+
+  const handleEmailLinkRequest = async (e) => {
+    e.preventDefault();
+    setEmailLinkLoading(true);
+    setEmailLinkErr('');
+    setEmailLinkMsg('');
+    try {
+      await requestEmailLink(emailLinkEmail.trim());
+      setEmailLinkStep(2);
+      setEmailLinkMsg('Код отправлен на почту');
+    } catch (err) {
+      setEmailLinkErr(err.response?.data?.error?.message || err.message || 'Не удалось отправить код');
+    } finally {
+      setEmailLinkLoading(false);
+    }
+  };
+
+  const handleEmailLinkConfirm = async (e) => {
+    e.preventDefault();
+    setEmailLinkLoading(true);
+    setEmailLinkErr('');
+    setEmailLinkMsg('');
+    try {
+      await confirmEmailLink(emailLinkEmail.trim(), emailLinkCode.trim(), emailLinkPassword);
+      setEmailLinkMsg('Email и пароль успешно привязаны');
+      setEmailLinkLoading(false);
+      setTimeout(() => {
+        closeEmailLinkModal();
+        fetchProfile().then((data) => setProfile(data)).catch(() => {});
+      }, 1200);
+      return;
+    } catch (err) {
+      setEmailLinkErr(err.response?.data?.error?.message || err.message || 'Не удалось привязать');
+    } finally {
+      setEmailLinkLoading(false);
+    }
+  };
+
   return (
     <div className="profile-page">
       <div className="profile-page-hero">
@@ -272,6 +329,9 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
           <h1>{user.name || user.email || 'Игрок'}</h1>
           <p>{user.email || 'Email не указан'}</p>
         </div>
+        <button className="profile-logout-btn profile-hero-logout" type="button" onClick={onLogout}>
+          Выйти из профиля
+        </button>
       </div>
 
       {loading && <p className="profile-muted">Загружаем данные...</p>}
@@ -347,7 +407,13 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
               {hasPassword ? (
                 <span className="profile-provider-status">Привязан</span>
               ) : (
-                <span className="profile-provider-disabled">Добавьте пароль ниже</span>
+                <button
+                  className="profile-provider-link"
+                  type="button"
+                  onClick={openEmailLinkModal}
+                >
+                  Привязать
+                </button>
               )}
             </div>
           </div>
@@ -524,14 +590,77 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
         </section>
       </div>
 
-      <div className="profile-page-actions">
-        <Link className="profile-page-secondary" to="/favorites">
-          Перейти в избранное
-        </Link>
-        <button className="profile-logout-btn" type="button" onClick={onLogout}>
-          Выйти из профиля
-        </button>
-      </div>
+      {emailLinkModal && (
+        <div className="profile-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) closeEmailLinkModal(); }}>
+          <div className="profile-modal email-link-modal">
+            <button className="profile-modal-close" type="button" onClick={closeEmailLinkModal}>×</button>
+            <h2>Привязать Email и пароль</h2>
+            <p className="profile-muted">
+              {emailLinkStep === 1
+                ? 'Введите email — отправим 6-значный код для подтверждения.'
+                : 'Введите код из письма и придумайте пароль для входа.'}
+            </p>
+
+            {emailLinkStep === 1 ? (
+              <form className="profile-password-form email-link-form" onSubmit={handleEmailLinkRequest}>
+                <label>
+                  Email
+                  <input
+                    type="email"
+                    value={emailLinkEmail}
+                    onChange={(e) => { setEmailLinkEmail(e.target.value); setEmailLinkErr(''); }}
+                    placeholder="mail@example.com"
+                    required
+                    autoFocus
+                  />
+                </label>
+                {emailLinkErr && <p className="profile-error">{emailLinkErr}</p>}
+                <button type="submit" disabled={emailLinkLoading}>
+                  {emailLinkLoading ? 'Отправляем...' : 'Отправить код'}
+                </button>
+              </form>
+            ) : (
+              <form className="profile-password-form email-link-form" onSubmit={handleEmailLinkConfirm}>
+                <label>
+                  Код из письма
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={emailLinkCode}
+                    onChange={(e) => { setEmailLinkCode(e.target.value.replace(/\D/g, '')); setEmailLinkErr(''); }}
+                    placeholder="123456"
+                    required
+                    autoFocus
+                  />
+                </label>
+                <label>
+                  Новый пароль
+                  <input
+                    type="password"
+                    value={emailLinkPassword}
+                    onChange={(e) => { setEmailLinkPassword(e.target.value); setEmailLinkErr(''); }}
+                    placeholder="Минимум 6 символов"
+                    minLength={6}
+                    required
+                  />
+                </label>
+                {emailLinkMsg && <p className="profile-success">{emailLinkMsg}</p>}
+                {emailLinkErr && <p className="profile-error">{emailLinkErr}</p>}
+                <div className="email-link-form-actions">
+                  <button type="button" className="email-link-back" onClick={() => { setEmailLinkStep(1); setEmailLinkErr(''); setEmailLinkMsg(''); }}>
+                    ← Назад
+                  </button>
+                  <button type="submit" disabled={emailLinkLoading}>
+                    {emailLinkLoading ? 'Сохраняем...' : 'Привязать'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

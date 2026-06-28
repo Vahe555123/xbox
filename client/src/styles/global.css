@@ -2847,6 +2847,48 @@ img {
   background: rgba(255, 255, 255, 0.14);
 }
 
+.email-link-modal {
+  width: min(440px, 100%);
+}
+
+.email-link-modal h2 {
+  margin-bottom: 0.4rem;
+}
+
+.email-link-modal > .profile-muted {
+  margin-bottom: 1.2rem;
+}
+
+.email-link-form {
+  margin-top: 1rem;
+}
+
+.email-link-form-actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.email-link-form-actions button[type="submit"] {
+  flex: 1;
+}
+
+.email-link-back {
+  height: 46px;
+  padding: 0 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.email-link-back:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
 .profile-hero {
   min-height: 136px;
   padding: 1.25rem;
@@ -2984,9 +3026,16 @@ img {
 .profile-payment-mode,
 .profile-checkbox-row {
   display: flex;
-  align-items: flex-start;
   gap: 0.65rem;
   border-radius: 8px;
+}
+
+.profile-payment-mode {
+  align-items: flex-start;
+}
+
+.profile-checkbox-row {
+  align-items: center;
 }
 
 .profile-payment-mode {
@@ -3008,6 +3057,9 @@ img {
 .profile-checkbox-row input {
   width: auto;
   height: auto;
+}
+
+.profile-payment-mode input {
   margin-top: 0.2rem;
 }
 
@@ -3044,6 +3096,15 @@ img {
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.055);
   color: var(--text);
+}
+
+.profile-hero-logout {
+  width: auto;
+  margin-top: 0;
+  margin-left: auto;
+  padding: 0 1.2rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .profile-muted {
@@ -6300,11 +6361,16 @@ code {
   background: rgba(77, 205, 153, 0.16);
 }
 
+.support-modal-footer {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.95rem;
+  justify-content: space-between;
+}
+
 .support-modal-help-link {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  margin-top: 0.95rem;
   color: #8eddbd;
   font-weight: 700;
   text-decoration: none;

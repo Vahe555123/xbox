@@ -183,6 +183,16 @@ export async function changePassword(currentPassword, newPassword) {
   return data;
 }
 
+export async function requestEmailLink(email) {
+  const { data } = await api.post('/auth/email/link/request', { email });
+  return data;
+}
+
+export async function confirmEmailLink(email, code, password) {
+  const { data } = await api.post('/auth/email/link/confirm', { email, code, password });
+  return data;
+}
+
 export async function fetchFavorites() {
   const { data } = await api.get('/favorites');
   return data.items || [];

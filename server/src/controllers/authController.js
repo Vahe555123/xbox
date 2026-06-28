@@ -16,6 +16,8 @@ const {
   loginWithTelegram,
   createOAuthSession,
   consumeOAuthSession,
+  sendEmailLinkCode,
+  verifyEmailLinkCode,
 } = require('../services/authService');
 
 function setAuthCookie(res, token) {
@@ -306,6 +308,35 @@ async function updatePassword(req, res, next) {
   }
 }
 
+async function requestEmailLink(req, res, next) {
+  try {
+    const { email } = req.body || {};
+    if (!email) throw new AppError('Email is required', 400);
+    await sendEmailLinkCode(req.user.id, email);
+    res.json({ success: true, message: 'Verification code sent' });
+  } catch (err) {
+    if (err instanceof AppError) return next(err);
+    if (err.message === 'Email already in use') return next(new AppError(err.message, 409));
+    next(err);
+  }
+}
+
+async function confirmEmailLink(req, res, next) {
+  try {
+    const { email, code, password } = req.body || {};
+    if (!email || !code || !password) throw new AppError('Email, code and password are required', 400);
+    if (String(password).length < 6) throw new AppError('Password must be at least 6 characters', 400);
+    await verifyEmailLinkCode(req.user.id, email, code, password);
+    logger.info('Email linked', { userId: req.user.id, email });
+    res.json({ success: true, message: 'Email linked' });
+  } catch (err) {
+    if (err instanceof AppError) return next(err);
+    if (err.message === 'Email already in use') return next(new AppError(err.message, 409));
+    if (err.message === 'Invalid or expired verification code') return next(new AppError(err.message, 400));
+    next(err);
+  }
+}
+
 async function savePurchaseSettings(req, res, next) {
   try {
     const settings = await updatePurchaseSettings(req.user.id, req.body || {});
@@ -336,4 +367,6 @@ module.exports = {
   me,
   updatePassword,
   savePurchaseSettings,
+  requestEmailLink,
+  confirmEmailLink,
 };

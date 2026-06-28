@@ -675,6 +675,57 @@ async function unlinkProvider(userId, provider) {
   }
 }
 
+async function sendEmailLinkCode(userId, email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) throw new Error('Email is required');
+
+  const { rows: conflict } = await pool.query(
+    'SELECT id FROM users WHERE email = $1 AND id != $2',
+    [normalizedEmail, userId],
+  );
+  if (conflict.length > 0) throw new Error('Email already in use');
+
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const codeHash = await bcrypt.hash(code, 10);
+  await pool.query(
+    `INSERT INTO email_verification_codes (email, code_hash, expires_at)
+     VALUES ($1, $2, NOW() + INTERVAL '10 minutes')
+     ON CONFLICT (email)
+     DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, created_at = NOW()`,
+    [normalizedEmail, codeHash],
+  );
+  await sendVerificationCode(normalizedEmail, code);
+  return { email: normalizedEmail };
+}
+
+async function verifyEmailLinkCode(userId, email, code, newPassword) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) throw new Error('Email is required');
+
+  const { rows: conflict } = await pool.query(
+    'SELECT id FROM users WHERE email = $1 AND id != $2',
+    [normalizedEmail, userId],
+  );
+  if (conflict.length > 0) throw new Error('Email already in use');
+
+  const { rows: codes } = await pool.query(
+    'SELECT * FROM email_verification_codes WHERE email = $1 AND expires_at > NOW()',
+    [normalizedEmail],
+  );
+  const savedCode = codes[0];
+  if (!savedCode || !(await bcrypt.compare(String(code), savedCode.code_hash))) {
+    throw new Error('Invalid or expired verification code');
+  }
+
+  const passwordHash = await bcrypt.hash(String(newPassword), 10);
+  await pool.query(
+    `UPDATE users SET email = $2, password_hash = $3, verified = true, updated_at = NOW() WHERE id = $1`,
+    [userId, normalizedEmail, passwordHash],
+  );
+  await pool.query('DELETE FROM email_verification_codes WHERE email = $1', [normalizedEmail]);
+  return { email: normalizedEmail };
+}
+
 async function linkTelegramToUser(userId, payload) {
   const profile = verifyTelegramPayload(payload || {});
 
@@ -853,4 +904,6 @@ module.exports = {
   loginWithTelegram,
   createOAuthSession,
   consumeOAuthSession,
+  sendEmailLinkCode,
+  verifyEmailLinkCode,
 };
