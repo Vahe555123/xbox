@@ -96,6 +96,7 @@ async function search({
       languageModes,
       specialOffersOnly: false,
       applyIndexMode: true,
+      sort: effectiveSort,
     });
   }
 
@@ -157,7 +158,6 @@ async function search({
 
   const canUseRussianIndex = languageFilterActive
     && !query
-    && effectiveSort === DEFAULT_BROWSE_SORT
     && !hasApiSideFilters(filters)
     && [...languageModes].every((mode) => russianIndex.isReadyForMode(mode));
 
@@ -172,6 +172,7 @@ async function search({
       specialOffersOnly,
       applyIndexMode: true,
       includeFilters: true,
+      sort: effectiveSort,
     });
   }
 
@@ -1032,6 +1033,28 @@ function countCuratedResults(ids) {
   };
 }
 
+function sortProductsLocally(products, sort) {
+  const sorted = [...products];
+  if (sort === 'Price asc') {
+    sorted.sort((a, b) => (a.price?.value ?? Infinity) - (b.price?.value ?? Infinity));
+  } else if (sort === 'Price desc') {
+    sorted.sort((a, b) => (b.price?.value ?? -Infinity) - (a.price?.value ?? -Infinity));
+  } else if (sort === 'Title Asc') {
+    sorted.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ru'));
+  } else if (sort === 'Title Desc') {
+    sorted.sort((a, b) => (b.title || '').localeCompare(a.title || '', 'ru'));
+  } else if (sort === 'ReleaseDate desc') {
+    sorted.sort((a, b) => {
+      const da = a.releaseDate ? new Date(a.releaseDate).getTime() : 0;
+      const db = b.releaseDate ? new Date(b.releaseDate).getTime() : 0;
+      return db - da;
+    });
+  } else if (sort === 'DiscountPercentage desc') {
+    sorted.sort((a, b) => (b.price?.discountPercent ?? 0) - (a.price?.discountPercent ?? 0));
+  }
+  return sorted;
+}
+
 /**
  * Serve a page of products from a precomputed list of product IDs (Russian-language
  * index, or special-offer overrides). Paginated via an offset token. Fast: one
@@ -1047,6 +1070,7 @@ async function serveCuratedIdsPage({
   applyIndexMode = false,
   includeFilters = false,
   resolveProducts = null,
+  sort = null,
 }) {
   const pageSize = config.xbox.pageSize;
   const slice = ids.slice(offset, offset + pageSize);
@@ -1082,13 +1106,18 @@ async function serveCuratedIdsPage({
       }
     }
     const order = new Map(slice.map((id, index) => [String(id).toUpperCase(), index]));
-    products = applyPostFilters(mapped, {
+    const filtered = applyPostFilters(mapped, {
       languageMode: languageModes ? [...languageModes].join(',') : '',
       specialOffersOnly,
       freeOnly,
-    }).sort((a, b) => (
-      (order.get(String(a.id).toUpperCase()) ?? 0) - (order.get(String(b.id).toUpperCase()) ?? 0)
-    ));
+    });
+    if (sort && sort !== DEFAULT_BROWSE_SORT && sort !== 'MostPopular desc') {
+      products = sortProductsLocally(filtered, sort);
+    } else {
+      products = filtered.sort((a, b) => (
+        (order.get(String(a.id).toUpperCase()) ?? 0) - (order.get(String(b.id).toUpperCase()) ?? 0)
+      ));
+    }
   }
 
   let filters = null;
