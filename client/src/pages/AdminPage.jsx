@@ -1485,10 +1485,9 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                       <tr key={f.product_id}>
                         <td style={{ color: '#888', width: '40px' }}>{(topFav.page - 1) * topFav.limit + idx + 1}</td>
                         <td>
-                          {f.title
-                            ? <a href={`/game/${f.product_id}`} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{f.title}</a>
-                            : <span style={{ color: '#888' }}>{f.product_id}</span>
-                          }
+                          <a href={`/game/${f.product_id}`} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
+                            {f.title || <span style={{ color: '#888', fontFamily: 'monospace' }}>{f.product_id}</span>}
+                          </a>
                         </td>
                         <td>{f.count}</td>
                       </tr>

@@ -7,7 +7,7 @@ const russianLanguageIndexScheduler = require('../services/russianLanguageIndexS
 const digisellerService = require('../services/digisellerService');
 const topupCardService = require('../services/topupCardService');
 const { search } = require('../services/searchService');
-const { getProductById } = require('../services/displayCatalogService');
+const { getProductById, getProductsByIds } = require('../services/displayCatalogService');
 const { mapProductDetail } = require('../mappers/productDetailMapper');
 const {
   applyProductOverrides,
@@ -122,6 +122,23 @@ router.get('/top-favorites', requireAdmin, async (req, res, next) => {
       `, [limit, offset]),
       pool.query(`SELECT COUNT(DISTINCT product_id)::int AS total FROM favorites`),
     ]);
+
+    // Fetch titles from display catalog for any items still missing a title.
+    const missingIds = rows.filter((r) => !r.title).map((r) => r.product_id);
+    if (missingIds.length) {
+      const rawProducts = await getProductsByIds(missingIds, { allowPartial: true, context: 'admin-top-favorites' }).catch(() => []);
+      const titleMap = new Map(
+        rawProducts
+          .map((p) => [
+            String(p?.ProductId || '').toUpperCase(),
+            p?.LocalizedProperties?.[0]?.ProductTitle || null,
+          ])
+          .filter(([id, title]) => id && title),
+      );
+      for (const row of rows) {
+        if (!row.title) row.title = titleMap.get(String(row.product_id).toUpperCase()) || null;
+      }
+    }
 
     res.json({ items: rows, total, page, limit });
   } catch (err) {
