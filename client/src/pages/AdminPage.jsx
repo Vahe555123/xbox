@@ -1414,7 +1414,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
           ['notifications', 'Уведомления'],
           ['products', 'Игры'],
           ['collections', 'Подборки'],
-          ['scheduler', 'Планировщик'],
+          ['scheduler', 'Скидки'],
           ['broadcast', 'Рассылка'],
           ['help', 'Помощь'],
           ['digiseller', 'Digiseller'],
