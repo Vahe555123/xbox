@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { fetchUbisoft, createUbisoftOrder } from '../services/api';
 import { useSeoMeta } from '../utils/useSeoMeta';
 import Spinner from '../components/Spinner';
+import DigisellerDescription from '../components/DigisellerDescription';
 
 function formatPrice(rub) {
   return rub.toLocaleString('ru-RU') + ' ₽';
@@ -177,6 +178,8 @@ export default function UbisoftPage() {
           )}
         </div>
       </section>
+
+      {!loading && !error && product && <DigisellerDescription description={product.description} />}
 
       <section className="gp-page-features">
         <h2>Что входит в Ubisoft+</h2>

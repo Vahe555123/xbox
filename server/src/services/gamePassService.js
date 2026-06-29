@@ -2,6 +2,7 @@ const axios = require('axios');
 const { randomUUID } = require('crypto');
 const config = require('../config');
 const logger = require('../utils/logger');
+const { extractDescription } = require('../utils/digisellerDescription');
 
 const DIGISELLER_API = 'https://api.digiseller.ru/api/products/{id}/data';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
@@ -59,7 +60,7 @@ function parseProduct(xml) {
     };
   });
 
-  return { id, name, basePrice, currency, options };
+  return { id, name, basePrice, currency, options, description: extractDescription(productInner) };
 }
 
 async function fetchGamePassData(productId = 4687274) {
