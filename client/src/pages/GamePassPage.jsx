@@ -176,7 +176,7 @@ export default function GamePassPage() {
         </div>
       </section>
 
-      {!loading && !error && product && <DigisellerDescription description={product.description} />}
+      {!loading && !error && product && <DigisellerDescription description={product.description} showImages={false} />}
 
       <section className="gp-page-features">
         <h2>Что входит в Game Pass Ultimate</h2>

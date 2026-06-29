@@ -6,11 +6,11 @@ import React from 'react';
  *  - info:    activation terms, delivery time and warnings
  *  - images:  product preview images
  */
-export default function DigisellerDescription({ description }) {
+export default function DigisellerDescription({ description, showImages = true }) {
   if (!description) return null;
   const info = description.info || [];
   const addInfo = description.addInfo || [];
-  const images = description.images || [];
+  const images = showImages ? (description.images || []) : [];
   if (!info.length && !addInfo.length && !images.length) return null;
 
   return (
