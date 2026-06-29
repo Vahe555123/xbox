@@ -636,6 +636,20 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadLanguageSettings = useCallback(async () => {
+    try {
+      const data = await fetchLanguageSettings();
+      setLanguageSettings(data);
+    } catch { /* ignore */ }
+  }, []);
+
+  const loadProxies = useCallback(async () => {
+    try {
+      const data = await fetchProxies();
+      setProxies(data.proxies || []);
+    } catch { /* ignore */ }
+  }, []);
+
   const loadAdminProducts = useCallback(async ({ q = '', languageMode = 'all', page = 1 } = {}) => {
     setProductSearchLoading(true);
     setProductSearchPage(page);
@@ -1035,13 +1049,6 @@ export default function AdminPage({ currentUser, onLoginClick }) {
     }
   };
 
-  const loadLanguageSettings = useCallback(async () => {
-    try {
-      const data = await fetchLanguageSettings();
-      setLanguageSettings(data);
-    } catch { /* ignore */ }
-  }, []);
-
   const handleSaveLanguageSettings = async () => {
     setLanguageSettingsSaving(true);
     setLanguageSettingsMessage('');
@@ -1059,13 +1066,6 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       setLanguageSettingsSaving(false);
     }
   };
-
-  const loadProxies = useCallback(async () => {
-    try {
-      const data = await fetchProxies();
-      setProxies(data.proxies || []);
-    } catch { /* ignore */ }
-  }, []);
 
   const handleAddProxy = async (e) => {
     e.preventDefault();
