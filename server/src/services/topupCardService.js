@@ -681,12 +681,7 @@ function absoluteOplataUrl(location) {
 }
 
 function getFailPageForTopup() {
-  const productId = config.digiseller.topupCardProductId;
-  if (config.digiseller.failPageUrl) return config.digiseller.failPageUrl;
-  if (productId && config.siteOrigin) {
-    return `${config.siteOrigin}/game/${encodeURIComponent(productId)}`;
-  }
-  return config.siteOrigin;
+  return config.digiseller.failPageUrl || config.siteOrigin || 'https://xboxtracker.ru/';
 }
 
 // Submit the chosen option to pay.asp and capture the final pay_api.asp redirect.

@@ -207,7 +207,7 @@ async function createKeyActivationPayment(product, { purchaseEmail, gameName } =
     });
     const paymentUrl = appendPaymentQuery(buildFullPaymentUrl(response.headers.location), {
       email: cleanEmail,
-      curr: rateMode.typeCurrency || config.digiseller.typeCurrency || 'API_17432_RUB',
+      curr: 'RUB',
     });
     if (!paymentUrl || !/pay_api\.asp/i.test(paymentUrl)) {
       logger.warn('Digiseller key activation returned non-final redirect', {
@@ -257,12 +257,11 @@ function buildFullPaymentUrl(redirectUrl) {
 }
 
 function getFailPageUrl(product) {
-  if (config.digiseller.failPageUrl) return config.digiseller.failPageUrl;
   const productId = getProductKey(product);
   if (productId && config.siteOrigin) {
     return `${config.siteOrigin}/game/${encodeURIComponent(productId)}`;
   }
-  return config.siteOrigin;
+  return config.digiseller.failPageUrl || config.siteOrigin || 'https://xboxtracker.ru/';
 }
 
 function normalizePaymentText(value) {
@@ -619,7 +618,7 @@ async function createPurchasePaymentUrl(product, {
     });
     const paymentUrl = appendPaymentQuery(buildFullPaymentUrl(response.headers.location), {
       email: cleanPurchaseEmail,
-      curr: config.digiseller.typeCurrency || 'API_17432_RUB',
+      curr: 'RUB',
     });
     if (!paymentUrl || !/pay_api\.asp/i.test(paymentUrl)) {
       logger.warn('Digiseller payment returned non-final redirect', {

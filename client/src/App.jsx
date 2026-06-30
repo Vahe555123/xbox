@@ -519,8 +519,8 @@ export default function App() {
         <div className="header-inner">
           <h1 className="logo">
             <Link to="/" className="logo-link" onClick={closeMobileMenu}>
-              <span className="logo-icon">&#127918;</span>
-              <span className="logo-text">Xbox Game Search</span>
+              <img src="/logo-kv-png.png" alt="XboxTracker" className="logo-img" />
+              <span className="logo-text">XboxTracker</span>
             </Link>
           </h1>
 

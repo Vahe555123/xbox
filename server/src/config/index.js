@@ -132,7 +132,9 @@ const config = {
     sellerId: process.env.DIGISELLER_SELLER_ID || '1279033',
     payBaseUrl: process.env.DIGISELLER_PAY_BASE_URL || 'https://www.oplata.info/asp2/pay_api.asp',
     payPostUrl: process.env.DIGISELLER_PAY_POST_URL || 'https://www.oplata.info/asp2/pay.asp',
-    failPageUrl: (process.env.DIGISELLER_FAIL_PAGE_URL || 'https://xboxtracker.ru/').split(',')[0].trim(),
+    failPageUrl: process.env.DIGISELLER_FAIL_PAGE_URL
+      ? process.env.DIGISELLER_FAIL_PAGE_URL.split(',')[0].trim()
+      : null,
     typeCurrency: process.env.DIGISELLER_TYPE_CURRENCY || 'API_17432_RUB',
     defaultProductId: parseInt(process.env.DIGISELLER_DEFAULT_PRODUCT_ID, 10) || 5837241,
     keyActivationProductId: parseInt(process.env.DIGISELLER_KEY_ACTIVATION_PRODUCT_ID, 10) || 5262264,
@@ -140,7 +142,9 @@ const config = {
     keyActivationOptionValueId: process.env.DIGISELLER_KEY_ACTIVATION_OPTION_VALUE_ID || '13870055',
     keyActivationGameNameOptionId: process.env.DIGISELLER_KEY_ACTIVATION_GAME_NAME_OPTION_ID || '4932047',
     keyActivationTypeCurrency: process.env.DIGISELLER_KEY_ACTIVATION_TYPE_CURRENCY || 'API_17432_RUB',
-    keyActivationFailPageUrl: (process.env.DIGISELLER_KEY_ACTIVATION_FAIL_PAGE_URL || 'https://xboxtracker.ru/').split(',')[0].trim(),
+    keyActivationFailPageUrl: process.env.DIGISELLER_KEY_ACTIVATION_FAIL_PAGE_URL
+      ? process.env.DIGISELLER_KEY_ACTIVATION_FAIL_PAGE_URL.split(',')[0].trim()
+      : null,
     topupCardProductId: parseInt(process.env.DIGISELLER_TOPUP_CARD_PRODUCT_ID, 10) || 4629284,
     topupCardOptionCategoryId: process.env.DIGISELLER_TOPUP_CARD_OPTION_CATEGORY_ID || '',
     maxUnitCount: parseFloat(process.env.DIGISELLER_MAX_UNIT_COUNT) || 300,

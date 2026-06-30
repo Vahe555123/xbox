@@ -531,10 +531,13 @@ async function createProductPurchase(req, res, next) {
       }
       const usd = getProductUsdPrice(product);
       if (!usd) throw new AppError('Не удалось определить цену в USD для карт', 400);
+      const topupFailPage = config.siteOrigin && product.id
+        ? `${config.siteOrigin}/game/${encodeURIComponent(product.id)}`
+        : (config.siteOrigin || 'https://xboxtracker.ru/');
       const combo = await topupCardService.buildComboPurchase(usd, {
         purchaseEmail: buyerEmailForPayment,
         buyerIp: getRequestIp(req),
-        failPageUrl: 'https://xboxtracker.ru/',
+        failPageUrl: topupFailPage,
       });
       if (!combo?.available) {
         throw new AppError('Комбинация карт недоступна: нет в наличии нужных номиналов', 502);
