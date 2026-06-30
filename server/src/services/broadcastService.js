@@ -95,7 +95,20 @@ async function broadcastEmail(subject, text, photoUrl, buttons) {
   return { total: users.length, sent, failed, errors };
 }
 
-async function broadcastVk(text, photoUrl, buttons) {
+// Normalise a VK attachment token entered by the admin.
+// Accepts: "photo-123_456", "-123_456", "photo123_456" — always returns "photo{id}" form.
+function normalizeVkAttachment(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  // Already in correct form like "photo-123_456"
+  if (/^photo-?\d+_\d+$/i.test(s)) return s.toLowerCase();
+  // Just owner_id_photo_id like "-123_456" or "123_456"
+  if (/^-?\d+_\d+$/.test(s)) return `photo${s}`;
+  return s; // pass through whatever was entered
+}
+
+async function broadcastVk(text, photoUrl, buttons, vkAttachment) {
   const communityToken = config.auth.vk.communityToken;
   if (!communityToken) {
     return { total: 0, sent: 0, failed: 0, errors: ['VK community token not configured (VK_COMMUNITY_TOKEN)'] };
@@ -109,14 +122,17 @@ async function broadcastVk(text, photoUrl, buttons) {
   );
 
   const plainText = htmlToPlainText(text);
+  const attachment = normalizeVkAttachment(vkAttachment);
 
-  // Build VK message: buttons as "text: url" lines, photo as plain URL at the end
-  // (VK auto-detects URLs and makes them clickable; raw URLs are not valid attachments).
+  // Build message text: buttons as "text: url" lines.
+  // When a proper VK attachment is supplied, skip adding the photo URL to text —
+  // it will be sent as a real embedded photo via the attachment parameter.
+  // When no attachment ID is given, fall back to appending the URL as plain text.
   const parts = [plainText];
   if (buttons && buttons.length > 0) {
     parts.push(buttons.map((b) => `${b.text}: ${b.url}`).join('\n'));
   }
-  if (photoUrl) {
+  if (!attachment && photoUrl) {
     parts.push(photoUrl);
   }
   const vkText = parts.filter(Boolean).join('\n\n');
@@ -134,6 +150,9 @@ async function broadcastVk(text, photoUrl, buttons) {
         access_token: communityToken,
         v: apiVersion,
       });
+      if (attachment) {
+        params.set('attachment', attachment);
+      }
 
       const resp = await axios.post(
         `https://api.vk.com/method/messages.send`,
@@ -157,7 +176,7 @@ async function broadcastVk(text, photoUrl, buttons) {
   return { total: accounts.length, sent, failed, errors };
 }
 
-async function runBroadcast({ text, photoUrl, buttons, channels, emailSubject }) {
+async function runBroadcast({ text, photoUrl, buttons, channels, emailSubject, vkAttachment }) {
   const report = {};
 
   if (channels.telegram) {
@@ -174,7 +193,7 @@ async function runBroadcast({ text, photoUrl, buttons, channels, emailSubject })
 
   if (channels.vk) {
     logger.info('[Broadcast] Starting VK broadcast');
-    report.vk = await broadcastVk(text, photoUrl, buttons);
+    report.vk = await broadcastVk(text, photoUrl, buttons, vkAttachment);
     logger.info('[Broadcast] VK done', report.vk);
   }
 

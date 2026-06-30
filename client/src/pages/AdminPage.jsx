@@ -512,6 +512,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
   // Manual broadcast (TG / VK / Email)
   const [bcText, setBcText] = useState('');
   const [bcPhotoUrl, setBcPhotoUrl] = useState('');
+  const [bcVkAttachment, setBcVkAttachment] = useState('');
   const [bcButtons, setBcButtons] = useState([]);
   const [bcEmailSubject, setBcEmailSubject] = useState('');
   const [bcChannels, setBcChannels] = useState({ telegram: true, vk: false, email: false });
@@ -1534,6 +1535,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
       const result = await sendAdminBroadcast({
         text: bcText.trim(),
         photoUrl: bcPhotoUrl.trim() || null,
+        vkAttachment: bcVkAttachment.trim() || null,
         buttons: bcButtons.filter((b) => b.text && b.url),
         channels: bcChannels,
         emailSubject: bcEmailSubject.trim() || null,
@@ -3906,6 +3908,25 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                   value={bcPhotoUrl}
                   onChange={(e) => setBcPhotoUrl(e.target.value)}
                 />
+
+                {/* VK attachment ID — shown only when VK channel is selected */}
+                {bcChannels.vk && (
+                  <>
+                    <h4 className="bc-section-title">🖼 VK: ID вложения (вместо URL)</h4>
+                    <input
+                      type="text"
+                      className="bc-url-input"
+                      placeholder="photo-123456789_456789012 или -123456789_456789012"
+                      value={bcVkAttachment}
+                      onChange={(e) => setBcVkAttachment(e.target.value)}
+                    />
+                    <p className="bc-empty-hint" style={{ marginTop: '4px' }}>
+                      Загрузи фото в ВК (альбом сообщества или в личку), скопируй ID вида
+                      {' '}<code>photo-123_456</code>. Если указан — картинка прикрепится как
+                      реальное фото, а URL выше для ВК использоваться не будет.
+                    </p>
+                  </>
+                )}
 
                 {/* Email subject */}
                 {bcChannels.email && (

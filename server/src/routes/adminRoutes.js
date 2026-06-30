@@ -1111,7 +1111,7 @@ router.post('/broadcast', requireAdmin, async (req, res, next) => {
   if (broadcastRunning) {
     return res.status(409).json({ error: 'Рассылка уже выполняется' });
   }
-  const { text, photoUrl, buttons, channels, emailSubject } = req.body || {};
+  const { text, photoUrl, buttons, channels, emailSubject, vkAttachment } = req.body || {};
   if (!text || !text.trim()) {
     return res.status(400).json({ error: 'Текст сообщения не может быть пустым' });
   }
@@ -1124,6 +1124,7 @@ router.post('/broadcast', requireAdmin, async (req, res, next) => {
     const report = await runBroadcast({
       text: String(text).trim(),
       photoUrl: photoUrl ? String(photoUrl).trim() : null,
+      vkAttachment: vkAttachment ? String(vkAttachment).trim() : null,
       buttons: Array.isArray(buttons) ? buttons.filter((b) => b.text && b.url) : [],
       channels: { telegram: Boolean(ch.telegram), vk: Boolean(ch.vk), email: Boolean(ch.email) },
       emailSubject: emailSubject ? String(emailSubject).trim() : null,
