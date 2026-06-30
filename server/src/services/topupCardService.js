@@ -577,7 +577,8 @@ function buildCartPayUrl(cartUid, { purchaseEmail, failPageUrl } = {}) {
   url.searchParams.set('cart_uid', cartUid);
   url.searchParams.set('ai', String(sellerId));
   url.searchParams.set('ain', '');
-  url.searchParams.set('curr', config.digiseller.cartPaymentCurrency || 'API_5020_RUB');
+  // Preselect СБП (SBP) RUB on the payment page.
+  url.searchParams.set('curr', TOPUP_TYPE_CURRENCY);
   url.searchParams.set('lang', 'ru-RU');
   url.searchParams.set('digiuid', randomUUID().toUpperCase());
   url.searchParams.set('failpage', failPageUrl || getFailPageForTopup());
@@ -701,7 +702,6 @@ async function createCardPayApiUrl(card, { quantity = 1, purchaseEmail, optionCa
     Agent: String(sellerId),
     AgentN: '',
     FailPage: resolvedFailPage,
-    failpage: resolvedFailPage,
     NoClearBuyerQueryString: 'NoClear',
     digiuid,
     Curr_add: '',
@@ -735,16 +735,15 @@ async function createCardPayApiUrl(card, { quantity = 1, purchaseEmail, optionCa
       });
       return null;
     }
-    if (purchaseEmail) {
-      try {
-        const parsed = new URL(url);
-        parsed.searchParams.set('email', purchaseEmail);
-        return parsed.toString();
-      } catch {
-        return url;
-      }
+    try {
+      const parsed = new URL(url);
+      // Preselect СБП (SBP) RUB on the payment page.
+      parsed.searchParams.set('curr', TOPUP_TYPE_CURRENCY);
+      if (purchaseEmail) parsed.searchParams.set('email', purchaseEmail);
+      return parsed.toString();
+    } catch {
+      return url;
     }
-    return url;
   } catch (err) {
     logger.error('Topup payment POST failed', {
       usd: card.usdValue,

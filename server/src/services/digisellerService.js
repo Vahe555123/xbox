@@ -182,7 +182,6 @@ async function createKeyActivationPayment(product, { purchaseEmail, gameName } =
     Agent: config.digiseller.sellerId || '',
     AgentN: '',
     FailPage: failPage,
-    failpage: failPage,
     NoClearBuyerQueryString: 'NoClear',
     digiuid,
     Curr_add: '',
@@ -207,7 +206,7 @@ async function createKeyActivationPayment(product, { purchaseEmail, gameName } =
     });
     const paymentUrl = appendPaymentQuery(buildFullPaymentUrl(response.headers.location), {
       email: cleanEmail,
-      curr: 'RUB',
+      curr: rateMode.typeCurrency || config.digiseller.typeCurrency,
     });
     if (!paymentUrl || !/pay_api\.asp/i.test(paymentUrl)) {
       logger.warn('Digiseller key activation returned non-final redirect', {
@@ -592,7 +591,6 @@ async function createPurchasePaymentUrl(product, {
     Agent: config.digiseller.sellerId || '',
     AgentN: '',
     FailPage: failPage,
-    failpage: failPage,
     NoClearBuyerQueryString: 'NoClear',
     digiuid,
     Curr_add: '',
@@ -618,7 +616,7 @@ async function createPurchasePaymentUrl(product, {
     });
     const paymentUrl = appendPaymentQuery(buildFullPaymentUrl(response.headers.location), {
       email: cleanPurchaseEmail,
-      curr: 'RUB',
+      curr: config.digiseller.typeCurrency,
     });
     if (!paymentUrl || !/pay_api\.asp/i.test(paymentUrl)) {
       logger.warn('Digiseller payment returned non-final redirect', {
@@ -966,7 +964,6 @@ async function createSpecialOfferPayment(productIdOrUrl, { failPageUrl } = {}) {
     Agent: config.digiseller.sellerId || '',
     AgentN: '',
     FailPage: failPage,
-    failpage: failPage,
     NoClearBuyerQueryString: 'NoClear',
     digiuid,
     Curr_add: '',

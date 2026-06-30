@@ -96,7 +96,6 @@ async function createIdPoForItem(item) {
     Agent: config.digiseller.sellerId || '',
     AgentN: '',
     FailPage: failPage,
-    failpage: failPage,
     NoClearBuyerQueryString: 'NoClear',
     digiuid,
     Curr_add: '',

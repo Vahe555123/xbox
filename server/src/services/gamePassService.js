@@ -129,7 +129,6 @@ async function createGamePassOrder(selections = {}, productId = 4687274) {
     Agent: config.digiseller.sellerId || '',
     AgentN: '',
     FailPage: failPage,
-    failpage: failPage,
     NoClearBuyerQueryString: 'NoClear',
     digiuid,
     Curr_add: '',
