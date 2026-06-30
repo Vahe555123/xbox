@@ -22,6 +22,19 @@ app.use(requestLogger);
 // nginx проксирует сюда только запросы с User-Agent социальных ботов.
 app.use(ogMiddleware);
 
+// SEO: sitemap.xml и robots.txt (nginx должен проксировать эти пути в Node).
+const { getSitemapXml, getRobotsTxt } = require('./services/sitemapService');
+app.get('/sitemap.xml', async (_req, res, next) => {
+  try {
+    res.type('application/xml').send(await getSitemapXml());
+  } catch (err) {
+    next(err);
+  }
+});
+app.get('/robots.txt', (_req, res) => {
+  res.type('text/plain').send(getRobotsTxt());
+});
+
 app.use(
   '/api',
   rateLimit({

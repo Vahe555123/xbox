@@ -1,8 +1,10 @@
 const pool = require('../db/pool');
 const { getProductById } = require('../services/displayCatalogService');
 
-// Известные User-Agent строки социальных ботов
+// Социальные боты (берут только OG-теги для превью ссылки)
 const SOCIAL_BOT_RE = /TelegramBot|vkShare|Facebot|facebookexternalhit|Twitterbot|LinkedInBot|WhatsApp|Max\/|mail\.ru/i;
+// Поисковые боты — им отдаём ту же мету + реальный контент в <body> для индексации
+const SEARCH_BOT_RE = /Googlebot|YandexBot|YandexWebmaster|Yandex|Bingbot|bingbot|DuckDuckBot|Applebot|Baiduspider|SemrushBot|AhrefsBot|YandexImages/i;
 
 const DEFAULT_TITLE = 'XboxTracker - поможем купить игры для Xbox Series Ключи в России и на аккаунт Xbox One, Xbox Series X, Xbox Series S.';
 const DEFAULT_DESCRIPTION = 'Удобный способ купить игры для Xbox Series Ключи в России, а также на аккаунт Xbox One, Xbox Series X, Xbox Series S. Отслеживай скидки на игры для Xbox Series и Xbox One. Покупай игры Xbox в России дешево.';
@@ -12,21 +14,36 @@ function esc(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function buildOgHtml({ title, description, image, url }) {
+function buildOgHtml({ title, description, image, url, canonical, jsonLd, h1, bodyText }) {
+  const ldBlock = jsonLd
+    ? `\n  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`
+    : '';
+  const canonicalTag = canonical
+    ? `\n  <link rel="canonical" href="${esc(canonical)}">`
+    : '';
+  // Реальный контент в body — чтобы поисковик индексировал текст, а не пустую страницу.
+  const body = `
+  <h1>${esc(h1 || title)}</h1>
+  ${image ? `<img src="${esc(image)}" alt="${esc(h1 || title)}" width="320">` : ''}
+  <p>${esc(bodyText || description)}</p>
+  <p><a href="${esc(url)}">Открыть на XboxTracker</a></p>`;
+
   return `<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${esc(title)}</title>
-  <meta name="description" content="${esc(description)}">
+  <meta name="description" content="${esc(description)}">${canonicalTag}
   <meta property="og:type" content="website">
   <meta property="og:title" content="${esc(title)}">
   <meta property="og:description" content="${esc(description)}">
   <meta property="og:url" content="${esc(url)}">
   <meta property="og:image" content="${esc(image || DEFAULT_IMAGE)}">
-  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:card" content="summary_large_image">${ldBlock}
 </head>
-<body></body>
+<body>${body}
+</body>
 </html>`;
 }
 
@@ -84,7 +101,8 @@ async function getGameMeta(productId) {
 
 module.exports = async function ogMiddleware(req, res, next) {
   const ua = req.headers['user-agent'] || '';
-  if (!SOCIAL_BOT_RE.test(ua)) return next();
+  const isBot = SOCIAL_BOT_RE.test(ua) || SEARCH_BOT_RE.test(ua);
+  if (!isBot) return next();
 
   const config = require('../config');
   const origin = config.siteOrigin.toLowerCase();
@@ -97,14 +115,31 @@ module.exports = async function ogMiddleware(req, res, next) {
   const gameMatch = req.path.match(/^\/game\/([A-Za-z0-9]+)$/);
   if (gameMatch) {
     try {
-      const meta = await getGameMeta(gameMatch[1]);
+      const productId = gameMatch[1];
+      const meta = await getGameMeta(productId);
       if (meta?.title) {
         const t = meta.title;
+        const canonical = `${origin}/game/${productId}`;
+        const description = `Легко и быстро купить ${t} Xbox Ключ в России и на аккаунт Xbox Series X, Xbox Series S, Xbox One. Отслеживай скидки на ${t} для Xbox Series и Xbox One. Покупай игры Xbox в России дешево.`;
+        const jsonLd = {
+          '@context': 'https://schema.org',
+          '@type': 'VideoGame',
+          name: t,
+          url: canonical,
+          description,
+          gamePlatform: ['Xbox Series X|S', 'Xbox One'],
+          operatingSystem: 'Xbox',
+          ...(meta.image ? { image: meta.image } : {}),
+        };
         return res.type('html').send(buildOgHtml({
           title: `${t} купить Xbox Ключ в России и на аккаунт Xbox Series X, Xbox Series S, Xbox One.`,
-          description: `Легко и быстро купить ${t} Xbox Ключ в России и на аккаунт Xbox Series X, Xbox Series S, Xbox One. Отслеживай скидки на ${t} для Xbox Series и Xbox One. Покупай игры Xbox в России дешево.`,
+          description,
           image: meta.image || DEFAULT_IMAGE,
           url,
+          canonical,
+          jsonLd,
+          h1: `${t} — купить Xbox Ключ в России`,
+          bodyText: description,
         }));
       }
     } catch (_) { /* fall through */ }
@@ -116,5 +151,6 @@ module.exports = async function ogMiddleware(req, res, next) {
     description: DEFAULT_DESCRIPTION,
     image: DEFAULT_IMAGE,
     url,
+    canonical: `${origin}${req.path}`,
   }));
 };
