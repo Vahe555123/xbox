@@ -788,7 +788,7 @@ function normalizeSearchText(value) {
     .replace(/[™®©]/g, ' ')
     .replace(/&/g, ' and ')
     .replace(/\|/g, ' ')
-    .replace(/[^a-z0-9]+/gi, ' ')
+    .replace(/[^a-z0-9Ѐ-ӿ]+/gi, ' ')
     .trim()
     .replace(/\s+/g, ' ')
     .toLowerCase();
