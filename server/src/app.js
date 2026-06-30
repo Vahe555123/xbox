@@ -24,7 +24,10 @@ app.use(ogMiddleware);
 
 // SEO: sitemap.xml и robots.txt (nginx должен проксировать эти пути в Node).
 const { getSitemapXml, getRobotsTxt } = require('./services/sitemapService');
-app.get('/sitemap.xml', async (_req, res, next) => {
+// Отдаём по обоим адресам: новый /sitemap-v2.xml — чтобы обойти кэш ошибки
+// в Google Search Console (кэш привязан к URL), старый /sitemap.xml — для
+// обратной совместимости со старыми ссылками.
+app.get(['/sitemap.xml', '/sitemap-v2.xml'], async (_req, res, next) => {
   try {
     res.type('application/xml').send(await getSitemapXml());
   } catch (err) {

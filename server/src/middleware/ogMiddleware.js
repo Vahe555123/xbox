@@ -103,7 +103,7 @@ async function getGameMeta(productId) {
 }
 
 module.exports = async function ogMiddleware(req, res, next) {
-  if (req.path === '/sitemap.xml' || req.path === '/robots.txt') return next();
+  if (req.path === '/sitemap.xml' || req.path === '/sitemap-v2.xml' || req.path === '/robots.txt') return next();
 
   const ua = req.headers['user-agent'] || '';
   const isBot = SOCIAL_BOT_RE.test(ua) || SEARCH_BOT_RE.test(ua);
