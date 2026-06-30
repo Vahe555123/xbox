@@ -433,49 +433,9 @@ export default function ProfilePage({ currentUser, onLogout, onLoginClick }) {
                 placeholder="mail@example.com"
               />
             </label>
-            <div className="profile-payment-modes">
-              <label className={`profile-payment-mode ${purchaseForm.paymentMode === 'oplata' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="paymentMode"
-                  value="oplata"
-                  checked={purchaseForm.paymentMode === 'oplata'}
-                  onChange={handlePurchaseField}
-                />
-                <span>
-                  <strong>Oplata.info</strong>
-                  <small>Генерация ссылки на оплату</small>
-                </span>
-              </label>
-              <label className={`profile-payment-mode ${purchaseForm.paymentMode === 'key_activation' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="paymentMode"
-                  value="key_activation"
-                  checked={purchaseForm.paymentMode === 'key_activation'}
-                  onChange={handlePurchaseField}
-                />
-                <span>
-                  <strong>Ключ активации</strong>
-                  <small>Покупка через товар 5262264</small>
-                </span>
-              </label>
-              <label className={`profile-payment-mode ${purchaseForm.paymentMode === 'topup_cards' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="paymentMode"
-                  value="topup_cards"
-                  checked={purchaseForm.paymentMode === 'topup_cards'}
-                  onChange={handlePurchaseField}
-                />
-                <span>
-                  <strong>Карты пополнения</strong>
-                  <small>Комбинация карт под цену игры</small>
-                </span>
-              </label>
-            </div>
+     
             <button type="submit" disabled={purchaseLoading}>
-              {purchaseLoading ? 'Сохраняем...' : 'Сохранить почту и способ'}
+              {purchaseLoading ? 'Сохраняем...' : 'Сохранить почту'}
             </button>
             {purchaseFeedbackBlock === 'email' && purchaseMessage && <p className="profile-success">{purchaseMessage}</p>}
             {purchaseFeedbackBlock === 'email' && purchaseError && <p className="profile-error">{purchaseError}</p>}
