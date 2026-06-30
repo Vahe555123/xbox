@@ -4,7 +4,7 @@ const { getProductById } = require('../services/displayCatalogService');
 // Социальные боты (берут только OG-теги для превью ссылки)
 const SOCIAL_BOT_RE = /TelegramBot|vkShare|Facebot|facebookexternalhit|Twitterbot|LinkedInBot|WhatsApp|Max\/|mail\.ru/i;
 // Поисковые боты — им отдаём ту же мету + реальный контент в <body> для индексации
-const SEARCH_BOT_RE = /Googlebot|YandexBot|YandexWebmaster|Yandex|Bingbot|bingbot|DuckDuckBot|Applebot|Baiduspider|SemrushBot|AhrefsBot|YandexImages/i;
+const SEARCH_BOT_RE = /Googlebot|Google-InspectionTool|YandexBot|YandexWebmaster|YandexImages|Yandex|Bingbot|DuckDuckBot|Applebot|Baiduspider|SemrushBot|AhrefsBot|MJ12bot|PetalBot/i;
 
 const DEFAULT_TITLE = 'XboxTracker - поможем купить игры для Xbox Series Ключи в России и на аккаунт Xbox One, Xbox Series X, Xbox Series S.';
 const DEFAULT_DESCRIPTION = 'Удобный способ купить игры для Xbox Series Ключи в России, а также на аккаунт Xbox One, Xbox Series X, Xbox Series S. Отслеживай скидки на игры для Xbox Series и Xbox One. Покупай игры Xbox в России дешево.';
@@ -22,10 +22,13 @@ function buildOgHtml({ title, description, image, url, canonical, jsonLd, h1, bo
     ? `\n  <link rel="canonical" href="${esc(canonical)}">`
     : '';
   // Реальный контент в body — чтобы поисковик индексировал текст, а не пустую страницу.
+  const paragraphs = (Array.isArray(bodyText) ? bodyText : [bodyText || description])
+    .filter(Boolean)
+    .map((p) => `\n  <p>${esc(p)}</p>`)
+    .join('');
   const body = `
   <h1>${esc(h1 || title)}</h1>
-  ${image ? `<img src="${esc(image)}" alt="${esc(h1 || title)}" width="320">` : ''}
-  <p>${esc(bodyText || description)}</p>
+  ${image ? `<img src="${esc(image)}" alt="${esc(h1 || title)}" width="320">` : ''}${paragraphs}
   <p><a href="${esc(url)}">Открыть на XboxTracker</a></p>`;
 
   return `<!DOCTYPE html>
@@ -139,7 +142,11 @@ module.exports = async function ogMiddleware(req, res, next) {
           canonical,
           jsonLd,
           h1: `${t} — купить Xbox Ключ в России`,
-          bodyText: description,
+          bodyText: [
+            description,
+            `Купить ${t} для Xbox можно несколькими способами: ключ активации на игру, покупка напрямую на ваш Xbox-аккаунт, пополнение баланса кодами или спецпредложение продавца.`,
+            `Поддерживаемые платформы: Xbox Series X, Xbox Series S, Xbox One. Оплата в рублях через СБП. Следите за скидками на ${t} и другими играми Xbox на XboxTracker.`,
+          ],
         }));
       }
     } catch (_) { /* fall through */ }
