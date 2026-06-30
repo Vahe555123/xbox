@@ -500,7 +500,7 @@ export default function GameDetailPage() {
 
   useEffect(() => {
     if (purchaseResult?.paymentUrl && purchaseResult?.paymentType !== 'topup_cards') {
-      window.open(purchaseResult.paymentUrl, '_blank', 'noreferrer');
+      window.location.assign(purchaseResult.paymentUrl);
     }
   }, [purchaseResult]);
 
@@ -1095,8 +1095,6 @@ export default function GameDetailPage() {
                           <a
                             className="purchase-primary"
                             href={link.paymentUrl}
-                            target="_blank"
-                            rel="noreferrer"
                           >
                             Оплатить
                           </a>
@@ -1122,8 +1120,6 @@ export default function GameDetailPage() {
                     <a
                       className="purchase-primary"
                       href={purchaseResult.paymentUrl}
-                      target="_blank"
-                      rel="noreferrer"
                     >
                       Перейти к оплате
                     </a>

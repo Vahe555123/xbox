@@ -11,6 +11,8 @@ const ALLOWED_DENOMINATIONS = [5, 10, 25, 50];
 const OPLATA_BASE_URL = 'https://www.oplata.info';
 const PRICE_OPTIONS_URL = `${OPLATA_BASE_URL}/asp2/price_options.asp`;
 const TOPUP_TYPE_CURRENCY = 'API_17432_RUB';
+// СБП (Система быстрых платежей) — код способа оплаты на странице oplata.info.
+const SBP_CURRENCY = 'API_5020_RUB';
 
 const BROWSER_HEADERS = {
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -578,7 +580,7 @@ function buildCartPayUrl(cartUid, { purchaseEmail, failPageUrl } = {}) {
   url.searchParams.set('ai', String(sellerId));
   url.searchParams.set('ain', '');
   // Preselect СБП (SBP) RUB on the payment page.
-  url.searchParams.set('curr', TOPUP_TYPE_CURRENCY);
+  url.searchParams.set('curr', SBP_CURRENCY);
   url.searchParams.set('lang', 'ru-RU');
   url.searchParams.set('digiuid', randomUUID().toUpperCase());
   url.searchParams.set('failpage', failPageUrl || getFailPageForTopup());
@@ -738,7 +740,7 @@ async function createCardPayApiUrl(card, { quantity = 1, purchaseEmail, optionCa
     try {
       const parsed = new URL(url);
       // Preselect СБП (SBP) RUB on the payment page.
-      parsed.searchParams.set('curr', TOPUP_TYPE_CURRENCY);
+      parsed.searchParams.set('curr', SBP_CURRENCY);
       if (purchaseEmail) parsed.searchParams.set('email', purchaseEmail);
       return parsed.toString();
     } catch {

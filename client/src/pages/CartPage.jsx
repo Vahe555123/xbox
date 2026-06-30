@@ -591,8 +591,6 @@ export default function CartPage({ currentUser, onLoginClick }) {
                             <a
                               className="purchase-primary"
                               href={link.paymentUrl}
-                              target="_blank"
-                              rel="noreferrer"
                             >
                               Оплатить
                             </a>

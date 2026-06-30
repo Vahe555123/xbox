@@ -58,7 +58,7 @@ export default function GamePassModal({ onClose }) {
     setBuying(true);
     try {
       const { payUrl: url } = await createGamePassOrder(selections);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      window.location.assign(url);
     } catch (err) {
       setError(err.response?.data?.error?.message || err.message || 'Не удалось создать заказ');
     } finally {

@@ -170,14 +170,21 @@ async function createGamePassOrder(selections = {}, productId = 4687274) {
     throw new Error('Не удалось создать заказ на Digiseller');
   }
 
-  const payUrl = new URL('https://www.oplata.info/asp2/pay_cl.asp');
+  const payUrl = new URL('https://www.oplata.info/asp2/pay_api.asp');
   payUrl.searchParams.set('id_d', String(productId));
   payUrl.searchParams.set('id_po', idPo);
   payUrl.searchParams.set('cart_uid', '');
+  payUrl.searchParams.set('ai', config.digiseller.sellerId || '');
+  payUrl.searchParams.set('ain', '');
+  // Preselect СБП (SBP) RUB on the payment page.
+  payUrl.searchParams.set('curr', 'API_5020_RUB');
   payUrl.searchParams.set('lang', 'ru-RU');
   payUrl.searchParams.set('digiuid', digiuid);
-  payUrl.searchParams.set('_ow', '0');
   payUrl.searchParams.set('failpage', failPage);
+  payUrl.searchParams.set('_ow', '0');
+  payUrl.searchParams.set('_ids_shop', '0');
+  payUrl.searchParams.set('item_cnt', '1');
+  payUrl.searchParams.set('promocode', '');
 
   logger.info('[GamePass] Order created', { productId, idPo, totalPrice });
 

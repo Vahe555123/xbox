@@ -16,6 +16,8 @@ const XBOX_ACCOUNT_PASSWORD_OPTION = '4931971';
 const DEFAULT_PRICE_OPTION_XML = '<response></response>';
 const RATE_MODE_OPLATA = 'oplata';
 const RATE_MODE_KEY_ACTIVATION = 'key_activation';
+// СБП (Система быстрых платежей) — код способа оплаты на странице oplata.info.
+const SBP_CURRENCY = 'API_5020_RUB';
 const BROWSER_PAYMENT_HEADERS = {
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
   'Accept-Language': 'ru,en;q=0.9',
@@ -206,7 +208,7 @@ async function createKeyActivationPayment(product, { purchaseEmail, gameName } =
     });
     const paymentUrl = appendPaymentQuery(buildFullPaymentUrl(response.headers.location), {
       email: cleanEmail,
-      curr: rateMode.typeCurrency || config.digiseller.typeCurrency,
+      curr: SBP_CURRENCY,
     });
     if (!paymentUrl || !/pay_api\.asp/i.test(paymentUrl)) {
       logger.warn('Digiseller key activation returned non-final redirect', {
@@ -616,7 +618,7 @@ async function createPurchasePaymentUrl(product, {
     });
     const paymentUrl = appendPaymentQuery(buildFullPaymentUrl(response.headers.location), {
       email: cleanPurchaseEmail,
-      curr: config.digiseller.typeCurrency,
+      curr: SBP_CURRENCY,
     });
     if (!paymentUrl || !/pay_api\.asp/i.test(paymentUrl)) {
       logger.warn('Digiseller payment returned non-final redirect', {
@@ -994,7 +996,7 @@ async function createSpecialOfferPayment(productIdOrUrl, { failPageUrl } = {}) {
   }
 
   const payUrl = new URL(rawUrl);
-  payUrl.searchParams.set('curr', config.digiseller.typeCurrency || 'API_17432_RUB');
+  payUrl.searchParams.set('curr', SBP_CURRENCY);
 
   return {
     paymentUrl: payUrl.toString(),
