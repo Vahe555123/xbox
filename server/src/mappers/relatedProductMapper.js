@@ -120,17 +120,10 @@ function mapRelatedProductCard(raw, relationshipType) {
   );
   const releaseDate = normalizeReleaseDate(mp.OriginalReleaseDate);
   const isFuture = releaseDate && new Date(releaseDate).getTime() > Date.now();
-  const price = isFuture
-    ? {
-        value: null,
-        formatted: 'Not released yet',
-        currency: null,
-        original: null,
-        originalFormatted: null,
-        discountPercent: null,
-        status: 'unreleased',
-      }
-    : catalogPriceInfo.price;
+  // Use the actual catalog price (may be a pre-order price).
+  // Don't force "Not released yet" — releaseInfo.status = 'comingSoon' already
+  // signals the card to show the correct "Еще не вышла" label.
+  const price = catalogPriceInfo.price;
 
   return {
     id: raw.ProductId,

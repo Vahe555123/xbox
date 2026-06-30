@@ -261,7 +261,9 @@ function getStorePriceLabel(price, releaseInfo, isUnavailablePrice) {
     const hasKnownPrice = price?.value != null && Number.isFinite(Number(price.value));
     const hasKnownReleaseDate = hasValidReleaseDate(releaseInfo?.releaseDate);
     if (!hasKnownPrice && !hasKnownReleaseDate) return null;
-    return price?.formatted ? `${price.formatted} · Еще не вышла` : 'Еще не вышла';
+    // If there's a real numeric price (e.g. pre-order), show it alongside the label.
+    // Otherwise just show "Еще не вышла" — don't expose internal "Not released yet" strings.
+    return hasKnownPrice ? `${price.formatted} · Еще не вышла` : 'Еще не вышла';
   }
   return price?.formatted || releaseInfo?.label || null;
 }
