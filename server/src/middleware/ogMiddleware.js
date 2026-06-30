@@ -152,6 +152,62 @@ module.exports = async function ogMiddleware(req, res, next) {
     } catch (_) { /* fall through */ }
   }
 
+  // Game Pass
+  if (req.path === '/gamepass') {
+    const canonical = `${origin}/gamepass`;
+    const title = 'Xbox Game Pass Ultimate — купить подписку в России | XboxTracker';
+    const description = 'Купить Xbox Game Pass Ultimate в России. Доступ к 100+ играм, EA Play в комплекте, онлайн-мультиплеер. Активация на аккаунт 10 мин — 3 часа. Оплата через СБП.';
+    return res.type('html').send(buildOgHtml({
+      title,
+      description,
+      image: DEFAULT_IMAGE,
+      url,
+      canonical,
+      h1: 'Xbox Game Pass Ultimate — купить подписку в России',
+      bodyText: [
+        description,
+        'Xbox Game Pass Ultimate включает доступ к более чем 100 играм для Xbox Series X, Xbox Series S и Xbox One, онлайн-мультиплеер Xbox Live Gold и подписку EA Play. Новые игры добавляются каждый месяц.',
+        'Выберите срок подписки: 1 месяц, 3 месяца или 12 месяцев. Продавец активирует подписку напрямую на ваш Xbox-аккаунт. Оплата в рублях через СБП на XboxTracker.',
+      ],
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: 'Xbox Game Pass Ultimate',
+        url: canonical,
+        description,
+        brand: { '@type': 'Brand', name: 'Microsoft Xbox' },
+      },
+    }));
+  }
+
+  // Ubisoft+
+  if (req.path === '/ubisoft') {
+    const canonical = `${origin}/ubisoft`;
+    const title = 'Ubisoft+ — купить подписку на игры Ubisoft для Xbox | XboxTracker';
+    const description = 'Купить Ubisoft+ для Xbox в России. Доступ к библиотеке игр Ubisoft: Assassin\'s Creed, Far Cry, Watch Dogs и другие. Активация на аккаунт. Оплата через СБП.';
+    return res.type('html').send(buildOgHtml({
+      title,
+      description,
+      image: DEFAULT_IMAGE,
+      url,
+      canonical,
+      h1: 'Ubisoft+ — купить подписку для Xbox в России',
+      bodyText: [
+        description,
+        'Ubisoft+ даёт доступ к полной библиотеке игр Ubisoft для Xbox, включая новинки в день релиза. Играйте в Assassin\'s Creed, Far Cry, Tom Clancy\'s Rainbow Six, Watch Dogs и десятки других игр.',
+        'Подписка активируется напрямую на ваш Xbox-аккаунт. Поддерживаемые платформы: Xbox Series X, Xbox Series S, Xbox One. Оплата в рублях через СБП на XboxTracker.',
+      ],
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: 'Ubisoft+',
+        url: canonical,
+        description,
+        brand: { '@type': 'Brand', name: 'Ubisoft' },
+      },
+    }));
+  }
+
   // Любая другая страница — дефолтные теги
   return res.type('html').send(buildOgHtml({
     title: DEFAULT_TITLE,
