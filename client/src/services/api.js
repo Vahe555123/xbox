@@ -438,6 +438,11 @@ export async function updateSchedulerInterval(intervalHours) {
   return data;
 }
 
+export async function updateSchedulerEnabled(enabled) {
+  const { data } = await api.put('/admin/scheduler', { enabled });
+  return data;
+}
+
 export async function triggerDealCheck() {
   const { data } = await api.post('/admin/deal-check', {}, { timeout: 180000 });
   return data;

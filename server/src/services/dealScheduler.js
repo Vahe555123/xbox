@@ -7,16 +7,23 @@ let timer = null;
 let lastRunAt = null;
 let lastRunStatus = null;
 let isRunning = false;
+let enabled = true;
 
 function getState() {
   return {
+    enabled,
     intervalMs,
     intervalHours: intervalMs / (60 * 60 * 1000),
     lastRunAt,
     lastRunStatus,
     isRunning,
-    nextRunAt: lastRunAt ? new Date(new Date(lastRunAt).getTime() + intervalMs).toISOString() : null,
+    nextRunAt: enabled && lastRunAt ? new Date(new Date(lastRunAt).getTime() + intervalMs).toISOString() : null,
   };
+}
+
+function setEnabled(value) {
+  enabled = Boolean(value);
+  logger.info(`[DealScheduler] Auto-notifications ${enabled ? 'enabled' : 'disabled'}`);
 }
 
 function setInterval_(newMs) {
@@ -50,7 +57,7 @@ async function runNow() {
 }
 
 async function tick() {
-  if (isRunning) return;
+  if (!enabled || isRunning) return;
   isRunning = true;
   lastRunAt = new Date().toISOString();
   try {
@@ -80,4 +87,4 @@ function stop() {
   }
 }
 
-module.exports = { getState, setInterval: setInterval_, runNow, start, stop };
+module.exports = { getState, setEnabled, setInterval: setInterval_, runNow, start, stop };

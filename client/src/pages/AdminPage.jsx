@@ -23,6 +23,7 @@ import {
   deleteProductOverride,
   fetchSchedulerState,
   updateSchedulerInterval,
+  updateSchedulerEnabled,
   triggerDealCheck,
   fetchDigisellerRates,
   refreshDigisellerRates,
@@ -3093,6 +3094,17 @@ export default function AdminPage({ currentUser, onLoginClick }) {
 
               <div className="admin-scheduler-action">
                 <button
+                  className={`admin-btn ${scheduler?.enabled === false ? 'admin-btn-secondary' : 'admin-btn-primary'}`}
+                  onClick={async () => {
+                    const newEnabled = !(scheduler?.enabled !== false);
+                    const state = await updateSchedulerEnabled(newEnabled);
+                    setScheduler(state);
+                  }}
+                >
+                  {scheduler?.enabled === false ? '▶ Включить авторассылку' : '⏸ Выключить авторассылку'}
+                </button>
+
+                <button
                   className="admin-btn admin-btn-accent"
                   onClick={handleDealCheck}
                   disabled={dealCheckLoading}
@@ -3109,6 +3121,12 @@ export default function AdminPage({ currentUser, onLoginClick }) {
               <h3>Текущее состояние</h3>
               {scheduler ? (
                 <dl className="admin-dl">
+                  <dt>Авторассылка</dt>
+                  <dd>
+                    <span className={`admin-status ${scheduler.enabled === false ? 'admin-status-err' : 'admin-status-ok'}`}>
+                      {scheduler.enabled === false ? 'Выключена' : 'Включена'}
+                    </span>
+                  </dd>
                   <dt>Интервал</dt>
                   <dd>{scheduler.intervalHours}ч ({Math.round(scheduler.intervalMs / 60000)} мин)</dd>
                   <dt>Последний запуск</dt>
@@ -3120,7 +3138,7 @@ export default function AdminPage({ currentUser, onLoginClick }) {
                     </span>
                   </dd>
                   <dt>Следующий запуск</dt>
-                  <dd>{formatDate(scheduler.nextRunAt)}</dd>
+                  <dd>{scheduler.enabled === false ? '—' : formatDate(scheduler.nextRunAt)}</dd>
                   <dt>Работает</dt>
                   <dd>{scheduler.isRunning ? 'Да (в процессе)' : 'Нет'}</dd>
                 </dl>

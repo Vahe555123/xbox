@@ -25,6 +25,7 @@ const {
   resolvePurchaseDeliveryTarget,
 } = require('../services/purchaseDeliveryService');
 const { applyProductOverrides } = require('../services/productOverrideService');
+const russianIndex = require('../services/russianLanguageIndexService');
 const collectionsService = require('../services/collectionsService');
 const { logPurchase } = require('../services/purchaseLogService');
 const config = require('../config');
@@ -690,6 +691,25 @@ async function getRelatedProducts(req, res, next) {
         message: err.message,
       });
     });
+
+    // Apply the curated Russian language index so favorites/related cards
+    // always show the same language badge as the main catalog.
+    for (const product of products) {
+      const mode = russianIndex.getModeForProduct(product.id);
+      if (!mode) continue;
+      if (mode === 'full_ru' || mode === 'ru_subtitles') {
+        product.russianLanguageMode = mode;
+        product.hasRussianLanguage = true;
+      } else if (mode === 'no_ru') {
+        if (product.russianLanguageMode !== 'unknown') {
+          product.russianLanguageMode = 'no_ru';
+        }
+        product.hasRussianLanguage = false;
+      } else {
+        product.russianLanguageMode = 'unknown';
+        product.hasRussianLanguage = false;
+      }
+    }
 
     res.json({
       success: true,

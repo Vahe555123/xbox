@@ -668,11 +668,16 @@ router.get('/scheduler', requireAdmin, (_req, res) => {
 });
 
 router.put('/scheduler', requireAdmin, (req, res) => {
-  const { intervalHours } = req.body;
-  if (typeof intervalHours !== 'number' || intervalHours < 0.01) {
-    return res.status(400).json({ error: 'intervalHours must be a positive number' });
+  const { intervalHours, enabled } = req.body;
+  if (typeof enabled === 'boolean') {
+    dealScheduler.setEnabled(enabled);
   }
-  dealScheduler.setInterval(intervalHours * 60 * 60 * 1000);
+  if (intervalHours !== undefined) {
+    if (typeof intervalHours !== 'number' || intervalHours < 0.01) {
+      return res.status(400).json({ error: 'intervalHours must be a positive number' });
+    }
+    dealScheduler.setInterval(intervalHours * 60 * 60 * 1000);
+  }
   res.json(dealScheduler.getState());
 });
 
