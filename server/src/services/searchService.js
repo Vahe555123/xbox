@@ -302,7 +302,7 @@ async function search({
   // on normal sorts where nearly all products survive the filter.
   const PAGE_SIZE = config.xbox.pageSize;
   const initialRawCount = rawProducts.length;
-  const MAX_SKIP_PAGES = 8;
+  const MAX_SKIP_PAGES = 20;
   let skipAttempts = 0;
   while (
     !languageFilterActive
@@ -1304,13 +1304,6 @@ function buildEncodedFilters(filters, sort) {
 
   if (sort && sort !== 'DO_NOT_FILTER') {
     filterObj.orderby = [sort];
-  }
-
-  // For Price asc, free games ($0) appear first and get filtered out locally,
-  // leaving the first page empty. Exclude them at the API level so the
-  // Xbox API returns only paid games. Skip when the user already set a Price filter.
-  if (sort === 'Price asc' && !filterObj.Price?.length) {
-    filterObj.Price = ['<$5', '$5-$10', '$10-$20', '$20-$40', '$40-$60', '$60+'];
   }
 
   return encodeFilters(filterObj);

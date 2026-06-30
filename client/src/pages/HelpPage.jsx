@@ -105,6 +105,9 @@ export default function HelpPage() {
           <Link className="help-secondary-link" to="/">
             Вернуться в каталог
           </Link>
+          <a className="help-secondary-link" href="https://oplata.info" target="_blank" rel="noreferrer">
+            Мои покупки
+          </a>
         </div>
       </section>
 
@@ -118,9 +121,6 @@ export default function HelpPage() {
               {content?.supportButtonLabel || 'Открыть поддержку'}
             </a>
           )}
-          <a className="help-inline-link" href="https://oplata.info" target="_blank" rel="noreferrer">
-            Мои покупки
-          </a>
         </article>
 
         <article className="help-card">
