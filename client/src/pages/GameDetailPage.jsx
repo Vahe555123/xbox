@@ -942,11 +942,15 @@ export default function GameDetailPage() {
                 </section>
               )}
 
-              {!purchaseResult && (purchaseForm.paymentMode === 'oplata' || purchaseForm.paymentMode === 'key_activation') && Number(data.price?.value) > 0 && Number(data.price?.value) < 10 && (
-                <div className="purchase-min-order-notice">
-                  ⚠ Цена игры меньше $10. Минимальная сумма заказа — $10, поэтому к оплате добавится небольшая доплата. Чтобы избежать этого, добавьте ещё товары в <Link to="/cart">корзину</Link> и купите сразу несколько игр.
-                </div>
-              )}
+              {!purchaseResult && (purchaseForm.paymentMode === 'oplata' || purchaseForm.paymentMode === 'key_activation') && Number(data.price?.value) > 0 && Number(data.price?.value) < 10 && (() => {
+                const rate = data.priceRub?.effectiveRate || (data.priceRub?.value && data.price?.value ? data.priceRub.value / data.price.value : null);
+                const minRub = rate ? Math.round(rate * 10) : null;
+                return (
+                  <div className="purchase-min-order-notice">
+                    ⚠ Цена игры меньше $10. Минимальная сумма заказа — $10, поэтому оплатить придётся {minRub ? `${minRub.toLocaleString('ru-RU')} рублей` : 'около 910 рублей'} (динамическая цена). Чтобы избежать переплаты, добавьте в <Link to="/cart">корзину</Link> ещё игры, чтобы их общая стоимость была выше $10, и купите сразу несколько игр.
+                  </div>
+                );
+              })()}
 
               {!purchaseResult && isTopupMode && data.topupCombo?.available && (
                 <section className="purchase-modal-section">

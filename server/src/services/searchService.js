@@ -206,20 +206,24 @@ async function search({
     });
   }
 
+  // When onSaleOnly is active, strip Price:OnSale from the API request so Xbox
+  // applies only the remaining price bucket filter (e.g. <$5). Xbox treats
+  // multiple Price values as OR, so leaving OnSale in would widen results to
+  // include ALL discounted games regardless of price. onSaleOnly is then
+  // enforced locally by applyPostFilters.
+  const browseFilters = onSaleOnly
+    ? buildEncodedFilters(
+        { ...filters, Price: (filters?.Price || []).filter((v) => v !== 'OnSale') },
+        effectiveSort,
+      )
+    : encodedFilters;
+
   let raw;
   try {
     if (!countOnly && shouldUseSearchRerank({ query, sort: effectiveSort, encodedCT })) {
-      // When onSaleOnly, strip Price:OnSale from API filters and apply it locally
-      // so that Game Pass savings games (not returned by Xbox for Price:OnSale) are included.
-      const searchFilters = onSaleOnly
-        ? buildEncodedFilters(
-            { ...filters, Price: (filters?.Price || []).filter((v) => v !== 'OnSale') },
-            effectiveSort,
-          )
-        : encodedFilters;
       return await searchWithRelevanceRerank({
         query,
-        encodedFilters: searchFilters,
+        encodedFilters: browseFilters,
         languageMode,
         channelId,
         specialOffersOnly,
@@ -231,7 +235,7 @@ async function search({
 
     raw = await fetchCatalogPage({
       query,
-      encodedFilters,
+      encodedFilters: browseFilters,
       encodedCT: encodedCT || '',
       returnFilters: !encodedCT,
       channelId,
@@ -257,7 +261,7 @@ async function search({
     return countFilteredSearchResults({
       raw,
       query,
-      encodedFilters,
+      encodedFilters: browseFilters,
       channelId,
       languageMode,
       specialOffersOnly,
@@ -272,7 +276,7 @@ async function search({
   if (languageFilterActive) {
     const collected = await collectRawProductsForLanguage({
       query,
-      encodedFilters,
+      encodedFilters: browseFilters,
       rawProducts,
       nextEncodedCT,
       channelId,
@@ -289,7 +293,7 @@ async function search({
   const products = mapProducts(rawProducts);
   let enrichedProducts = applyPostFilters(
     await applyProductOverrides(await enrichProducts(products)),
-    { languageMode, specialOffersOnly, freeOnly, saleEndBefore },
+    { languageMode, specialOffersOnly, freeOnly, saleEndBefore, onSaleOnly },
   );
 
   // When free games crowd out paid games on a page (e.g. Price asc puts free games first),
@@ -311,7 +315,7 @@ async function search({
     // eslint-disable-next-line no-await-in-loop
     const nextRaw = await fetchCatalogPage({
       query,
-      encodedFilters,
+      encodedFilters: browseFilters,
       encodedCT: nextEncodedCT,
       returnFilters: false,
       channelId,
@@ -321,12 +325,12 @@ async function search({
     const nextEnriched = applyPostFilters(
       // eslint-disable-next-line no-await-in-loop
       await applyProductOverrides(await enrichProducts(mapProducts(nextRaw.products || []))),
-      { languageMode, specialOffersOnly, freeOnly, saleEndBefore },
+      { languageMode, specialOffersOnly, freeOnly, saleEndBefore, onSaleOnly },
     );
     enrichedProducts = [...enrichedProducts, ...nextEnriched];
   }
   const extraKeywordProducts = query
-    ? await loadOverrideKeywordProducts(query, enrichedProducts, { languageMode, specialOffersOnly, freeOnly, saleEndBefore })
+    ? await loadOverrideKeywordProducts(query, enrichedProducts, { languageMode, specialOffersOnly, freeOnly, saleEndBefore, onSaleOnly })
     : [];
   const mappedFilters = raw.filters && Object.keys(raw.filters).length > 0
     ? mapFilters(raw.filters)

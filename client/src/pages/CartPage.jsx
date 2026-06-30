@@ -131,6 +131,13 @@ export default function CartPage({ currentUser, onLoginClick }) {
   );
   const showMinOrderWarning = totalUsd > 0 && totalUsd < 10;
 
+  const minOrderRub = useMemo(() => {
+    const item = items.find((i) => i.priceRub?.effectiveRate || (i.priceRub?.value && i.price?.value));
+    if (!item) return null;
+    const rate = item.priceRub?.effectiveRate || (item.priceRub?.value / item.price?.value);
+    return rate ? Math.round(rate * 10) : null;
+  }, [items]);
+
   const purchaseSettings = profile?.purchaseSettings || {};
   const profileUser = profile?.user || null;
   const registrationEmail = profileUser?.email || '';
@@ -311,7 +318,7 @@ export default function CartPage({ currentUser, onLoginClick }) {
           )}
           {showMinOrderWarning && (
             <div className="cart-summary-alert cart-summary-alert--warning" role="note">
-              ⚠️ Цена игры меньше $10. Минимальная сумма заказа — $10, поэтому к оплате добавится небольшая доплата. Чтобы избежать этого, добавьте ещё товары в корзину и купите сразу несколько игр.
+              ⚠️ Цена игры меньше $10. Минимальная сумма заказа — $10, поэтому оплатить придётся {minOrderRub ? `${minOrderRub.toLocaleString('ru-RU')} рублей` : 'около 910 рублей'} (динамическая цена). Чтобы избежать переплаты, добавьте в корзину ещё игры, чтобы их общая стоимость была выше $10, и купите сразу несколько игр.
             </div>
           )}
           <ul className="cart-summary-list">
@@ -449,12 +456,9 @@ export default function CartPage({ currentUser, onLoginClick }) {
                   </section>
                 )}
 
-                {!purchaseResult && (form.paymentMode === 'oplata' || form.paymentMode === 'key_activation') && (() => {
-                  const totalUsd = items.reduce((sum, item) => sum + (Number(item.price?.value) || 0), 0);
-                  return totalUsd > 0 && totalUsd < 10;
-                })() && (
+                {!purchaseResult && (form.paymentMode === 'oplata' || form.paymentMode === 'key_activation') && showMinOrderWarning && (
                   <div className="purchase-min-order-notice">
-                    ⚠ Цена игры меньше $10. Минимальная сумма заказа — $10, поэтому к оплате добавится небольшая доплата. Чтобы избежать этого, добавьте ещё товары в корзину и купите сразу несколько игр.
+                    ⚠ Цена игры меньше $10. Минимальная сумма заказа — $10, поэтому оплатить придётся {minOrderRub ? `${minOrderRub.toLocaleString('ru-RU')} рублей` : 'около 910 рублей'} (динамическая цена). Чтобы избежать переплаты, добавьте в корзину ещё игры, чтобы их общая стоимость была выше $10, и купите сразу несколько игр.
                   </div>
                 )}
 
