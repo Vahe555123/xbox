@@ -7,7 +7,9 @@ const logger = require('../utils/logger');
 
 const PRICE_API_URL = 'https://www.oplata.info/asp2/price_options.asp';
 const OPLATA_BASE_URL = 'https://www.oplata.info';
+const PRODUCT_DATA_API_URL = 'https://api.digiseller.ru/api/products';
 const PRICE_CACHE_TTL_SECONDS = 15 * 60;
+const AVAILABILITY_CACHE_TTL_SECONDS = 5 * 60;
 const PRICE_UNAVAILABLE = { _unavailable: true };
 const RATE_CACHE_TTL_SECONDS = 5 * 60;
 const DEFAULT_MAX_UNIT_COUNT = 300;
@@ -936,12 +938,47 @@ function resolveSpecialOfferId(idOrUrl) {
   return /^\d+$/.test(s) ? s : null;
 }
 
+// The price_options.asp API returns a price even when the Digiseller product is
+// out of stock ("Этот товар закончился"). The real availability lives in the
+// product data API's `is_available` flag, so we must check it separately.
+async function fetchDigisellerAvailability(digisellerId) {
+  if (!digisellerId) return false;
+  const cacheKey = `digiseller:available:${digisellerId}`;
+  const cached = cache.get(cacheKey);
+  if (cached !== null && cached !== undefined) {
+    return cached === true;
+  }
+
+  try {
+    const { data } = await axios.get(`${PRODUCT_DATA_API_URL}/${digisellerId}/data`, {
+      params: { lang: 'ru-RU', currency: 'RUB' },
+      timeout: 8000,
+      headers: { Accept: 'application/json' },
+    });
+    const product = data?.product || data;
+    const available = Number(product?.is_available) === 1;
+    cache.set(cacheKey, available, AVAILABILITY_CACHE_TTL_SECONDS);
+    return available;
+  } catch (err) {
+    // Fail open: don't hide a valid offer because of a transient API error.
+    logger.warn('Digiseller availability check failed', {
+      digisellerId,
+      message: err.message,
+    });
+    return true;
+  }
+}
+
 async function getSpecialOfferInfo(productIdOrUrl, { failPageUrl } = {}) {
   if (!productIdOrUrl) return null;
   const productId = resolveSpecialOfferId(productIdOrUrl);
   if (!productId) return null;
 
-  const price = await fetchRubPrice(productId, 1);
+  const [price, available] = await Promise.all([
+    fetchRubPrice(productId, 1),
+    fetchDigisellerAvailability(productId),
+  ]);
+  if (!available) return null;
   if (!price || !price.value) return null;
 
   return {
@@ -1034,4 +1071,5 @@ module.exports = {
   upsertMapping,
   deleteMapping,
   getSpecialOfferInfo,
+  fetchDigisellerAvailability,
 };

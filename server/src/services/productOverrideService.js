@@ -1,5 +1,5 @@
 const pool = require('../db/pool');
-const { fetchRubPrice } = require('./digisellerService');
+const { fetchDigisellerAvailability } = require('./digisellerService');
 
 const LANGUAGE_MODES = new Set(['full_ru', 'ru_subtitles', 'no_ru', 'unknown']);
 
@@ -232,8 +232,8 @@ async function listSpecialOfferProductIds() {
   const available = await Promise.all(rows.map(async (row) => {
     const digisellerId = normalizeSpecialOfferId(row.special_offer_url);
     if (!digisellerId) return null;
-    const price = await fetchRubPrice(digisellerId, 1).catch(() => null);
-    return price ? normalizeProductId(row.product_id) : null;
+    const inStock = await fetchDigisellerAvailability(digisellerId).catch(() => true);
+    return inStock ? normalizeProductId(row.product_id) : null;
   }));
   return available.filter(Boolean);
 }
