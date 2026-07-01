@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const { fetchRubPrice } = require('./digisellerService');
 
 const LANGUAGE_MODES = new Set(['full_ru', 'ru_subtitles', 'no_ru', 'unknown']);
 
@@ -223,12 +224,18 @@ async function deleteProductOverride(productId) {
 
 async function listSpecialOfferProductIds() {
   const { rows } = await pool.query(
-    `SELECT product_id
+    `SELECT product_id, special_offer_url
      FROM product_overrides
      WHERE special_offer_url IS NOT NULL AND special_offer_url <> ''
      ORDER BY updated_at DESC`,
   );
-  return rows.map((row) => normalizeProductId(row.product_id)).filter(Boolean);
+  const available = await Promise.all(rows.map(async (row) => {
+    const digisellerId = normalizeSpecialOfferId(row.special_offer_url);
+    if (!digisellerId) return null;
+    const price = await fetchRubPrice(digisellerId, 1).catch(() => null);
+    return price ? normalizeProductId(row.product_id) : null;
+  }));
+  return available.filter(Boolean);
 }
 
 async function listSearchableProductOverrides() {
