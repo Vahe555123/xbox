@@ -22,24 +22,36 @@ app.use(requestLogger);
 // nginx проксирует сюда только запросы с User-Agent социальных ботов.
 app.use(ogMiddleware);
 
-// SEO: sitemap.xml и robots.txt (nginx должен проксировать эти пути в Node).
-const { getSitemapXml, getSitemapXmlV3, getRobotsTxt } = require('./services/sitemapService');
-// Отдаём по обоим адресам: новый /sitemap-v2.xml — чтобы обойти кэш ошибки
-// в Google Search Console (кэш привязан к URL), старый /sitemap.xml — для
-// обратной совместимости со старыми ссылками.
+// SEO: sitemap (nginx должен проксировать пути /sitemap*.xml и /robots.txt в Node).
+const {
+  getSitemapIndexXml,
+  getStaticSitemapXml,
+  getGamesSitemapXml,
+  getRobotsTxt,
+} = require('./services/sitemapService');
+
+// /sitemap.xml — индекс (<sitemapindex>), перечисляет дочерние карты сайта.
+// /sitemap-v2.xml — оставлен как алиас, чтобы обойти кэш ошибки в GSC (кэш
+// привязан к URL) и для обратной совместимости со старыми ссылками.
 app.get(['/sitemap.xml', '/sitemap-v2.xml'], async (_req, res, next) => {
   try {
-    res.type('application/xml').send(await getSitemapXml());
+    res.type('application/xml').send(await getSitemapIndexXml());
   } catch (err) {
     next(err);
   }
 });
-// /sitemap-v3.xml — урезанная карта сайта: только первые 10 игр.
-app.get('/sitemap-v3.xml', async (_req, res, next) => {
+// /sitemap-static.xml — статические страницы.
+app.get('/sitemap-static.xml', (_req, res) => {
+  res.type('application/xml').send(getStaticSitemapXml());
+});
+// /sitemap-games-<N>.xml — куски каталога игр по 1000 URL (N начинается с 1).
+app.get('/sitemap-games-:page.xml', async (req, res, next) => {
   try {
-    res.type('application/xml').send(await getSitemapXmlV3());
+    const xml = await getGamesSitemapXml(req.params.page);
+    if (!xml) return res.status(404).type('text/plain').send('Not found');
+    return res.type('application/xml').send(xml);
   } catch (err) {
-    next(err);
+    return next(err);
   }
 });
 app.get('/robots.txt', (_req, res) => {

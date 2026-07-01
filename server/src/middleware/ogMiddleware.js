@@ -103,7 +103,9 @@ async function getGameMeta(productId) {
 }
 
 module.exports = async function ogMiddleware(req, res, next) {
-  if (req.path === '/sitemap.xml' || req.path === '/sitemap-v2.xml' || req.path === '/sitemap-v3.xml' || req.path === '/robots.txt') return next();
+  // Любые карты сайта (/sitemap.xml, /sitemap-games-N.xml и т.д.) и robots.txt
+  // отдаём как есть — их обрабатывают отдельные роуты, OG-обёртка тут не нужна.
+  if (/^\/sitemap[\w-]*\.xml$/.test(req.path) || req.path === '/robots.txt') return next();
 
   const ua = req.headers['user-agent'] || '';
   const isBot = SOCIAL_BOT_RE.test(ua) || SEARCH_BOT_RE.test(ua);
