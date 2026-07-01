@@ -8,6 +8,7 @@ const logger = require('../utils/logger');
 const PRICE_API_URL = 'https://www.oplata.info/asp2/price_options.asp';
 const OPLATA_BASE_URL = 'https://www.oplata.info';
 const PRICE_CACHE_TTL_SECONDS = 15 * 60;
+const PRICE_UNAVAILABLE = { _unavailable: true };
 const RATE_CACHE_TTL_SECONDS = 5 * 60;
 const DEFAULT_MAX_UNIT_COUNT = 300;
 const XBOX_GAME_NAME_OPTION = '4931969';
@@ -335,7 +336,9 @@ async function fetchRubPrice(digisellerId, unitCount = 1, {
   const cacheKey = `digiseller:price:rub:${digisellerId}:${safeUnitCount.toFixed(2)}:${getOptionCacheKey(optionXml)}`;
   if (cacheResult) {
     const cached = cache.get(cacheKey);
-    if (cached !== null && cached !== undefined) return cached;
+    if (cached !== null && cached !== undefined) {
+      return cached === PRICE_UNAVAILABLE ? null : cached;
+    }
   }
 
   try {
@@ -353,7 +356,7 @@ async function fetchRubPrice(digisellerId, unitCount = 1, {
 
     const parsed = parsePriceResponse(data);
     if (!parsed || (parsed.err !== '0' && parsed.err !== 0 && parsed.err)) {
-      if (cacheResult) cache.set(cacheKey, null, PRICE_CACHE_TTL_SECONDS);
+      if (cacheResult) cache.set(cacheKey, PRICE_UNAVAILABLE, PRICE_CACHE_TTL_SECONDS);
       return null;
     }
 
@@ -362,7 +365,7 @@ async function fetchRubPrice(digisellerId, unitCount = 1, {
     const amount = parseMoney(parsed.amount);
     const value = amount || (baseUnitPrice && count ? baseUnitPrice * count : null);
     if (!Number.isFinite(value) || value <= 0) {
-      if (cacheResult) cache.set(cacheKey, null, PRICE_CACHE_TTL_SECONDS);
+      if (cacheResult) cache.set(cacheKey, PRICE_UNAVAILABLE, PRICE_CACHE_TTL_SECONDS);
       return null;
     }
 
