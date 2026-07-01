@@ -91,7 +91,7 @@ async function getSitemapXmlV3() {
 
 function getRobotsTxt() {
   const origin = config.siteOrigin;
-  return `User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap-v2.xml\n`;
+  return `User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap-v3.xml\n`;
 }
 
 module.exports = { getSitemapXml, getSitemapXmlV3, getRobotsTxt };
