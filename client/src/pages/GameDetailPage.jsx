@@ -1208,7 +1208,6 @@ export default function GameDetailPage() {
                     <ProductCard
                       key={product.id}
                       product={product}
-                      unavailablePriceLabel="Смотреть игру"
                     />
                   ))}
                 </div>

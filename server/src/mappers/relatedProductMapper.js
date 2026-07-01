@@ -147,6 +147,8 @@ function mapRelatedProductCard(raw, relationshipType) {
     gamePassSavingsPercent: catalogPriceInfo.gamePassSavingsPercent ?? null,
     gamePassSavingsAmount: catalogPriceInfo.gamePassSavingsAmount ?? null,
     gamePassSavingsFormatted: catalogPriceInfo.gamePassSavingsFormatted ?? null,
+    gamePassPrice: catalogPriceInfo.gamePassPrice ?? null,
+    gamePassPriceFormatted: catalogPriceInfo.gamePassPriceFormatted ?? null,
     releaseInfo: {
       status: isFuture ? 'comingSoon' : releaseDate ? 'released' : 'unknown',
       releaseDate,
