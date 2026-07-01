@@ -13,6 +13,7 @@ const TTL_MS = 6 * 60 * 60 * 1000; // 6h
 const MAX_URLS = 45000; // sitemap spec limit is 50k
 
 let cache = { xml: null, expiresAt: 0 };
+let cacheV3 = { xml: null, expiresAt: 0 };
 
 async function getGameIds() {
   const index = russianIndex.getIndexData();
@@ -63,9 +64,34 @@ async function getSitemapXml() {
   return xml;
 }
 
+// Урезанная версия карты сайта: только первые 10 игр.
+async function getSitemapXmlV3() {
+  const now = Date.now();
+  if (cacheV3.xml && cacheV3.expiresAt > now) return cacheV3.xml;
+
+  const origin = config.siteOrigin;
+  const ids = (await getGameIds()).slice(0, 10);
+
+  const staticUrls = [
+    urlTag(`${origin}/`, { changefreq: 'daily', priority: '1.0' }),
+    urlTag(`${origin}/gamepass`, { changefreq: 'daily', priority: '0.8' }),
+    urlTag(`${origin}/ubisoft`, { changefreq: 'daily', priority: '0.8' }),
+  ];
+  const gameUrls = ids.map((id) =>
+    urlTag(`${origin}/game/${encodeURIComponent(id)}`, { changefreq: 'weekly', priority: '0.6' }));
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n`
+    + `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`
+    + [...staticUrls, ...gameUrls].join('\n')
+    + `\n</urlset>`;
+
+  cacheV3 = { xml, expiresAt: now + TTL_MS };
+  return xml;
+}
+
 function getRobotsTxt() {
   const origin = config.siteOrigin;
   return `User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap-v2.xml\n`;
 }
 
-module.exports = { getSitemapXml, getRobotsTxt };
+module.exports = { getSitemapXml, getSitemapXmlV3, getRobotsTxt };
